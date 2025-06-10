@@ -1,9 +1,9 @@
 # qoa
-The Quantum Optical Assembly Programming Language
+# The Quantum Optical Assembly Programming Language
 
 
 
-# I have created this guide for researchers, developers and students who will use QOA in practial applications, I have designed it to interact with Quantum and/or Optical systems in the same way classical risc syntax based assembly could manipulate electrons in transistors. I hope whoever reads this guide finds it useful.
+I have created this guide for researchers, developers and students who will use QOA in practial applications, I have designed it to interact with Quantum and/or Optical systems in the same way classical risc syntax based assembly could manipulate electrons in transistors. I hope whoever reads this guide finds it useful.
 
 Sincerely, Rayan
 
