@@ -1,0 +1,12 @@
+[package]
+name = "main_emulator"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+num-complex = "0.4"
+rand = "0.8"
+
+[[bin]]
+name = "qoa"
+path = "emulator/main_emulator.rs"

@@ -1,0 +1,45 @@
+; Initialize qubits to hold ASCII bits for "Hello World"
+; Each ASCII char is 8 bits, so for 11 chars, 88 qubits or classical registers would be needed.
+; For simplicity, this example uses 11 qubits holding one char each as a simplified example.
+
+; Initialize qubits 0-10 for each character in "Hello World"
+QINIT 0
+QINIT 1
+QINIT 2
+QINIT 3
+QINIT 4
+QINIT 5
+QINIT 6
+QINIT 7
+QINIT 8
+QINIT 9
+QINIT 10
+
+; For each qubit, "load" the ASCII character as a classical bit pattern (pseudo)
+; This would be done via a series of quantum gates encoding the ASCII value,
+; but here we just symbolize with QLOAD for clarity
+
+QLOAD 0 72      ; 'H' ASCII 72
+QLOAD 1 101     ; 'e' ASCII 101
+QLOAD 2 108     ; 'l' ASCII 108
+QLOAD 3 108     ; 'l'
+QLOAD 4 111     ; 'o'
+QLOAD 5 32      ; space
+QLOAD 6 87      ; 'W'
+QLOAD 7 111     ; 'o'
+QLOAD 8 114     ; 'r'
+QLOAD 9 108     ; 'l'
+QLOAD 10 100    ; 'd'
+
+; Measure all to classical bits so host program can read and print
+QMEAS 0
+QMEAS 1
+QMEAS 2
+QMEAS 3
+QMEAS 4
+QMEAS 5
+QMEAS 6
+QMEAS 7
+QMEAS 8
+QMEAS 9
+QMEAS 10

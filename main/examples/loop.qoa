@@ -1,0 +1,22 @@
+; one qubit to act as an 8-bit register
+QINIT 0
+
+;  for char values 0 to 255
+;  this would be unrolled or handled by the emulator
+
+; Example: each CHARLOAD loads a value, QMEAS measures it
+; In real qoa this would be done using gate sequences but simulate it here
+
+CHARLOAD 0 0
+QMEAS 0
+
+CHARLOAD 0 1
+QMEAS 0
+
+CHARLOAD 0 2
+QMEAS 0
+
+; Continue up to: 255
+
+CHARLOAD 0 255
+QMEAS 0

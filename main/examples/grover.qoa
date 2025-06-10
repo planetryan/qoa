@@ -1,0 +1,107 @@
+; Initialize 10 qubits (0 to 9)
+QINIT 0
+QINIT 1
+QINIT 2
+QINIT 3
+QINIT 4
+QINIT 5
+QINIT 6
+QINIT 7
+QINIT 8
+QINIT 9
+
+; Apply Hadamard gates to all 10 qubits to create superposition
+QGATE 0 H
+QGATE 1 H
+QGATE 2 H
+QGATE 3 H
+QGATE 4 H
+QGATE 5 H
+QGATE 6 H
+QGATE 7 H
+QGATE 8 H
+QGATE 9 H
+
+; Mark the |1111111111> state by flipping its phase
+; Typically done via multi-controlled Z on all qubits
+; simulate with 2 qubit CZ gates cascaded (simplified)
+
+QGATE 0 CZ
+QGATE 1 CZ
+QGATE 2 CZ
+QGATE 3 CZ
+QGATE 4 CZ
+QGATE 5 CZ
+QGATE 6 CZ
+QGATE 7 CZ
+QGATE 8 CZ
+QGATE 9 CZ
+
+; Diffusion operator (inversion about the mean)
+; Apply H, then X, then multi-controlled Z, then X, then H on all qubits
+QGATE 0 H
+QGATE 1 H
+QGATE 2 H
+QGATE 3 H
+QGATE 4 H
+QGATE 5 H
+QGATE 6 H
+QGATE 7 H
+QGATE 8 H
+QGATE 9 H
+
+QGATE 0 X
+QGATE 1 X
+QGATE 2 X
+QGATE 3 X
+QGATE 4 X
+QGATE 5 X
+QGATE 6 X
+QGATE 7 X
+QGATE 8 X
+QGATE 9 X
+
+QGATE 0 CZ
+QGATE 1 CZ
+QGATE 2 CZ
+QGATE 3 CZ
+QGATE 4 CZ
+QGATE 5 CZ
+QGATE 6 CZ
+QGATE 7 CZ
+QGATE 8 CZ
+QGATE 9 CZ
+
+QGATE 0 X
+QGATE 1 X
+QGATE 2 X
+QGATE 3 X
+QGATE 4 X
+QGATE 5 X
+QGATE 6 X
+QGATE 7 X
+QGATE 8 X
+QGATE 9 X
+
+QGATE 0 H
+QGATE 1 H
+QGATE 2 H
+QGATE 3 H
+QGATE 4 H
+QGATE 5 H
+QGATE 6 H
+QGATE 7 H
+QGATE 8 H
+QGATE 9 H
+
+; Measure all qubits
+QMEAS 0
+QMEAS 1
+QMEAS 2
+QMEAS 3
+QMEAS 4
+QMEAS 5
+QMEAS 6
+QMEAS 7
+QMEAS 8
+QMEAS 9
