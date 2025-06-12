@@ -1,0 +1,47 @@
+; Registers:
+; 0-4: Exponent register (|x⟩)
+; 5-9: Result register (|f(x) = a^x mod N⟩)
+
+; Step 1: Initialize all qubits
+QINIT 0
+QINIT 1
+QINIT 2
+QINIT 3
+QINIT 4
+QINIT 5
+QINIT 6
+QINIT 7
+QINIT 8
+QINIT 9
+
+; Step 2: Put exponent register into superposition
+QGATE 0 H
+QGATE 1 H
+QGATE 2 H
+QGATE 3 H
+QGATE 4 H
+
+; Step 3: Apply modular exponentiation f(x) = 7^x mod 15
+; This is normally done with controlled modular multiplication.
+; For illustration: use simplified placeholder gates
+
+QGATE 0 C-MOD7-N15 ; Custom placeholder for controlled modular op
+QGATE 1 C-MOD7-N15
+QGATE 2 C-MOD7-N15
+QGATE 3 C-MOD7-N15
+QGATE 4 C-MOD7-N15
+
+; Step 4: Inverse Quantum Fourier Transform (QFT^-1) on exponent register
+; Placeholder QFT^-1 logic for 5 qubits
+QGATE 0 QFT_INV
+QGATE 1 QFT_INV
+QGATE 2 QFT_INV
+QGATE 3 QFT_INV
+QGATE 4 QFT_INV
+
+; Step 5: Measure exponent register (period information)
+QMEAS 0
+QMEAS 1
+QMEAS 2
+QMEAS 3
+QMEAS 4

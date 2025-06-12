@@ -1,0 +1,58 @@
+; Hello World in QOA
+; Each CHARLOAD loads an ASCII value, and QMEAS simulates emitting that character
+; Written for demonstration with qubit reuse
+
+; Use Qubit 0 repeatedly for simplicity
+QINIT 0
+
+; 'H'
+CHARLOAD 0 72
+QMEAS 0
+
+; 'e'
+CHARLOAD 0 101
+QMEAS 0
+
+; 'l'
+CHARLOAD 0 108
+QMEAS 0
+
+; 'l'
+CHARLOAD 0 108
+QMEAS 0
+
+; 'o'
+CHARLOAD 0 111
+QMEAS 0
+
+; ','
+CHARLOAD 0 44
+QMEAS 0
+
+; ' '
+CHARLOAD 0 32
+QMEAS 0
+
+; 'W'
+CHARLOAD 0 87
+QMEAS 0
+
+; 'o'
+CHARLOAD 0 111
+QMEAS 0
+
+; 'r'
+CHARLOAD 0 114
+QMEAS 0
+
+; 'l'
+CHARLOAD 0 108
+QMEAS 0
+
+; 'd'
+CHARLOAD 0 100
+QMEAS 0
+
+; '!'
+CHARLOAD 0 33
+QMEAS 0
