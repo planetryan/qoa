@@ -2,7 +2,7 @@
 ; Each CHARLOAD loads an ASCII value, and QMEAS simulates emitting that character
 ; Written for demonstration with qubit reuse
 
-; Use Qubit 0 repeatedly for simplicity
+; Initalize QUBIT 0
 QINIT 0
 
 ; 'H'
