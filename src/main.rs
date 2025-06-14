@@ -18,7 +18,7 @@ mod instructions;
     You can also compile into .oexe, .qoexe or .xexe, but .qexe is enough for now.
 
     This is the main interpreter, this effectively "simulates" random chance and measurement in quantum mechanics.
-    This does NOT make your CPU a QPU, in the same way simulating another CPU on your CPU doesn’t make it the simulated CPU inherently.
+    This does NOT make your CPU a QPU, in the same way simulating another CPU on your CPU doesn't make it the simulated CPU inherently.
     This is effectively emulating behavior outputted by a QPU; to actually test QOA effectively, I recommend a QPU of at least 160 logical Qubits or more.
 */
 
@@ -150,6 +150,7 @@ fn parse_exe_file(filedata: &[u8]) -> Option<(&'static str, u8, &[u8])> {
     Some((name, version, &filedata[9..9 + payload_len]))
 }
 
+// run executables
 fn run_exe(filedata: &[u8]) {
     let (header, version, payload) = match parse_exe_file(filedata) {
         Some(t) => t,
@@ -159,54 +160,68 @@ fn run_exe(filedata: &[u8]) {
         }
     };
 
-    // --- 2) Determine number of qubits via first pass ---
+    // Determine number of qubits via first pass
     let mut max_q = 0usize;
-    let mut i = 0;
+    let mut i = 0usize;
     while i < payload.len() {
         match payload[i] {
             0x01 /* QInit */ => {
                 if i + 1 < payload.len() {
                     max_q = max_q.max(payload[i + 1] as usize);
+                    i += 2;
+                } else {
+                    eprintln!("(ERROR) Unexpected end of payload in QInit at byte {}", i);
+                    break;
                 }
-                i += 2;
             }
             0x02 /* QGate */ => {
-                i += 10;  // QGate opcode + qubit + 8 bytes gate name
+                if i + 9 < payload.len() {
+                    i += 10; // opcode + qubit + 8 bytes gate name
+                } else {
+                    eprintln!("(ERROR) Unexpected end of payload in QGate at byte {}", i);
+                    break;
+                }
             }
             0x03 /* QMeas */ => {
-                i += 2;  // QMeas opcode + qubit
+                if i + 1 < payload.len() {
+                    i += 2; // opcode + qubit
+                } else {
+                    eprintln!("(ERROR) Unexpected end of payload in QMeas at byte {}", i);
+                    break;
+                }
             }
             0x04 /* CharLoad */ => {
-                i += 3;  // CharLoad opcode + qubit + char
+                if i + 2 < payload.len() {
+                    i += 3; // opcode + qubit + char
+                } else {
+                    eprintln!("(ERROR) Unexpected end of payload in CharLoad at byte {}", i);
+                    break;
+                }
             }
             _ => {
-                // Unknown opcode; stop scanning
+                eprintln!("Unknown opcode 0x{:02x} at byte {}", payload[i], i);
                 break;
             }
         }
     }
+
     let n = max_q + 1;
     println!("Initializing quantum state with {} qubits (type {}, ver {})", n, header, version);
     let mut qs = QuantumState::new(n);
 
-    // --- 3) Execute instructions ---
+    // Execute instructions
     i = 0;
     while i < payload.len() {
         match payload[i] {
             0x01 => {
                 // QInit q (ignored during execution)
-                let _q = payload[i + 1] as usize;
+                let _ = payload.get(i + 1).cloned().unwrap_or(0) as usize;
                 i += 2;
             }
             0x02 => {
                 // QGate q, gate_name (8 bytes)
-                let q = payload[i + 1] as usize;
+                let q = payload.get(i + 1).cloned().unwrap_or(0) as usize;
                 let name_bytes = &payload[i + 2..i + 10];
-
-                // DEBUG
-                eprintln!("(DEBUG) Gate name bytes: {:?}", name_bytes);
-
-                // Convert bytes to string and trim trailing zeros properly:
                 let name = String::from_utf8_lossy(name_bytes)
                     .trim_end_matches('\0')
                     .to_string();
@@ -223,14 +238,14 @@ fn run_exe(filedata: &[u8]) {
                 i += 10;
             }
             0x03 => {
-                // QMeas q: measure qubit and discard result, simulate character emission via CharLoad
-                let q = payload[i + 1] as usize;
+                // QMeas q: measure qubit and discard result
+                let q = payload.get(i + 1).cloned().unwrap_or(0) as usize;
                 let _ = qs.measure(q);
                 i += 2;
             }
             0x04 => {
                 // CharLoad: print ASCII character without newline
-                let val = payload[i + 2];
+                let val = *payload.get(i + 2).unwrap_or(&0);
                 print!("{}", val as char);
                 i += 3;
             }
@@ -241,11 +256,11 @@ fn run_exe(filedata: &[u8]) {
         }
     }
 
-    // flush stdout so output is shown before next line
+    // finalize output
     io::stdout().flush().unwrap();
-    println!();
+    println!(); // final newline
 
-    // --- 4) Dump final amplitudes ---
+    // Dump final state
     println!("\nFinal amplitudes:");
     for (idx, amp) in qs.amps.iter().enumerate() {
         println!("{:0width$b}: {:.4} + {:.4}i",

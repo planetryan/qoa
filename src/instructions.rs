@@ -9,10 +9,10 @@
 #[derive(Debug)]
 pub enum Instruction {
     // core
-    InitQubit(u8), QInit(u8), QMeas(u8), CharLoad(u8, u8), Measure(u8),
-    ApplyGate(String, u8), ApplyHadamard(u8), ControlledNot(u8, u8),
+    QInit(u8), QMeas(u8), CharLoad(u8, u8),
+    ApplyHadamard(u8), ControlledNot(u8, u8),
     ApplyPhaseFlip(u8), ApplyBitFlip(u8), ApplyTGate(u8), ApplySGate(u8),
-    PhaseShift(u8, f64), Wait(u64), Reset(u8), ResetAll,
+    PhaseShift(u8, f64), Wait(u64), Reset(u8),
     Swap(u8, u8), ControlledSwap(u8, u8, u8),
     Entangle(u8, u8), EntangleBell(u8, u8), EntangleMulti(Vec<u8>),
     EntangleCluster(Vec<u8>), EntangleSwap(u8, u8, u8, u8),
@@ -36,7 +36,7 @@ pub enum Instruction {
 
     // classical
     Jump(String), JumpIfZero(String, String), JumpIfOne(String, String),
-    Call(String), Return, Sync, TimeDelay(u8, u64), VerboseLog(u8, String),
+    Call(String), Barrier, Return, TimeDelay(u8, u64),
 
     // optics
     PhotonEmit(u8), PhotonDetect(u8), PhotonCount(u8, String), PhotonAddition(u8), ApplyPhotonSubtraction(u8),
@@ -58,7 +58,7 @@ pub enum Instruction {
     PhotonNumberResolvingDetection(u8, String), FeedbackControl(u8, String),
 
     // misc
-    SetPos(u8, u16, u16), SetWl(u8, u16), SetPhase(u8, f64), WlShift(u8, i16), Move(u8, i16, i16),
+    SetPos(u8, f64, f64), SetWl(u8, f64), WlShift(u8, f64), Move(u8, f64, f64),
     Comment(String), MarkObserved(u8), Release(u8), Halt,
 }
 
@@ -99,10 +99,10 @@ pub fn parse_instruction(line: &str) -> Result<Instruction, String> {
     match op.as_str() {
         // normal qoa base stuff
         "QINIT" => { if tokens.len() == 2 { Ok(QInit(parse_u8(tokens[1])?)) } else { Err("QINIT <qubit>".into()) } }
-        "INITQUBIT" => { if tokens.len() == 2 { Ok(InitQubit(parse_u8(tokens[1])?)) } else { Err("INITQUBIT <qubit>".into()) } }
+        // "INITQUBIT" => { if tokens.len() == 2 { Ok(InitQubit(parse_u8(tokens[1])?)) } else { Err("INITQUBIT <qubit>".into()) } }
         "QMEAS" => { if tokens.len() == 2 { Ok(QMeas(parse_u8(tokens[1])?)) } else { Err("QMEAS <qubit>".into()) } }
         "CHARLOAD" => { if tokens.len() == 3 { Ok(CharLoad(parse_u8(tokens[1])?, parse_u8(tokens[2])?)) } else { Err("CHARLOAD <qubit> <ascii_val>".into()) } }
-        "MEASURE" => { if tokens.len() == 2 { Ok(Measure(parse_u8(tokens[1])?)) } else { Err("MEASURE <qubit>".into()) } }
+        // "MEASURE" => { if tokens.len() == 2 { Ok(Measure(parse_u8(tokens[1])?)) } else { Err("MEASURE <qubit>".into()) } }
         "APPLY_GATE" => { if tokens.len() == 3 { Ok(ApplyGate(tokens[1].to_string(), parse_u8(tokens[2])?)) } else { Err("APPLY_GATE <gate> <qubit>".into()) } }
         "APPLYHADAMARD" => { if tokens.len() == 2 { Ok(ApplyHadamard(parse_u8(tokens[1])?)) } else { Err("APPLYHADAMARD <qubit>".into()) } }
         "CONTROLLEDNOT" => { if tokens.len() == 3 { Ok(ControlledNot(parse_u8(tokens[1])?, parse_u8(tokens[2])?)) } else { Err("CONTROLLEDNOT <c> <t>".into()) } }
@@ -1114,11 +1114,9 @@ impl Instruction {
     pub fn encode(&self) -> Vec<u8> {
         match self {
             // Initialization and Measurement
-            Instruction::InitQubit(n) => vec![0x01, *n],
-            Instruction::QInit(n) => vec![0x02, *n],
-            Instruction::QMeas(n) => vec![0x03, *n],
-            Instruction::CharLoad(r, c) => vec![0x04, *r, *c],
-            Instruction::Measure(n) => vec![0xA0, *n],
+            Instruction::QInit(n)     => vec![0x01, *n],
+            Instruction::QMeas(n)     => vec![0x03, *n],   // prints char via CharLoad
+            Instruction::CharLoad(r,c)=> vec![0x04, *r, *c],
 
 
             // Core
