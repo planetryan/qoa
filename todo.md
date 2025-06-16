@@ -14,7 +14,7 @@
 
 - Add register bounds checking and validation for all register operations
 
-## Physics, Math & Fusion-Specific Instructions
+## Specific Instructions
 
 - Implement THERMAL_AVG:  
   Sample Maxwell-Boltzmann energy distribution at given temperature (keV)
@@ -59,7 +59,7 @@
 - Implement CALL and RET instructions with subroutine call stack management
 
 
-## Medium Priority – I/O, Memory, Debugging & System
+## Medium Priority: I/O, Memory, Debugging & System
 
 ### Input/Output & Debugging
 
