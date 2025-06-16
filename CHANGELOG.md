@@ -1,4 +1,4 @@
-Quantum Optical Assembly (QOA) ISA Changelog — Version 0.2.0
+# Quantum Optical Assembly (QOA) ISA Changelog — Version 0.2.0
 
 Release Date: 15 June 2025
 
@@ -53,7 +53,7 @@ Better Error Handling
   • Won't try to execute garbage data if binary is corrupted
 
 Current Instruction Set
-=======================
+=======================will
 
 Instruction | Opcode | What it does           | Format
 ----------- | ------ | ---------------------- | --------------------------------------
