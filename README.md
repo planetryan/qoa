@@ -1,5 +1,5 @@
 
-![qoa-logo](https://github.com/user-attachments/assets/ff16513f-8441-418f-ad1b-e0e8a9a480a2)
+![qoa-logo](https://github.com/user-attachments/assets/5fdbae92-68f8-490e-8368-f3fd6c81a064)
 
 # QOA
 The Quantum Optical Assembly Programming Language
