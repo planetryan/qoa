@@ -75,21 +75,29 @@ impl QuantumState {
     fn apply_h(&mut self, q: usize) {
         let mask = 1 << q;
         let norm = Complex64::new(1.0 / 2f64.sqrt(), 0.0);
-        for i in 0..self.amps.len() {
+        let size = self.amps.len();
+        let mut new_amps = vec![Complex64::new(0.0, 0.0); size];
+
+        for i in 0..size {
             if i & mask == 0 {
+                let flipped = i ^ mask;
                 let a = self.amps[i];
-                let b = self.amps[i | mask];
-                self.amps[i] = norm * (a + b);
-                self.amps[i | mask] = norm * (a - b);
+                let b = self.amps[flipped];
+                new_amps[i] += norm * (a + b);
+                new_amps[flipped] += norm * (a - b);
             }
         }
+
+        self.amps = new_amps;
     }
 
     /// Pauli-X (NOT) on qubit q.
     fn apply_x(&mut self, q: usize) {
         let mask = 1 << q;
-        for i in 0..self.amps.len() {
-            if i & mask == 0 {
+        let len = self.amps.len();
+        for i in 0..len {
+            // Only swap when bit q is 0 and i < i | mask to avoid double-swap
+            if (i & mask) == 0 && i < (i | mask) {
                 self.amps.swap(i, i | mask);
             }
         }
@@ -100,8 +108,8 @@ impl QuantumState {
         let cm = 1 << c;
         let tm = 1 << t;
         for i in 0..self.amps.len() {
-            if i & cm != 0 && i & tm != 0 {
-                self.amps[i] *= -1.0;
+            if (i & cm != 0) && (i & tm != 0) {
+                self.amps[i] = -self.amps[i];
             }
         }
     }
@@ -168,109 +176,149 @@ fn run_exe(filedata: &[u8]) {
         }
     };
 
-// FIRST PASS: scan payload to find highest qubit index
-let mut max_q = 0usize;
-let mut i = 0usize;
-while i < payload.len() {
-    match payload[i] {
-        0x04 /* QInit */ => {
-            // [opcode, qubit]
-            if i + 1 >= payload.len() { break }
-            let q = payload[i + 1] as usize;
-            max_q = max_q.max(q);
-            i += 2;
-        }
-        0x02 /* QGate */ => {
-            // [opcode, qubit, 8‑byte name]
-            if i + 9 >= payload.len() { break }
-            let q = payload[i + 1] as usize;
-            max_q = max_q.max(q);
-            i += 10;
-        }
-        0x31 /* CHARLOAD */ => {
-            // [opcode, qubit, char]
-            if i + 2 >= payload.len() { break }
-            let q = payload[i + 1] as usize;
-            max_q = max_q.max(q);
-            i += 3;
-        }
-        0x32 /* QMEAS */ => {
-            // [opcode, qubit]
-            if i + 1 >= payload.len() { break }
-            let q = payload[i + 1] as usize;
-            max_q = max_q.max(q);
-            i += 2;
-        }
-        0xFF /* HALT */ => break,
-        op => {
-            eprintln!("Unknown opcode 0x{:02X} in scan at byte {}", op, i);
-            break;
-        }
-    }
-}
-
-// Print header + init quantum state
-let n_qubits = max_q + 1;
-println!(
-    "Initializing quantum state with {} qubits (type {}, ver {})",
-    n_qubits, header, version
-);
-let mut qs = QuantumState::new(n_qubits);
-
-// SECOND PASS: actually execute + print chars
-i = 0;
-while i < payload.len() {
-    match payload[i] {
-        0x04 /* QInit */ => {
-            // already sized qstate in first pass, so just skip
-            i += 2;
-        }
-        0x02 /* QGate */ => {
-            // gate_name handling unchanged
-            let q = payload[i + 1] as usize;
-            let name_bytes = &payload[i + 2..i + 10];
-            let name = String::from_utf8_lossy(name_bytes)
-                .trim_end_matches('\0')
-                .to_string();
-            match name.as_str() {
-                "H" => qs.apply_h(q),
-                "X" => qs.apply_x(q),
-                "CZ" => {
-                    let tgt = (q + 1).min(qs.n - 1);
-                    qs.apply_cz(q, tgt);
+    // FIRST PASS: scan payload to find highest qubit index only
+    let mut max_q = 0usize;
+    let mut i = 0usize;
+    while i < payload.len() {
+        match payload[i] {
+            0x04 /* QInit */ => {
+                if i + 1 >= payload.len() {
+                    break;
                 }
-                other => eprintln!("Unknown gate: {}", other),
+                let q = payload[i + 1] as usize;
+                max_q = max_q.max(q);
+                i += 2;
             }
-            i += 10;
-        }
-        0x31 /* CHARLOAD */ => {
-            // load and print
-            let val = payload[i + 2];
-            print!("{}", val as char);
-            i += 3;
-        }
-        0x32 /* QMEAS */ => {
-            let q = payload[i + 1] as usize;
-            let _ = qs.measure(q);
-            i += 2;
-        }
-        0xFF /* HALT */ => break,
-        op => {
-            eprintln!("Unknown opcode 0x{:02X} at byte {}", op, i);
-            break;
+            0x02 /* QGate */ => {
+                if i + 9 >= payload.len() {
+                    break;
+                }
+                let q = payload[i + 1] as usize;
+                max_q = max_q.max(q);
+                i += 10;
+            }
+            0x31 /* CHARLOAD */ => {
+                if i + 2 >= payload.len() {
+                    break;
+                }
+                let q = payload[i + 1] as usize;
+                max_q = max_q.max(q);
+                i += 3;
+            }
+            0x32 /* QMEAS */ => {
+                if i + 1 >= payload.len() {
+                    break;
+                }
+                let q = payload[i + 1] as usize;
+                max_q = max_q.max(q);
+                i += 2;
+            }
+            0xFF /* HALT */ => {
+                i += 1;
+            }
+            op => {
+                eprintln!("Unknown opcode 0x{:02X} in scan at byte {}", op, i);
+                break;
+            }
         }
     }
-}
 
-    // final newline + amplitude dump
-    io::stdout().flush().unwrap();
-    println!();
+    // Print header + init quantum state with enough qubits
+    let n_qubits = max_q + 1;
+    println!(
+        "Initializing quantum state with {} qubits (type {}, ver {})",
+        n_qubits, header, version
+    );
+    let mut qs = QuantumState::new(n_qubits);
+
+    // SECOND PASS: execute instructions + print chars + measure qubits
+    let mut i = 0;
+    while i < payload.len() {
+        match payload[i] {
+            0x04 /* QInit */ => {
+                // QInit opcode + qubit index, total 2 bytes
+                // Usually handled during first pass, so just skip here
+                i += 2;
+            }
+            0x02 /* QGate */ => {
+                // QGate opcode (1 byte) + qubit index (1 byte) + gate name (8 bytes) = 10 bytes
+                let q = payload[i + 1] as usize;
+                let name_bytes = &payload[i + 2..i + 10];
+                let name = String::from_utf8_lossy(name_bytes)
+                    .trim_end_matches('\0')
+                    .to_string();
+
+                match name.as_str() {
+                    "H" => {
+                        qs.apply_h(q);
+                        println!("Applied H gate on qubit {}", q);
+                    }
+                    "X" => {
+                        qs.apply_x(q);
+                        println!("Applied X gate on qubit {}", q);
+                    }
+                    "CZ" => {
+                        // Controlled-Z: control qubit q, target qubit q+1 (or last qubit if q+1 out of range)
+                        let tgt = if q + 1 < qs.n { q + 1 } else { qs.n - 1 };
+                        qs.apply_cz(q, tgt);
+                        println!(
+                            "Applied CZ gate between qubits {} (control) and {} (target)",
+                            q, tgt
+                        );
+                    }
+                    other => eprintln!("Unknown gate: {}", other),
+                }
+
+                // Print current amplitudes after gate application
+                println!("Current amplitudes after gate:");
+                for (idx, amp) in qs.amps.iter().enumerate() {
+                    println!(
+                        "{:0width$b}: {:.4} + {:.4}i",
+                        idx,
+                        amp.re,
+                        amp.im,
+                        width = qs.n
+                    );
+                }
+
+                i += 10;
+            }
+            0x31 /* CHARLOAD */ => {
+                // CHARLOAD opcode + unused? + byte value
+                let val = payload[i + 2];
+                print!("{}", val as char);
+                i += 3;
+            }
+            0x32 /* QMEAS */ => {
+                // QMEAS opcode + qubit index
+                let q = payload[i + 1] as usize;
+                let meas_result = qs.measure(q);
+                println!("\nMeasurement of qubit {}: {}", q, meas_result);
+                i += 2;
+            }
+            0xFF /* HALT */ => {
+                io::stdout().flush().unwrap();
+                i += 1;
+            }
+            op => {
+                eprintln!("Unknown opcode 0x{:02X} at byte {}", op, i);
+                break;
+            }
+        }
+    }
+
+    // Final newline + amplitudes dump at end
     println!("\nFinal amplitudes:");
     for (idx, amp) in qs.amps.iter().enumerate() {
-        println!("{:0width$b}: {:.4} + {:.4}i", idx, amp.re, amp.im, width = qs.n);
+        println!(
+            "{:0width$b}: {:.4} + {:.4}i",
+            idx,
+            amp.re,
+            amp.im,
+            width = qs.n
+        );
     }
 }
-
 
 // ------------------ CLI ------------------
 

@@ -1,0 +1,61 @@
+; fusion sim for QOA 0.2.0
+
+; Load message into registers (prepares data for output)
+CHARLOAD 0 70    ; 'F'
+CHARLOAD 1 117   ; 'u'
+CHARLOAD 2 115   ; 's'
+CHARLOAD 3 105   ; 'i'
+CHARLOAD 4 111   ; 'o'
+CHARLOAD 5 110   ; 'n'
+CHARLOAD 6 32    ; ' '
+CHARLOAD 7 83    ; 'S'
+CHARLOAD 8 105   ; 'i'
+CHARLOAD 9 109   ; 'm'
+CHARLOAD 10 32   ; ' '
+CHARLOAD 11 109  ; 'm'
+CHARLOAD 12 101  ; 'e'
+CHARLOAD 13 97   ; 'a'
+CHARLOAD 14 115  ; 's'
+CHARLOAD 15 117  ; 'u'
+CHARLOAD 16 114  ; 'r'
+CHARLOAD 17 101  ; 'e'
+CHARLOAD 18 100  ; 'd'
+CHARLOAD 19 10   ; newline
+
+; Initialize qubits:
+QINIT 0        ; proton A wavefunction
+QINIT 1        ; proton B wavefunction
+QINIT 2        ; barrier site wavefunction
+QINIT 3        ; fusion marker qubit
+
+; Initialize constants in registers:
+REGSET 0 1000      ; number of fusion trials (loop count)
+REGSET 1 1300.0    ; fixed thermal energy in eV (dummy, unused internally)
+REGSET 2 0.01      ; fixed tunneling probability (dummy, unused internally)
+REGSET 3 0         ; fusion count (NOT updated internally, external counting needed)
+
+; Loop over fusion trials
+LOOP REG0
+
+  ; Create superposition of protons (simulate quantum state before tunneling)
+  QGATE 0 H
+  QGATE 1 H
+
+  ; Apply fixed phase rotation on barrier qubit (simulate barrier interaction)
+  RZ 2 3.0
+
+  ; Controlled-Z gate entangles barrier and fusion marker
+  QGATE 2 CZ 3
+
+  ; Measure fusion marker qubit (indicates fusion event)
+  QMEAS 3
+
+  ; Reset all qubits for next trial
+  QINIT 0
+  QINIT 1
+  QINIT 2
+  QINIT 3
+
+ENDLOOP
+
+HALT
