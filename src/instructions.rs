@@ -5,61 +5,129 @@
 #![allow(dead_code)] // this makes the compiler shut up
 #![allow(unused_variables)]
 
-
 #[derive(Debug)]
 pub enum Instruction {
     // core
-    QInit(u8), QMeas(u8), CharLoad(u8, u8),
-    ApplyHadamard(u8), ControlledNot(u8, u8),
-    ApplyPhaseFlip(u8), ApplyBitFlip(u8), ApplyTGate(u8), ApplySGate(u8),
-    PhaseShift(u8, f64), Wait(u64), Reset(u8),
-    Swap(u8, u8), ControlledSwap(u8, u8, u8),
-    Entangle(u8, u8), EntangleBell(u8, u8), EntangleMulti(Vec<u8>),
-    EntangleCluster(Vec<u8>), EntangleSwap(u8, u8, u8, u8),
+    QInit(u8),
+    QMeas(u8),
+    CharLoad(u8, u8),
+    ApplyHadamard(u8),
+    ControlledNot(u8, u8),
+    ApplyPhaseFlip(u8),
+    ApplyBitFlip(u8),
+    ApplyTGate(u8),
+    ApplySGate(u8),
+    PhaseShift(u8, f64),
+    Wait(u64),
+    Reset(u8),
+    Swap(u8, u8),
+    ControlledSwap(u8, u8, u8),
+    Entangle(u8, u8),
+    EntangleBell(u8, u8),
+    EntangleMulti(Vec<u8>),
+    EntangleCluster(Vec<u8>),
+    EntangleSwap(u8, u8, u8, u8),
     EntangleSwapMeasure(u8, u8, u8, u8, String),
     EntangleWithClassicalFeedback(u8, u8, String),
     EntangleDistributed(u8, String),
     MeasureInBasis(u8, String),
+    Sync,
+    ResetAll,
+    VerboseLog(u8, String),
+    SetPhase(u8, f64),
+    InitQubit(u8),
+    ApplyGate(String, u8),
+    Measure(u8),
 
     // rotations
-    ApplyRotation(u8, char, f64), ApplyMultiQubitRotation(Vec<u8>, char, Vec<f64>),
-    ControlledPhaseRotation(u8, u8, f64), ApplyCPhase(u8, u8, f64),
-    ApplyKerrNonlinearity(u8, f64, u64), ApplyFeedforwardGate(u8, String),
-    DecoherenceProtect(u8, u64), ApplyMeasurementBasisChange(u8, String),
+    ApplyRotation(u8, char, f64),
+    ApplyMultiQubitRotation(Vec<u8>, char, Vec<f64>),
+    ControlledPhaseRotation(u8, u8, f64),
+    ApplyCPhase(u8, u8, f64),
+    ApplyKerrNonlinearity(u8, f64, u64),
+    ApplyFeedforwardGate(u8, String),
+    DecoherenceProtect(u8, u64),
+    ApplyMeasurementBasisChange(u8, String),
 
     // memory/classical ops
-    Load(u8, String), Store(u8, String), LoadMem(String, String), StoreMem(String, String),
-    LoadClassical(String, String), StoreClassical(String, String),
-    Add(String, String, String), Sub(String, String, String),
-    And(String, String, String), Or(String, String, String), Xor(String, String, String),
-    Not(String), Push(String), Pop(String),
+    Load(u8, String),
+    Store(u8, String),
+    LoadMem(String, String),
+    StoreMem(String, String),
+    LoadClassical(String, String),
+    StoreClassical(String, String),
+    Add(String, String, String),
+    Sub(String, String, String),
+    And(String, String, String),
+    Or(String, String, String),
+    Xor(String, String, String),
+    Not(String),
+    Push(String),
+    Pop(String),
 
     // classical
-    Jump(String), JumpIfZero(String, String), JumpIfOne(String, String),
-    Call(String), Barrier, Return, TimeDelay(u8, u64),
+    Jump(String),
+    JumpIfZero(String, String),
+    JumpIfOne(String, String),
+    Call(String),
+    Barrier,
+    Return,
+    TimeDelay(u8, u64),
 
     // optics
-    PhotonEmit(u8), PhotonDetect(u8), PhotonCount(u8, String), PhotonAddition(u8), ApplyPhotonSubtraction(u8),
-    PhotonEmissionPattern(u8, String, u64), PhotonDetectWithThreshold(u8, u64, String),
-    PhotonDetectCoincidence(Vec<u8>, String), SinglePhotonSourceOn(u8), SinglePhotonSourceOff(u8),
-    PhotonBunchingControl(u8, bool), PhotonRoute(u8, String, String), OpticalRouting(u8, u8),
-    SetOpticalAttenuation(u8, f64), DynamicPhaseCompensation(u8, f64),
-    OpticalDelayLineControl(u8, u64), CrossPhaseModulation(u8, u8, f64),
-    ApplyDisplacement(u8, f64), ApplyDisplacementFeedback(u8, String),
-    ApplyDisplacementOperator(u8, f64, u64), ApplySqueezing(u8, f64),
-    ApplySqueezingFeedback(u8, String), MeasureParity(u8), MeasureWithDelay(u8, u64, String),
-    OpticalSwitchControl(u8, bool), PhotonLossSimulate(u8, f64, u64), PhotonLossCorrection(u8, String),
+    PhotonEmit(u8),
+    PhotonDetect(u8),
+    PhotonCount(u8, String),
+    PhotonAddition(u8),
+    ApplyPhotonSubtraction(u8),
+    PhotonEmissionPattern(u8, String, u64),
+    PhotonDetectWithThreshold(u8, u64, String),
+    PhotonDetectCoincidence(Vec<u8>, String),
+    SinglePhotonSourceOn(u8),
+    SinglePhotonSourceOff(u8),
+    PhotonBunchingControl(u8, bool),
+    PhotonRoute(u8, String, String),
+    OpticalRouting(u8, u8),
+    SetOpticalAttenuation(u8, f64),
+    DynamicPhaseCompensation(u8, f64),
+    OpticalDelayLineControl(u8, u64),
+    CrossPhaseModulation(u8, u8, f64),
+    ApplyDisplacement(u8, f64),
+    ApplyDisplacementFeedback(u8, String),
+    ApplyDisplacementOperator(u8, f64, u64),
+    ApplySqueezing(u8, f64),
+    ApplySqueezingFeedback(u8, String),
+    MeasureParity(u8),
+    MeasureWithDelay(u8, u64, String),
+    OpticalSwitchControl(u8, bool),
+    PhotonLossSimulate(u8, f64, u64),
+    PhotonLossCorrection(u8, String),
 
     // some advanced stuff
-    ApplyQndMeasurement(u8, String), ErrorCorrect(u8, String), ErrorSyndrome(u8, String, String),
-    QuantumStateTomography(u8, String), BellStateVerification(u8, u8, String),
-    QuantumZenoEffect(u8, u64, u64), ApplyNonlinearPhaseShift(u8, f64), ApplyNonlinearSigma(u8, f64),
+    ApplyQndMeasurement(u8, String),
+    ErrorCorrect(u8, String),
+    ErrorSyndrome(u8, String, String),
+    QuantumStateTomography(u8, String),
+    BellStateVerification(u8, u8, String),
+    QuantumZenoEffect(u8, u64, u64),
+    ApplyNonlinearPhaseShift(u8, f64),
+    ApplyNonlinearSigma(u8, f64),
     ApplyLinearOpticalTransform(String, Vec<u8>, Vec<u8>, usize),
-    PhotonNumberResolvingDetection(u8, String), FeedbackControl(u8, String),
+    PhotonNumberResolvingDetection(u8, String),
+    FeedbackControl(u8, String),
 
     // misc
-    SetPos(u8, f64, f64), SetWl(u8, f64), WlShift(u8, f64), Move(u8, f64, f64),
-    Comment(String), MarkObserved(u8), Release(u8), Halt,
+    SetPos(u8, f64, f64),
+    SetWl(u8, f64),
+    WlShift(u8, f64),
+    Move(u8, f64, f64),
+    Comment(String),
+    MarkObserved(u8),
+    Release(u8),
+    Halt,
+
+    // fix hadamard gate error conflicting with char print
+    Hadamard(usize),
 }
 
 pub fn parse_instruction(line: &str) -> Result<Instruction, String> {
@@ -77,15 +145,15 @@ pub fn parse_instruction(line: &str) -> Result<Instruction, String> {
     let op = tokens[0].to_uppercase();
 
     // Helper closures
-    let parse_u8  = |s: &str| s.parse::<u8>().map_err(|_| format!("Invalid u8 '{}'", s));
+    let parse_u8 = |s: &str| s.parse::<u8>().map_err(|_| format!("Invalid u8 '{}'", s));
     let parse_u16 = |s: &str| s.parse::<u16>().map_err(|_| format!("Invalid u16 '{}'", s));
     let parse_i16 = |s: &str| s.parse::<i16>().map_err(|_| format!("Invalid i16 '{}'", s));
     let parse_u64 = |s: &str| s.parse::<u64>().map_err(|_| format!("Invalid u64 '{}'", s));
     let parse_f64 = |s: &str| s.parse::<f64>().map_err(|_| format!("Invalid f64 '{}'", s));
     let parse_bool = |s: &str| match s.to_uppercase().as_str() {
-        "TRUE" | "ON"  => Ok(true),
+        "TRUE" | "ON" => Ok(true),
         "FALSE" | "OFF" => Ok(false),
-        _              => Err(format!("Invalid bool '{}'", s)),
+        _ => Err(format!("Invalid bool '{}'", s)),
     };
     let parse_axis = |s: &str| {
         let c = s.to_uppercase();
@@ -98,112 +166,918 @@ pub fn parse_instruction(line: &str) -> Result<Instruction, String> {
 
     match op.as_str() {
         // normal qoa base stuff
-        "QINIT" => { if tokens.len() == 2 { Ok(QInit(parse_u8(tokens[1])?)) } else { Err("QINIT <qubit>".into()) } }
+        "QINIT" => {
+            if tokens.len() == 2 {
+                Ok(QInit(parse_u8(tokens[1])?))
+            } else {
+                Err("QINIT <qubit>".into())
+            }
+        }
         // "INITQUBIT" => { if tokens.len() == 2 { Ok(InitQubit(parse_u8(tokens[1])?)) } else { Err("INITQUBIT <qubit>".into()) } }
-        "QMEAS" => { if tokens.len() == 2 { Ok(QMeas(parse_u8(tokens[1])?)) } else { Err("QMEAS <qubit>".into()) } }
-        "CHARLOAD" => { if tokens.len() == 3 { Ok(CharLoad(parse_u8(tokens[1])?, parse_u8(tokens[2])?)) } else { Err("CHARLOAD <qubit> <ascii_val>".into()) } }
+        "QMEAS" => {
+            if tokens.len() == 2 {
+                Ok(QMeas(parse_u8(tokens[1])?))
+            } else {
+                Err("QMEAS <qubit>".into())
+            }
+        }
+        "CHARLOAD" => {
+            if tokens.len() == 3 {
+                Ok(CharLoad(parse_u8(tokens[1])?, parse_u8(tokens[2])?))
+            } else {
+                Err("CHARLOAD <qubit> <ascii_val>".into())
+            }
+        }
         // "MEASURE" => { if tokens.len() == 2 { Ok(Measure(parse_u8(tokens[1])?)) } else { Err("MEASURE <qubit>".into()) } }
-        "APPLY_GATE" => { if tokens.len() == 3 { Ok(ApplyGate(tokens[1].to_string(), parse_u8(tokens[2])?)) } else { Err("APPLY_GATE <gate> <qubit>".into()) } }
-        "APPLYHADAMARD" => { if tokens.len() == 2 { Ok(ApplyHadamard(parse_u8(tokens[1])?)) } else { Err("APPLYHADAMARD <qubit>".into()) } }
-        "CONTROLLEDNOT" => { if tokens.len() == 3 { Ok(ControlledNot(parse_u8(tokens[1])?, parse_u8(tokens[2])?)) } else { Err("CONTROLLEDNOT <c> <t>".into()) } }
-        "APPLYPHASEFLIP" => { if tokens.len() == 2 { Ok(ApplyPhaseFlip(parse_u8(tokens[1])?)) } else { Err("APPLYPHASEFLIP <qubit>".into()) } }
-        "APPLYBITFLIP" => { if tokens.len() == 2 { Ok(ApplyBitFlip(parse_u8(tokens[1])?)) } else { Err("APPLYBITFLIP <qubit>".into()) } }
-        "APPLYTGATE" => { if tokens.len() == 2 { Ok(ApplyTGate(parse_u8(tokens[1])?)) } else { Err("APPLYTGATE <qubit>".into()) } }
-        "APPLYSGATE" => { if tokens.len() == 2 { Ok(ApplySGate(parse_u8(tokens[1])?)) } else { Err("APPLYSGATE <qubit>".into()) } }
-        "PHASESHIFT" => { if tokens.len() == 3 { Ok(PhaseShift(parse_u8(tokens[1])?, parse_f64(tokens[2])?)) } else { Err("PHASESHIFT <qubit> <angle>".into()) } }
-        "WAIT" => { if tokens.len() == 2 { Ok(Wait(parse_u64(tokens[1])?)) } else { Err("WAIT <cycles>".into()) } }
-        "RESET" => { if tokens.len() == 2 { Ok(Reset(parse_u8(tokens[1])?)) } else { Err("RESET <qubit>".into()) } }
-        "RESETALL" => { if tokens.len() == 1 { Ok(ResetAll) } else { Err("RESETALL".into()) } }
-        "SWAP" => { if tokens.len() == 3 { Ok(Swap(parse_u8(tokens[1])?, parse_u8(tokens[2])?)) } else { Err("SWAP <q1> <q2>".into()) } }
-        "CONTROLLEDSWAP" => { if tokens.len() == 4 { Ok(ControlledSwap(parse_u8(tokens[1])?, parse_u8(tokens[2])?, parse_u8(tokens[3])?)) } else { Err("CONTROLLEDSWAP <c> <t1> <t2>".into()) } }
-        "ENTANGLE" => { if tokens.len() == 3 { Ok(Entangle(parse_u8(tokens[1])?, parse_u8(tokens[2])?)) } else { Err("ENTANGLE <q1> <q2>".into()) } }
-        "ENTANGLEBELL" => { if tokens.len() == 3 { Ok(EntangleBell(parse_u8(tokens[1])?, parse_u8(tokens[2])?)) } else { Err("ENTANGLEBELL <q1> <q2>".into()) } }
-        "ENTANGLEMULTI" => { if tokens.len() >= 2 { Ok(EntangleMulti(tokens[1..].iter().map(|q| parse_u8(q)).collect::<Result<_,_>>()?)) } else { Err("ENTANGLEMULTI <q1> <q2> ...".into()) } }
-        "ENTANGLECLUSTER" => { if tokens.len() >= 2 { Ok(EntangleCluster(tokens[1..].iter().map(|q| parse_u8(q)).collect::<Result<_,_>>()?)) } else { Err("ENTANGLECLUSTER <q1> <q2> ...".into()) } }
-        "ENTANGLESWAP" => { if tokens.len() == 5 { Ok(EntangleSwap(parse_u8(tokens[1])?, parse_u8(tokens[2])?, parse_u8(tokens[3])?, parse_u8(tokens[4])?)) } else { Err("ENTANGLESWAP <a> <b> <c> <d>".into()) } }
-        "ENTANGLESWAPMEASURE" => { if tokens.len() == 6 { Ok(EntangleSwapMeasure(parse_u8(tokens[1])?, parse_u8(tokens[2])?, parse_u8(tokens[3])?, parse_u8(tokens[4])?, tokens[5].to_string())) } else { Err("ENTANGLESWAPMEASURE <a> <b> <c> <d> <label>".into()) } }
-        "ENTANGLEWITHCLASSICALFEEDBACK" => { if tokens.len() == 4 { Ok(EntangleWithClassicalFeedback(parse_u8(tokens[1])?, parse_u8(tokens[2])?, tokens[3].to_string())) } else { Err("ENTANGLEWITHCLASSICALFEEDBACK <q1> <q2> <signal>".into()) } }
-        "ENTANGLEDISTRIBUTED" => { if tokens.len() == 3 { Ok(EntangleDistributed(parse_u8(tokens[1])?, tokens[2].to_string())) } else { Err("ENTANGLEDISTRIBUTED <qubit> <node>".into()) } }
-        "APPLYROTATION" => { if tokens.len() == 4 { Ok(ApplyRotation(parse_u8(tokens[1])?, parse_axis(tokens[2])?, parse_f64(tokens[3])?)) } else { Err("APPLYROTATION <q> <X|Y|Z> <angle>".into()) } }
-        "APPLYMULTIQUBITROTATION" => { if tokens.len() >= 4 { let axis = parse_axis(tokens[2])?; let qs = tokens[1].split(',').map(parse_u8).collect::<Result<Vec<_>,_>>()?; let angles = tokens[3..].iter().map(|s| parse_f64(s)).collect::<Result<Vec<_>,_>>()?; Ok(ApplyMultiQubitRotation(qs, axis, angles)) } else { Err("APPLYMULTIQUBITROTATION <q1,q2,...> <X|Y|Z> <a1> <a2> ...".into()) } }
-        "CONTROLLEDPHASEROTATION" => { if tokens.len() == 4 { Ok(ControlledPhaseRotation(parse_u8(tokens[1])?, parse_u8(tokens[2])?, parse_f64(tokens[3])?)) } else { Err("CONTROLLEDPHASEROTATION <c> <t> <angle>".into()) } }
-        "APPLYC_PHASE" => { if tokens.len() == 4 { Ok(ApplyCPhase(parse_u8(tokens[1])?, parse_u8(tokens[2])?, parse_f64(tokens[3])?)) } else { Err("APPLYC_PHASE <q1> <q2> <angle>".into()) } }
-        "APPLYKERRNONLINEARITY" => { if tokens.len() == 4 { Ok(ApplyKerrNonlinearity(parse_u8(tokens[1])?, parse_f64(tokens[2])?, parse_u64(tokens[3])?)) } else { Err("APPLYKERRNONLINEARITY <q> <strength> <duration>".into()) } }
-        "APPLYFEEDFORWARDGATE" => { if tokens.len() == 3 { Ok(ApplyFeedforwardGate(parse_u8(tokens[1])?, tokens[2].to_string())) } else { Err("APPLYFEEDFORWARDGATE <q> <reg>".into()) } }
-        "DECOHERENCEPROTECT" => { if tokens.len() == 3 { Ok(DecoherenceProtect(parse_u8(tokens[1])?, parse_u64(tokens[2])?)) } else { Err("DECOHERENCEPROTECT <q> <duration>".into()) } }
-        "APPLYMEASUREMENTBASISCHANGE" => { if tokens.len() == 3 { Ok(ApplyMeasurementBasisChange(parse_u8(tokens[1])?, tokens[2].to_string())) } else { Err("APPLYMEASUREMENTBASISCHANGE <q> <basis>".into()) } }
-        "LOAD" => { if tokens.len() == 3 { Ok(Load(parse_u8(tokens[1])?, tokens[2].to_string())) } else { Err("LOAD <qubit> <var>".into()) } }
-        "STORE" => { if tokens.len() == 3 { Ok(Store(parse_u8(tokens[1])?, tokens[2].to_string())) } else { Err("STORE <qubit> <var>".into()) } }
-        "LOADMEM" => { if tokens.len() == 3 { Ok(LoadMem(tokens[1].to_string(), tokens[2].to_string())) } else { Err("LOADMEM <reg> <mem>".into()) } }
-        "STOREMEM" => { if tokens.len() == 3 { Ok(StoreMem(tokens[1].to_string(), tokens[2].to_string())) } else { Err("STOREMEM <reg> <mem>".into()) } }
-        "LOADCLASSICAL" => { if tokens.len() == 3 { Ok(LoadClassical(tokens[1].to_string(), tokens[2].to_string())) } else { Err("LOADCLASSICAL <reg> <var>".into()) } }
-        "STORECLASSICAL" => { if tokens.len() == 3 { Ok(StoreClassical(tokens[1].to_string(), tokens[2].to_string())) } else { Err("STORECLASSICAL <reg> <var>".into()) } }
-        "ADD" => { if tokens.len() == 4 { Ok(Add(tokens[1].to_string(), tokens[2].to_string(), tokens[3].to_string())) } else { Err("ADD <dst> <src1> <src2>".into()) } }
-        "SUB" => { if tokens.len() == 4 { Ok(Sub(tokens[1].to_string(), tokens[2].to_string(), tokens[3].to_string())) } else { Err("SUB <dst> <src1> <src2>".into()) } }
-        "AND" => { if tokens.len() == 4 { Ok(And(tokens[1].to_string(), tokens[2].to_string(), tokens[3].to_string())) } else { Err("AND <dst> <src1> <src2>".into()) } }
-        "OR" => { if tokens.len() == 4 { Ok(Or(tokens[1].to_string(), tokens[2].to_string(), tokens[3].to_string())) } else { Err("OR <dst> <src1> <src2>".into()) } }
-        "XOR" => { if tokens.len() == 4 { Ok(Xor(tokens[1].to_string(), tokens[2].to_string(), tokens[3].to_string())) } else { Err("XOR <dst> <src1> <src2>".into()) } }
-        "NOT" => { if tokens.len() == 2 { Ok(Not(tokens[1].to_string())) } else { Err("NOT <reg>".into()) } }
-        "PUSH" => { if tokens.len() == 2 { Ok(Push(tokens[1].to_string())) } else { Err("PUSH <reg>".into()) } }
-        "POP" => { if tokens.len() == 2 { Ok(Pop(tokens[1].to_string())) } else { Err("POP <reg>".into()) } }
-        "JUMP" => { if tokens.len() == 2 { Ok(Jump(tokens[1].to_string())) } else { Err("JUMP <label>".into()) } }
-        "JUMPIFZERO" => { if tokens.len() == 3 { Ok(JumpIfZero(tokens[1].to_string(), tokens[2].to_string())) } else { Err("JUMPIFZERO <cond> <label>".into()) } }
-        "JUMPIFONE" => { if tokens.len() == 3 { Ok(JumpIfOne(tokens[1].to_string(), tokens[2].to_string())) } else { Err("JUMPIFONE <cond> <label>".into()) } }
-        "CALL" => { if tokens.len() == 2 { Ok(Call(tokens[1].to_string())) } else { Err("CALL <label>".into()) } }
-        "RETURN" => { if tokens.len() == 1 { Ok(Return) } else { Err("RETURN".into()) } }
-        "SYNC" => { if tokens.len() == 1 { Ok(Sync) } else { Err("SYNC".into()) } }
-        "TIMEDELAY" => { if tokens.len() == 3 { Ok(TimeDelay(parse_u8(tokens[1])?, parse_u64(tokens[2])?)) } else { Err("TIMEDELAY <q> <cycles>".into()) } }
-        "VERBOSELOG" => { if tokens.len() >= 2 { Ok(VerboseLog(parse_u8(tokens[1])?, tokens[2..].join(" "))) } else { Err("VERBOSELOG <qubit> <msg>".into()) } }
+        "APPLY_GATE" => {
+            if tokens.len() == 3 {
+                Ok(Instruction::ApplyGate(
+                    tokens[1].to_string(),
+                    parse_u8(tokens[2])?,
+                ))
+            } else {
+                Err("APPLY_GATE <gate> <qubit>".into())
+            }
+        }
+        "APPLYHADAMARD" => {
+            if tokens.len() == 2 {
+                Ok(ApplyHadamard(parse_u8(tokens[1])?))
+            } else {
+                Err("APPLYHADAMARD <qubit>".into())
+            }
+        }
+        "CONTROLLEDNOT" => {
+            if tokens.len() == 3 {
+                Ok(ControlledNot(parse_u8(tokens[1])?, parse_u8(tokens[2])?))
+            } else {
+                Err("CONTROLLEDNOT <c> <t>".into())
+            }
+        }
+        "APPLYPHASEFLIP" => {
+            if tokens.len() == 2 {
+                Ok(ApplyPhaseFlip(parse_u8(tokens[1])?))
+            } else {
+                Err("APPLYPHASEFLIP <qubit>".into())
+            }
+        }
+        "APPLYBITFLIP" => {
+            if tokens.len() == 2 {
+                Ok(ApplyBitFlip(parse_u8(tokens[1])?))
+            } else {
+                Err("APPLYBITFLIP <qubit>".into())
+            }
+        }
+        "APPLYTGATE" => {
+            if tokens.len() == 2 {
+                Ok(ApplyTGate(parse_u8(tokens[1])?))
+            } else {
+                Err("APPLYTGATE <qubit>".into())
+            }
+        }
+        "APPLYSGATE" => {
+            if tokens.len() == 2 {
+                Ok(ApplySGate(parse_u8(tokens[1])?))
+            } else {
+                Err("APPLYSGATE <qubit>".into())
+            }
+        }
+        "PHASESHIFT" => {
+            if tokens.len() == 3 {
+                Ok(PhaseShift(parse_u8(tokens[1])?, parse_f64(tokens[2])?))
+            } else {
+                Err("PHASESHIFT <qubit> <angle>".into())
+            }
+        }
+        "WAIT" => {
+            if tokens.len() == 2 {
+                Ok(Wait(parse_u64(tokens[1])?))
+            } else {
+                Err("WAIT <cycles>".into())
+            }
+        }
+        "RESET" => {
+            if tokens.len() == 2 {
+                Ok(Reset(parse_u8(tokens[1])?))
+            } else {
+                Err("RESET <qubit>".into())
+            }
+        }
+        "RESETALL" => {
+            if tokens.len() == 1 {
+                Ok(Instruction::ResetAll)
+            } else {
+                Err("RESETALL".into())
+            }
+        }
+        "SWAP" => {
+            if tokens.len() == 3 {
+                Ok(Swap(parse_u8(tokens[1])?, parse_u8(tokens[2])?))
+            } else {
+                Err("SWAP <q1> <q2>".into())
+            }
+        }
+        "CONTROLLEDSWAP" => {
+            if tokens.len() == 4 {
+                Ok(ControlledSwap(
+                    parse_u8(tokens[1])?,
+                    parse_u8(tokens[2])?,
+                    parse_u8(tokens[3])?,
+                ))
+            } else {
+                Err("CONTROLLEDSWAP <c> <t1> <t2>".into())
+            }
+        }
+        "ENTANGLE" => {
+            if tokens.len() == 3 {
+                Ok(Entangle(parse_u8(tokens[1])?, parse_u8(tokens[2])?))
+            } else {
+                Err("ENTANGLE <q1> <q2>".into())
+            }
+        }
+        "ENTANGLEBELL" => {
+            if tokens.len() == 3 {
+                Ok(EntangleBell(parse_u8(tokens[1])?, parse_u8(tokens[2])?))
+            } else {
+                Err("ENTANGLEBELL <q1> <q2>".into())
+            }
+        }
+        "ENTANGLEMULTI" => {
+            if tokens.len() >= 2 {
+                Ok(EntangleMulti(
+                    tokens[1..]
+                        .iter()
+                        .map(|q| parse_u8(q))
+                        .collect::<Result<_, _>>()?,
+                ))
+            } else {
+                Err("ENTANGLEMULTI <q1> <q2> ...".into())
+            }
+        }
+        "ENTANGLECLUSTER" => {
+            if tokens.len() >= 2 {
+                Ok(EntangleCluster(
+                    tokens[1..]
+                        .iter()
+                        .map(|q| parse_u8(q))
+                        .collect::<Result<_, _>>()?,
+                ))
+            } else {
+                Err("ENTANGLECLUSTER <q1> <q2> ...".into())
+            }
+        }
+        "ENTANGLESWAP" => {
+            if tokens.len() == 5 {
+                Ok(EntangleSwap(
+                    parse_u8(tokens[1])?,
+                    parse_u8(tokens[2])?,
+                    parse_u8(tokens[3])?,
+                    parse_u8(tokens[4])?,
+                ))
+            } else {
+                Err("ENTANGLESWAP <a> <b> <c> <d>".into())
+            }
+        }
+        "ENTANGLESWAPMEASURE" => {
+            if tokens.len() == 6 {
+                Ok(EntangleSwapMeasure(
+                    parse_u8(tokens[1])?,
+                    parse_u8(tokens[2])?,
+                    parse_u8(tokens[3])?,
+                    parse_u8(tokens[4])?,
+                    tokens[5].to_string(),
+                ))
+            } else {
+                Err("ENTANGLESWAPMEASURE <a> <b> <c> <d> <label>".into())
+            }
+        }
+        "ENTANGLEWITHCLASSICALFEEDBACK" => {
+            if tokens.len() == 4 {
+                Ok(EntangleWithClassicalFeedback(
+                    parse_u8(tokens[1])?,
+                    parse_u8(tokens[2])?,
+                    tokens[3].to_string(),
+                ))
+            } else {
+                Err("ENTANGLEWITHCLASSICALFEEDBACK <q1> <q2> <signal>".into())
+            }
+        }
+        "ENTANGLEDISTRIBUTED" => {
+            if tokens.len() == 3 {
+                Ok(EntangleDistributed(
+                    parse_u8(tokens[1])?,
+                    tokens[2].to_string(),
+                ))
+            } else {
+                Err("ENTANGLEDISTRIBUTED <qubit> <node>".into())
+            }
+        }
+        "APPLYROTATION" => {
+            if tokens.len() == 4 {
+                Ok(ApplyRotation(
+                    parse_u8(tokens[1])?,
+                    parse_axis(tokens[2])?,
+                    parse_f64(tokens[3])?,
+                ))
+            } else {
+                Err("APPLYROTATION <q> <X|Y|Z> <angle>".into())
+            }
+        }
+        "APPLYMULTIQUBITROTATION" => {
+            if tokens.len() >= 4 {
+                let axis = parse_axis(tokens[2])?;
+                let qs = tokens[1]
+                    .split(',')
+                    .map(parse_u8)
+                    .collect::<Result<Vec<_>, _>>()?;
+                let angles = tokens[3..]
+                    .iter()
+                    .map(|s| parse_f64(s))
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(ApplyMultiQubitRotation(qs, axis, angles))
+            } else {
+                Err("APPLYMULTIQUBITROTATION <q1,q2,...> <X|Y|Z> <a1> <a2> ...".into())
+            }
+        }
+        "CONTROLLEDPHASEROTATION" => {
+            if tokens.len() == 4 {
+                Ok(ControlledPhaseRotation(
+                    parse_u8(tokens[1])?,
+                    parse_u8(tokens[2])?,
+                    parse_f64(tokens[3])?,
+                ))
+            } else {
+                Err("CONTROLLEDPHASEROTATION <c> <t> <angle>".into())
+            }
+        }
+        "APPLYC_PHASE" => {
+            if tokens.len() == 4 {
+                Ok(ApplyCPhase(
+                    parse_u8(tokens[1])?,
+                    parse_u8(tokens[2])?,
+                    parse_f64(tokens[3])?,
+                ))
+            } else {
+                Err("APPLYC_PHASE <q1> <q2> <angle>".into())
+            }
+        }
+        "APPLYKERRNONLINEARITY" => {
+            if tokens.len() == 4 {
+                Ok(ApplyKerrNonlinearity(
+                    parse_u8(tokens[1])?,
+                    parse_f64(tokens[2])?,
+                    parse_u64(tokens[3])?,
+                ))
+            } else {
+                Err("APPLYKERRNONLINEARITY <q> <strength> <duration>".into())
+            }
+        }
+        "APPLYFEEDFORWARDGATE" => {
+            if tokens.len() == 3 {
+                Ok(ApplyFeedforwardGate(
+                    parse_u8(tokens[1])?,
+                    tokens[2].to_string(),
+                ))
+            } else {
+                Err("APPLYFEEDFORWARDGATE <q> <reg>".into())
+            }
+        }
+        "DECOHERENCEPROTECT" => {
+            if tokens.len() == 3 {
+                Ok(DecoherenceProtect(
+                    parse_u8(tokens[1])?,
+                    parse_u64(tokens[2])?,
+                ))
+            } else {
+                Err("DECOHERENCEPROTECT <q> <duration>".into())
+            }
+        }
+        "APPLYMEASUREMENTBASISCHANGE" => {
+            if tokens.len() == 3 {
+                Ok(ApplyMeasurementBasisChange(
+                    parse_u8(tokens[1])?,
+                    tokens[2].to_string(),
+                ))
+            } else {
+                Err("APPLYMEASUREMENTBASISCHANGE <q> <basis>".into())
+            }
+        }
+        "LOAD" => {
+            if tokens.len() == 3 {
+                Ok(Load(parse_u8(tokens[1])?, tokens[2].to_string()))
+            } else {
+                Err("LOAD <qubit> <var>".into())
+            }
+        }
+        "STORE" => {
+            if tokens.len() == 3 {
+                Ok(Store(parse_u8(tokens[1])?, tokens[2].to_string()))
+            } else {
+                Err("STORE <qubit> <var>".into())
+            }
+        }
+        "LOADMEM" => {
+            if tokens.len() == 3 {
+                Ok(LoadMem(tokens[1].to_string(), tokens[2].to_string()))
+            } else {
+                Err("LOADMEM <reg> <mem>".into())
+            }
+        }
+        "STOREMEM" => {
+            if tokens.len() == 3 {
+                Ok(StoreMem(tokens[1].to_string(), tokens[2].to_string()))
+            } else {
+                Err("STOREMEM <reg> <mem>".into())
+            }
+        }
+        "LOADCLASSICAL" => {
+            if tokens.len() == 3 {
+                Ok(LoadClassical(tokens[1].to_string(), tokens[2].to_string()))
+            } else {
+                Err("LOADCLASSICAL <reg> <var>".into())
+            }
+        }
+        "STORECLASSICAL" => {
+            if tokens.len() == 3 {
+                Ok(StoreClassical(tokens[1].to_string(), tokens[2].to_string()))
+            } else {
+                Err("STORECLASSICAL <reg> <var>".into())
+            }
+        }
+        "ADD" => {
+            if tokens.len() == 4 {
+                Ok(Add(
+                    tokens[1].to_string(),
+                    tokens[2].to_string(),
+                    tokens[3].to_string(),
+                ))
+            } else {
+                Err("ADD <dst> <src1> <src2>".into())
+            }
+        }
+        "SUB" => {
+            if tokens.len() == 4 {
+                Ok(Sub(
+                    tokens[1].to_string(),
+                    tokens[2].to_string(),
+                    tokens[3].to_string(),
+                ))
+            } else {
+                Err("SUB <dst> <src1> <src2>".into())
+            }
+        }
+        "AND" => {
+            if tokens.len() == 4 {
+                Ok(And(
+                    tokens[1].to_string(),
+                    tokens[2].to_string(),
+                    tokens[3].to_string(),
+                ))
+            } else {
+                Err("AND <dst> <src1> <src2>".into())
+            }
+        }
+        "OR" => {
+            if tokens.len() == 4 {
+                Ok(Or(
+                    tokens[1].to_string(),
+                    tokens[2].to_string(),
+                    tokens[3].to_string(),
+                ))
+            } else {
+                Err("OR <dst> <src1> <src2>".into())
+            }
+        }
+        "XOR" => {
+            if tokens.len() == 4 {
+                Ok(Xor(
+                    tokens[1].to_string(),
+                    tokens[2].to_string(),
+                    tokens[3].to_string(),
+                ))
+            } else {
+                Err("XOR <dst> <src1> <src2>".into())
+            }
+        }
+        "NOT" => {
+            if tokens.len() == 2 {
+                Ok(Not(tokens[1].to_string()))
+            } else {
+                Err("NOT <reg>".into())
+            }
+        }
+        "PUSH" => {
+            if tokens.len() == 2 {
+                Ok(Push(tokens[1].to_string()))
+            } else {
+                Err("PUSH <reg>".into())
+            }
+        }
+        "POP" => {
+            if tokens.len() == 2 {
+                Ok(Pop(tokens[1].to_string()))
+            } else {
+                Err("POP <reg>".into())
+            }
+        }
+        "JUMP" => {
+            if tokens.len() == 2 {
+                Ok(Jump(tokens[1].to_string()))
+            } else {
+                Err("JUMP <label>".into())
+            }
+        }
+        "JUMPIFZERO" => {
+            if tokens.len() == 3 {
+                Ok(JumpIfZero(tokens[1].to_string(), tokens[2].to_string()))
+            } else {
+                Err("JUMPIFZERO <cond> <label>".into())
+            }
+        }
+        "JUMPIFONE" => {
+            if tokens.len() == 3 {
+                Ok(JumpIfOne(tokens[1].to_string(), tokens[2].to_string()))
+            } else {
+                Err("JUMPIFONE <cond> <label>".into())
+            }
+        }
+        "CALL" => {
+            if tokens.len() == 2 {
+                Ok(Call(tokens[1].to_string()))
+            } else {
+                Err("CALL <label>".into())
+            }
+        }
+        "RETURN" => {
+            if tokens.len() == 1 {
+                Ok(Return)
+            } else {
+                Err("RETURN".into())
+            }
+        }
+        "SYNC" => {
+            if tokens.len() == 1 {
+                Ok(Instruction::Sync)
+            } else {
+                Err("SYNC".into())
+            }
+        }
+        "TIMEDELAY" => {
+            if tokens.len() == 3 {
+                Ok(TimeDelay(parse_u8(tokens[1])?, parse_u64(tokens[2])?))
+            } else {
+                Err("TIMEDELAY <q> <cycles>".into())
+            }
+        }
+        "VERBOSELOG" => {
+            if tokens.len() >= 2 {
+                Ok(VerboseLog(parse_u8(tokens[1])?, tokens[2..].join(" ")))
+            } else {
+                Err("VERBOSELOG <qubit> <msg>".into())
+            }
+        }
         // optical / photonic stuff
-        "PHOTONEMIT" => { if tokens.len() == 2 { Ok(PhotonEmit(parse_u8(tokens[1])?)) } else { Err("PHOTONEMIT <reg>".into()) } }
-        "PHOTONDETECT" => { if tokens.len() == 2 { Ok(PhotonDetect(parse_u8(tokens[1])?)) } else { Err("PHOTONDETECT <reg>".into()) } }
-        "PHOTONCOUNT" => { if tokens.len() == 3 { Ok(PhotonCount(parse_u8(tokens[1])?, tokens[2].to_string())) } else { Err("PHOTONCOUNT <reg> <dest>".into()) } }
-        "PHOTONADDITION" => { if tokens.len() == 2 { Ok(PhotonAddition(parse_u8(tokens[1])?)) } else { Err("PHOTONADDITION <reg>".into()) } }
-        "APPLYPHOTONSUBTRACTION" => { if tokens.len() == 2 { Ok(ApplyPhotonSubtraction(parse_u8(tokens[1])?)) } else { Err("APPLYPHOTONSUBTRACTION <reg>".into()) } }
-        "PHOTONEMISSIONPATTERN" => { if tokens.len() == 4 { Ok(PhotonEmissionPattern(parse_u8(tokens[1])?, tokens[2].to_string(), parse_u64(tokens[3])?)) } else { Err("PHOTONEMISSIONPATTERN <reg> <pattern> <cycles>".into()) } }
-        "PHOTONDETECTWITHTHRESHOLD" => { if tokens.len() == 4 { Ok(PhotonDetectWithThreshold(parse_u8(tokens[1])?, parse_u64(tokens[2])?, tokens[3].to_string())) } else { Err("PHOTONDETECTWITHTHRESHOLD <reg> <thresh> <dest>".into()) } }
-        "PHOTONDETECTCOINCIDENCE" => { if tokens.len() >= 3 { Ok(PhotonDetectCoincidence(tokens[1].split(',').map(parse_u8).collect::<Result<Vec<_>,_>>()?, tokens[2].to_string())) } else { Err("PHOTONDETECTCOINCIDENCE <q1,...> <dest>".into()) } }
-        "SINGLEPHOTONSOURCEON" => { if tokens.len() == 2 { Ok(SinglePhotonSourceOn(parse_u8(tokens[1])?)) } else { Err("SINGLEPHOTONSOURCEON <reg>".into()) } }
-        "SINGLEPHOTONSOURCEOFF" => { if tokens.len() == 2 { Ok(SinglePhotonSourceOff(parse_u8(tokens[1])?)) } else { Err("SINGLEPHOTONSOURCEOFF <reg>".into()) } }
-        "PHOTONBUNCHINGCONTROL" => { if tokens.len() == 3 { Ok(PhotonBunchingControl(parse_u8(tokens[1])?, parse_bool(tokens[2])?)) } else { Err("PHOTONBUNCHINGCONTROL <reg> <on|off>".into()) } }
-        "PHOTONROUTE" => { if tokens.len() == 4 { Ok(PhotonRoute(parse_u8(tokens[1])?, tokens[2].to_string(), tokens[3].to_string())) } else { Err("PHOTONROUTE <reg> <src> <dst>".into()) } }
-        "OPTICALROUTING" => { if tokens.len() == 3 { Ok(OpticalRouting(parse_u8(tokens[1])?, parse_u8(tokens[2])?)) } else { Err("OPTICALROUTING <src> <dst>".into()) } }
-        "SETOPTICALATTENUATION" => { if tokens.len() == 3 { Ok(SetOpticalAttenuation(parse_u8(tokens[1])?, parse_f64(tokens[2])?)) } else { Err("SETOPTICALATTENUATION <reg> <atten>".into()) } }
-        "DYNAMICPHASECOMPENSATION" => { if tokens.len() == 3 { Ok(DynamicPhaseCompensation(parse_u8(tokens[1])?, parse_f64(tokens[2])?)) } else { Err("DYNAMICPHASECOMPENSATION <reg> <phase>".into()) } }
-        "OPTICALDELAYLINECONTROL" => { if tokens.len() == 3 { Ok(OpticalDelayLineControl(parse_u8(tokens[1])?, parse_u64(tokens[2])?)) } else { Err("OPTICALDELAYLINECONTROL <reg> <delay>".into()) } }
-        "CROSSPHASEMODULATION" => { if tokens.len() == 4 { Ok(CrossPhaseModulation(parse_u8(tokens[1])?, parse_u8(tokens[2])?, parse_f64(tokens[3])?)) } else { Err("CROSSPHASEMODULATION <c> <t> <str>".into()) } }
-        "APPLYDISPLACEMENT" => { if tokens.len() == 3 { Ok(ApplyDisplacement(parse_u8(tokens[1])?, parse_f64(tokens[2])?)) } else { Err("APPLYDISPLACEMENT <reg> <val>".into()) } }
-        "APPLYDISPLACEMENTFEEDBACK" => { if tokens.len() == 3 { Ok(ApplyDisplacementFeedback(parse_u8(tokens[1])?, tokens[2].to_string())) } else { Err("APPLYDISPLACEMENTFEEDBACK <reg> <feed>".into()) } }
-        "APPLYDISPLACEMENTOPERATOR" => { if tokens.len() == 4 { Ok(ApplyDisplacementOperator(parse_u8(tokens[1])?, parse_f64(tokens[2])?, parse_u64(tokens[3])?)) } else { Err("APPLYDISPLACEMENTOPERATOR <reg> <alpha> <dur>".into()) } }
-        "APPLYSQUEEZING" => { if tokens.len() == 3 { Ok(ApplySqueezing(parse_u8(tokens[1])?, parse_f64(tokens[2])?)) } else { Err("APPLYSQUEEZING <reg> <val>".into()) } }
-        "APPLYSQUEEZINGFEEDBACK" => { if tokens.len() == 3 { Ok(ApplySqueezingFeedback(parse_u8(tokens[1])?, tokens[2].to_string())) } else { Err("APPLYSQUEEZINGFEEDBACK <reg> <feed>".into()) } }
-        "MEASUREPARITY" => { if tokens.len() == 2 { Ok(MeasureParity(parse_u8(tokens[1])?)) } else { Err("MEASUREPARITY <reg>".into()) } }
-        "MEASUREWITHDELAY" => { if tokens.len() == 4 { Ok(MeasureWithDelay(parse_u8(tokens[1])?, parse_u64(tokens[2])?, tokens[3].to_string())) } else { Err("MEASUREWITHDELAY <reg> <delay> <dest>".into()) } }
-        "OPTICALSWITCHCONTROL" => { if tokens.len() == 3 { Ok(OpticalSwitchControl(parse_u8(tokens[1])?, parse_bool(tokens[2])?)) } else { Err("OPTICALSWITCHCONTROL <reg> <on|off>".into()) } }
-        "PHOTONLOSSSIMULATE" => { if tokens.len() == 4 { Ok(PhotonLossSimulate(parse_u8(tokens[1])?, parse_f64(tokens[2])?, parse_u64(tokens[3])?)) } else { Err("PHOTONLOSSSIMULATE <reg> <prob> <seed>".into()) } }
-        "PHOTONLOSSCORRECTION" => { if tokens.len() == 3 { Ok(PhotonLossCorrection(parse_u8(tokens[1])?, tokens[2].to_string())) } else { Err("PHOTONLOSSCORRECTION <reg> <feed>".into()) } }
+        "PHOTONEMIT" => {
+            if tokens.len() == 2 {
+                Ok(PhotonEmit(parse_u8(tokens[1])?))
+            } else {
+                Err("PHOTONEMIT <reg>".into())
+            }
+        }
+        "PHOTONDETECT" => {
+            if tokens.len() == 2 {
+                Ok(PhotonDetect(parse_u8(tokens[1])?))
+            } else {
+                Err("PHOTONDETECT <reg>".into())
+            }
+        }
+        "PHOTONCOUNT" => {
+            if tokens.len() == 3 {
+                Ok(PhotonCount(parse_u8(tokens[1])?, tokens[2].to_string()))
+            } else {
+                Err("PHOTONCOUNT <reg> <dest>".into())
+            }
+        }
+        "PHOTONADDITION" => {
+            if tokens.len() == 2 {
+                Ok(PhotonAddition(parse_u8(tokens[1])?))
+            } else {
+                Err("PHOTONADDITION <reg>".into())
+            }
+        }
+        "APPLYPHOTONSUBTRACTION" => {
+            if tokens.len() == 2 {
+                Ok(ApplyPhotonSubtraction(parse_u8(tokens[1])?))
+            } else {
+                Err("APPLYPHOTONSUBTRACTION <reg>".into())
+            }
+        }
+        "PHOTONEMISSIONPATTERN" => {
+            if tokens.len() == 4 {
+                Ok(PhotonEmissionPattern(
+                    parse_u8(tokens[1])?,
+                    tokens[2].to_string(),
+                    parse_u64(tokens[3])?,
+                ))
+            } else {
+                Err("PHOTONEMISSIONPATTERN <reg> <pattern> <cycles>".into())
+            }
+        }
+        "PHOTONDETECTWITHTHRESHOLD" => {
+            if tokens.len() == 4 {
+                Ok(PhotonDetectWithThreshold(
+                    parse_u8(tokens[1])?,
+                    parse_u64(tokens[2])?,
+                    tokens[3].to_string(),
+                ))
+            } else {
+                Err("PHOTONDETECTWITHTHRESHOLD <reg> <thresh> <dest>".into())
+            }
+        }
+        "PHOTONDETECTCOINCIDENCE" => {
+            if tokens.len() >= 3 {
+                Ok(PhotonDetectCoincidence(
+                    tokens[1]
+                        .split(',')
+                        .map(parse_u8)
+                        .collect::<Result<Vec<_>, _>>()?,
+                    tokens[2].to_string(),
+                ))
+            } else {
+                Err("PHOTONDETECTCOINCIDENCE <q1,...> <dest>".into())
+            }
+        }
+        "SINGLEPHOTONSOURCEON" => {
+            if tokens.len() == 2 {
+                Ok(SinglePhotonSourceOn(parse_u8(tokens[1])?))
+            } else {
+                Err("SINGLEPHOTONSOURCEON <reg>".into())
+            }
+        }
+        "SINGLEPHOTONSOURCEOFF" => {
+            if tokens.len() == 2 {
+                Ok(SinglePhotonSourceOff(parse_u8(tokens[1])?))
+            } else {
+                Err("SINGLEPHOTONSOURCEOFF <reg>".into())
+            }
+        }
+        "PHOTONBUNCHINGCONTROL" => {
+            if tokens.len() == 3 {
+                Ok(PhotonBunchingControl(
+                    parse_u8(tokens[1])?,
+                    parse_bool(tokens[2])?,
+                ))
+            } else {
+                Err("PHOTONBUNCHINGCONTROL <reg> <on|off>".into())
+            }
+        }
+        "PHOTONROUTE" => {
+            if tokens.len() == 4 {
+                Ok(PhotonRoute(
+                    parse_u8(tokens[1])?,
+                    tokens[2].to_string(),
+                    tokens[3].to_string(),
+                ))
+            } else {
+                Err("PHOTONROUTE <reg> <src> <dst>".into())
+            }
+        }
+        "OPTICALROUTING" => {
+            if tokens.len() == 3 {
+                Ok(OpticalRouting(parse_u8(tokens[1])?, parse_u8(tokens[2])?))
+            } else {
+                Err("OPTICALROUTING <src> <dst>".into())
+            }
+        }
+        "SETOPTICALATTENUATION" => {
+            if tokens.len() == 3 {
+                Ok(SetOpticalAttenuation(
+                    parse_u8(tokens[1])?,
+                    parse_f64(tokens[2])?,
+                ))
+            } else {
+                Err("SETOPTICALATTENUATION <reg> <atten>".into())
+            }
+        }
+        "DYNAMICPHASECOMPENSATION" => {
+            if tokens.len() == 3 {
+                Ok(DynamicPhaseCompensation(
+                    parse_u8(tokens[1])?,
+                    parse_f64(tokens[2])?,
+                ))
+            } else {
+                Err("DYNAMICPHASECOMPENSATION <reg> <phase>".into())
+            }
+        }
+        "OPTICALDELAYLINECONTROL" => {
+            if tokens.len() == 3 {
+                Ok(OpticalDelayLineControl(
+                    parse_u8(tokens[1])?,
+                    parse_u64(tokens[2])?,
+                ))
+            } else {
+                Err("OPTICALDELAYLINECONTROL <reg> <delay>".into())
+            }
+        }
+        "CROSSPHASEMODULATION" => {
+            if tokens.len() == 4 {
+                Ok(CrossPhaseModulation(
+                    parse_u8(tokens[1])?,
+                    parse_u8(tokens[2])?,
+                    parse_f64(tokens[3])?,
+                ))
+            } else {
+                Err("CROSSPHASEMODULATION <c> <t> <str>".into())
+            }
+        }
+        "APPLYDISPLACEMENT" => {
+            if tokens.len() == 3 {
+                Ok(ApplyDisplacement(
+                    parse_u8(tokens[1])?,
+                    parse_f64(tokens[2])?,
+                ))
+            } else {
+                Err("APPLYDISPLACEMENT <reg> <val>".into())
+            }
+        }
+        "APPLYDISPLACEMENTFEEDBACK" => {
+            if tokens.len() == 3 {
+                Ok(ApplyDisplacementFeedback(
+                    parse_u8(tokens[1])?,
+                    tokens[2].to_string(),
+                ))
+            } else {
+                Err("APPLYDISPLACEMENTFEEDBACK <reg> <feed>".into())
+            }
+        }
+        "APPLYDISPLACEMENTOPERATOR" => {
+            if tokens.len() == 4 {
+                Ok(ApplyDisplacementOperator(
+                    parse_u8(tokens[1])?,
+                    parse_f64(tokens[2])?,
+                    parse_u64(tokens[3])?,
+                ))
+            } else {
+                Err("APPLYDISPLACEMENTOPERATOR <reg> <alpha> <dur>".into())
+            }
+        }
+        "APPLYSQUEEZING" => {
+            if tokens.len() == 3 {
+                Ok(ApplySqueezing(parse_u8(tokens[1])?, parse_f64(tokens[2])?))
+            } else {
+                Err("APPLYSQUEEZING <reg> <val>".into())
+            }
+        }
+        "APPLYSQUEEZINGFEEDBACK" => {
+            if tokens.len() == 3 {
+                Ok(ApplySqueezingFeedback(
+                    parse_u8(tokens[1])?,
+                    tokens[2].to_string(),
+                ))
+            } else {
+                Err("APPLYSQUEEZINGFEEDBACK <reg> <feed>".into())
+            }
+        }
+        "MEASUREPARITY" => {
+            if tokens.len() == 2 {
+                Ok(MeasureParity(parse_u8(tokens[1])?))
+            } else {
+                Err("MEASUREPARITY <reg>".into())
+            }
+        }
+        "MEASUREWITHDELAY" => {
+            if tokens.len() == 4 {
+                Ok(MeasureWithDelay(
+                    parse_u8(tokens[1])?,
+                    parse_u64(tokens[2])?,
+                    tokens[3].to_string(),
+                ))
+            } else {
+                Err("MEASUREWITHDELAY <reg> <delay> <dest>".into())
+            }
+        }
+        "OPTICALSWITCHCONTROL" => {
+            if tokens.len() == 3 {
+                Ok(OpticalSwitchControl(
+                    parse_u8(tokens[1])?,
+                    parse_bool(tokens[2])?,
+                ))
+            } else {
+                Err("OPTICALSWITCHCONTROL <reg> <on|off>".into())
+            }
+        }
+        "PHOTONLOSSSIMULATE" => {
+            if tokens.len() == 4 {
+                Ok(PhotonLossSimulate(
+                    parse_u8(tokens[1])?,
+                    parse_f64(tokens[2])?,
+                    parse_u64(tokens[3])?,
+                ))
+            } else {
+                Err("PHOTONLOSSSIMULATE <reg> <prob> <seed>".into())
+            }
+        }
+        "PHOTONLOSSCORRECTION" => {
+            if tokens.len() == 3 {
+                Ok(PhotonLossCorrection(
+                    parse_u8(tokens[1])?,
+                    tokens[2].to_string(),
+                ))
+            } else {
+                Err("PHOTONLOSSCORRECTION <reg> <feed>".into())
+            }
+        }
         // advanced stuff
-        "APPLYQNDMEASUREMENT" => { if tokens.len() == 3 { Ok(ApplyQndMeasurement(parse_u8(tokens[1])?, tokens[2].to_string())) } else { Err("APPLYQNDMEASUREMENT <reg> <mode>".into()) } }
-        "ERRORCORRECT" => { if tokens.len() == 3 { Ok(ErrorCorrect(parse_u8(tokens[1])?, tokens[2].to_string())) } else { Err("ERRORCORRECT <reg> <code>".into()) } }
-        "ERRORSYNDROME" => { if tokens.len() == 4 { Ok(ErrorSyndrome(parse_u8(tokens[1])?, tokens[2].to_string(), tokens[3].to_string())) } else { Err("ERRORSYNDROME <reg> <type> <res>".into()) } }
-        "QUANTUMSTATETOMOGRAPHY" => { if tokens.len() == 3 { Ok(QuantumStateTomography(parse_u8(tokens[1])?, tokens[2].to_string())) } else { Err("QUANTUMSTATETOMOGRAPHY <reg> <basis>".into()) } }
-        "BELLSTATEVERIFICATION" => { if tokens.len() == 4 { Ok(BellStateVerification(parse_u8(tokens[1])?, parse_u8(tokens[2])?, tokens[3].to_string())) } else { Err("BELLSTATEVERIFICATION <q1> <q2> <mode>".into()) } }
-        "QUANTUMZENOEFFECT" => { if tokens.len() == 4 { Ok(QuantumZenoEffect(parse_u8(tokens[1])?, parse_u64(tokens[2])?, parse_u64(tokens[3])?)) } else { Err("QUANTUMZENOEFFECT <reg> <freq> <dur>".into()) } }
-        "APPLYNONLINEARPHASESHIFT" => { if tokens.len() == 3 { Ok(ApplyNonlinearPhaseShift(parse_u8(tokens[1])?, parse_f64(tokens[2])?)) } else { Err("APPLYNONLINEARPHASESHIFT <reg> <phase>".into()) } }
-        "APPLYNONLINEARSIGMA" => { if tokens.len() == 3 { Ok(ApplyNonlinearSigma(parse_u8(tokens[1])?, parse_f64(tokens[2])?)) } else { Err("APPLYNONLINEARSIGMA <reg> <sigma>".into()) } }
-        "APPLYLINEAROPTICALTRANSFORM" => { if tokens.len() >= 5 { let name = tokens[1].to_string(); let ins = tokens[2].split(',').map(parse_u8).collect::<Result<Vec<_>,_>>()?; let outs = tokens[3].split(',').map(parse_u8).collect::<Result<Vec<_>,_>>()?; let sz = tokens[4].parse::<usize>().map_err(|_| format!("Invalid usize '{}'", tokens[4]))?; Ok(ApplyLinearOpticalTransform(name, ins, outs, sz)) } else { Err("APPLYLINEAROPTICALTRANSFORM <name> <ins> <outs> <sz>".into()) } }
-        "PHOTONNUMBERRESOLVINGDETECTION" => { if tokens.len() == 3 { Ok(PhotonNumberResolvingDetection(parse_u8(tokens[1])?, tokens[2].to_string())) } else { Err("PHOTONNUMBERRESOLVINGDETECTION <reg> <dest>".into()) } }
-        "FEEDBACKCONTROL" => { if tokens.len() == 3 { Ok(FeedbackControl(parse_u8(tokens[1])?, tokens[2].to_string())) } else { Err("FEEDBACKCONTROL <reg> <signal>".into()) } }
+        "APPLYQNDMEASUREMENT" => {
+            if tokens.len() == 3 {
+                Ok(ApplyQndMeasurement(
+                    parse_u8(tokens[1])?,
+                    tokens[2].to_string(),
+                ))
+            } else {
+                Err("APPLYQNDMEASUREMENT <reg> <mode>".into())
+            }
+        }
+        "ERRORCORRECT" => {
+            if tokens.len() == 3 {
+                Ok(ErrorCorrect(parse_u8(tokens[1])?, tokens[2].to_string()))
+            } else {
+                Err("ERRORCORRECT <reg> <code>".into())
+            }
+        }
+        "ERRORSYNDROME" => {
+            if tokens.len() == 4 {
+                Ok(ErrorSyndrome(
+                    parse_u8(tokens[1])?,
+                    tokens[2].to_string(),
+                    tokens[3].to_string(),
+                ))
+            } else {
+                Err("ERRORSYNDROME <reg> <type> <res>".into())
+            }
+        }
+        "QUANTUMSTATETOMOGRAPHY" => {
+            if tokens.len() == 3 {
+                Ok(QuantumStateTomography(
+                    parse_u8(tokens[1])?,
+                    tokens[2].to_string(),
+                ))
+            } else {
+                Err("QUANTUMSTATETOMOGRAPHY <reg> <basis>".into())
+            }
+        }
+        "BELLSTATEVERIFICATION" => {
+            if tokens.len() == 4 {
+                Ok(BellStateVerification(
+                    parse_u8(tokens[1])?,
+                    parse_u8(tokens[2])?,
+                    tokens[3].to_string(),
+                ))
+            } else {
+                Err("BELLSTATEVERIFICATION <q1> <q2> <mode>".into())
+            }
+        }
+        "QUANTUMZENOEFFECT" => {
+            if tokens.len() == 4 {
+                Ok(QuantumZenoEffect(
+                    parse_u8(tokens[1])?,
+                    parse_u64(tokens[2])?,
+                    parse_u64(tokens[3])?,
+                ))
+            } else {
+                Err("QUANTUMZENOEFFECT <reg> <freq> <dur>".into())
+            }
+        }
+        "APPLYNONLINEARPHASESHIFT" => {
+            if tokens.len() == 3 {
+                Ok(ApplyNonlinearPhaseShift(
+                    parse_u8(tokens[1])?,
+                    parse_f64(tokens[2])?,
+                ))
+            } else {
+                Err("APPLYNONLINEARPHASESHIFT <reg> <phase>".into())
+            }
+        }
+        "APPLYNONLINEARSIGMA" => {
+            if tokens.len() == 3 {
+                Ok(ApplyNonlinearSigma(
+                    parse_u8(tokens[1])?,
+                    parse_f64(tokens[2])?,
+                ))
+            } else {
+                Err("APPLYNONLINEARSIGMA <reg> <sigma>".into())
+            }
+        }
+        "APPLYLINEAROPTICALTRANSFORM" => {
+            if tokens.len() >= 5 {
+                let name = tokens[1].to_string();
+                let ins = tokens[2]
+                    .split(',')
+                    .map(parse_u8)
+                    .collect::<Result<Vec<_>, _>>()?;
+                let outs = tokens[3]
+                    .split(',')
+                    .map(parse_u8)
+                    .collect::<Result<Vec<_>, _>>()?;
+                let sz = tokens[4]
+                    .parse::<usize>()
+                    .map_err(|_| format!("Invalid usize '{}'", tokens[4]))?;
+                Ok(ApplyLinearOpticalTransform(name, ins, outs, sz))
+            } else {
+                Err("APPLYLINEAROPTICALTRANSFORM <name> <ins> <outs> <sz>".into())
+            }
+        }
+        "PHOTONNUMBERRESOLVINGDETECTION" => {
+            if tokens.len() == 3 {
+                Ok(PhotonNumberResolvingDetection(
+                    parse_u8(tokens[1])?,
+                    tokens[2].to_string(),
+                ))
+            } else {
+                Err("PHOTONNUMBERRESOLVINGDETECTION <reg> <dest>".into())
+            }
+        }
+        "FEEDBACKCONTROL" => {
+            if tokens.len() == 3 {
+                Ok(FeedbackControl(parse_u8(tokens[1])?, tokens[2].to_string()))
+            } else {
+                Err("FEEDBACKCONTROL <reg> <signal>".into())
+            }
+        }
         // qoa specific
-        "SETPOS" => { if tokens.len() == 4 { Ok(SetPos(parse_u8(tokens[1])?, parse_u16(tokens[2])?, parse_u16(tokens[3])?)) } else { Err("SETPOS <reg> <x> <y>".into()) } }
-        "SETWL" => { if tokens.len() == 3 { Ok(SetWl(parse_u8(tokens[1])?, parse_u16(tokens[2])?)) } else { Err("SETWL <reg> <wl>".into()) } }
-        "SETPHASE" => { if tokens.len() == 3 { Ok(SetPhase(parse_u8(tokens[1])?, parse_f64(tokens[2])?)) } else { Err("SETPHASE <reg> <phase>".into()) } }
-        "WLSHIFT" => { if tokens.len() == 3 { Ok(WlShift(parse_u8(tokens[1])?, parse_i16(tokens[2])?)) } else { Err("WLSHIFT <reg> <shift>".into()) } }
-        "MOVE" => { if tokens.len() == 4 { Ok(Move(parse_u8(tokens[1])?, parse_i16(tokens[2])?, parse_i16(tokens[3])?)) } else { Err("MOVE <reg> <dx> <dy>".into()) } }
-        "COMMENT" => { if tokens.len() >= 2 { Ok(Comment(tokens[1..].join(" "))) } else { Err("COMMENT <txt>".into()) } }
-        "MARKOBSERVED" => { if tokens.len() == 2 { Ok(MarkObserved(parse_u8(tokens[1])?)) } else { Err("MARKOBSERVED <reg>".into()) } }
-        "RELEASE" => { if tokens.len() == 2 { Ok(Release(parse_u8(tokens[1])?)) } else { Err("RELEASE <reg>".into()) } }
-        "HALT" => { if tokens.len() == 1 { Ok(Halt) } else { Err("HALT".into()) } }
+        "SETPOS" => {
+            if tokens.len() == 4 {
+                Ok(SetPos(
+                    parse_u8(tokens[1])?,
+                    parse_u16(tokens[2])?.into(),
+                    parse_u16(tokens[3])?.into(),
+                ))
+            } else {
+                Err("SETPOS <reg> <x> <y>".into())
+            }
+        }
+        "SETWL" => {
+            if tokens.len() == 3 {
+                Ok(Instruction::SetWl(
+                    parse_u8(tokens[1])?,
+                    parse_u16(tokens[2])?.into(),
+                ))
+            } else {
+                Err("SETWL <reg> <wl>".into())
+            }
+        }
+        "SETPHASE" => {
+            if tokens.len() == 3 {
+                Ok(SetPhase(parse_u8(tokens[1])?, parse_f64(tokens[2])?))
+            } else {
+                Err("SETPHASE <reg> <phase>".into())
+            }
+        }
+        "WLSHIFT" => {
+            if tokens.len() == 3 {
+                Ok(WlShift(parse_u8(tokens[1])?, parse_i16(tokens[2])?.into()))
+            } else {
+                Err("WLSHIFT <reg> <shift>".into())
+            }
+        }
+        "MOVE" => {
+            if tokens.len() == 4 {
+                Ok(Move(
+                    parse_u8(tokens[1])?,
+                    parse_i16(tokens[2])?.into(),
+                    parse_i16(tokens[3])?.into(),
+                ))
+            } else {
+                Err("MOVE <reg> <dx> <dy>".into())
+            }
+        }
+        "COMMENT" => {
+            if tokens.len() >= 2 {
+                Ok(Comment(tokens[1..].join(" ")))
+            } else {
+                Err("COMMENT <txt>".into())
+            }
+        }
+        "MARKOBSERVED" => {
+            if tokens.len() == 2 {
+                Ok(MarkObserved(parse_u8(tokens[1])?))
+            } else {
+                Err("MARKOBSERVED <reg>".into())
+            }
+        }
+        "RELEASE" => {
+            if tokens.len() == 2 {
+                Ok(Release(parse_u8(tokens[1])?))
+            } else {
+                Err("RELEASE <reg>".into())
+            }
+        }
+        "HALT" => {
+            if tokens.len() == 1 {
+                Ok(Halt)
+            } else {
+                Err("HALT".into())
+            }
+        }
         _ => Err(format!("Unknown opcode '{}'", op)),
     }
 }
@@ -214,7 +1088,7 @@ pub fn parse_simple_opcode(tokens: &[&str]) -> Result<Instruction, String> {
     }
 
     let opcode = tokens[0].to_uppercase();
-    
+
     // for parsing
     let parse_u8 = |s: &str| s.parse::<u8>().map_err(|_| format!("Invalid u8 '{}'", s));
     let parse_u16 = |s: &str| s.parse::<u16>().map_err(|_| format!("Invalid u16 '{}'", s));
@@ -237,12 +1111,12 @@ pub fn parse_simple_opcode(tokens: &[&str]) -> Result<Instruction, String> {
 
     match opcode.as_str() {
         "INIT" => {
-        if tokens.len() == 3 && tokens[1].to_uppercase() == "QUBIT" {
-            let n = parse_u8(tokens[2])?;
-            Ok(Instruction::InitQubit(n))
+            if tokens.len() == 3 && tokens[1].to_uppercase() == "QUBIT" {
+                let n = parse_u8(tokens[2])?;
+                Ok(Instruction::InitQubit(n))
             } else {
                 Err("Malformed INIT instruction. Usage: INIT QUBIT <n>".into())
-        }
+            }
         }
         "QINIT" => {
             if tokens.len() == 2 {
@@ -394,7 +1268,10 @@ pub fn parse_simple_opcode(tokens: &[&str]) -> Result<Instruction, String> {
                 let n = parse_u8(tokens[1])?;
                 Ok(Instruction::ApplyPhaseFlip(n))
             } else {
-                Err("Malformed APPLY_PHASE_FLIP instruction. Usage: APPLY_PHASE_FLIP <qubit>".into())
+                Err(
+                    "Malformed APPLY_PHASE_FLIP instruction. Usage: APPLY_PHASE_FLIP <qubit>"
+                        .into(),
+                )
             }
         }
         "APPLY_BIT_FLIP" => {
@@ -435,12 +1312,15 @@ pub fn parse_simple_opcode(tokens: &[&str]) -> Result<Instruction, String> {
                     _ => unreachable!(),
                 }
             } else {
-                Err(format!("Malformed {} instruction. Usage: {} <dest> <src1> <src2>", opcode, opcode))
+                Err(format!(
+                    "Malformed {} instruction. Usage: {} <dest> <src1> <src2>",
+                    opcode, opcode
+                ))
             }
         }
         "NOT" => {
             if tokens.len() == 2 {
-            let reg = tokens[1].to_string();
+                let reg = tokens[1].to_string();
                 Ok(Instruction::Not(reg))
             } else {
                 Err("Malformed NOT instruction. Usage: NOT <reg>".into())
@@ -455,14 +1335,20 @@ pub fn parse_simple_opcode(tokens: &[&str]) -> Result<Instruction, String> {
         }
         "JUMPIFZERO" => {
             if tokens.len() == 3 {
-                Ok(Instruction::JumpIfZero(tokens[1].to_string(), tokens[2].to_string()))
+                Ok(Instruction::JumpIfZero(
+                    tokens[1].to_string(),
+                    tokens[2].to_string(),
+                ))
             } else {
                 Err("Malformed JUMPIFZERO instruction. Usage: JUMPIFZERO <cond> <label>".into())
             }
         }
         "JUMPIFONE" => {
             if tokens.len() == 3 {
-                Ok(Instruction::JumpIfOne(tokens[1].to_string(), tokens[2].to_string()))
+                Ok(Instruction::JumpIfOne(
+                    tokens[1].to_string(),
+                    tokens[2].to_string(),
+                ))
             } else {
                 Err("Malformed JUMPIFONE instruction. Usage: JUMPIFONE <cond> <label>".into())
             }
@@ -497,30 +1383,45 @@ pub fn parse_simple_opcode(tokens: &[&str]) -> Result<Instruction, String> {
         }
         "LOADMEM" => {
             if tokens.len() == 3 {
-                Ok(Instruction::LoadMem(tokens[1].to_string(), tokens[2].to_string()))
+                Ok(Instruction::LoadMem(
+                    tokens[1].to_string(),
+                    tokens[2].to_string(),
+                ))
             } else {
                 Err("Malformed LOADMEM instruction. Usage: LOADMEM <reg> <mem_addr>".into())
             }
         }
         "STOREMEM" => {
             if tokens.len() == 3 {
-                Ok(Instruction::StoreMem(tokens[1].to_string(), tokens[2].to_string()))
+                Ok(Instruction::StoreMem(
+                    tokens[1].to_string(),
+                    tokens[2].to_string(),
+                ))
             } else {
                 Err("Malformed STOREMEM instruction. Usage: STOREMEM <reg> <mem_addr>".into())
             }
         }
         "LOADCLASSICAL" => {
             if tokens.len() == 3 {
-                Ok(Instruction::LoadClassical(tokens[1].to_string(), tokens[2].to_string()))
+                Ok(Instruction::LoadClassical(
+                    tokens[1].to_string(),
+                    tokens[2].to_string(),
+                ))
             } else {
                 Err("Malformed LOADCLASSICAL instruction. Usage: LOADCLASSICAL <reg> <var>".into())
             }
         }
         "STORECLASSICAL" => {
             if tokens.len() == 3 {
-                Ok(Instruction::StoreClassical(tokens[1].to_string(), tokens[2].to_string()))
+                Ok(Instruction::StoreClassical(
+                    tokens[1].to_string(),
+                    tokens[2].to_string(),
+                ))
             } else {
-                Err("Malformed STORECLASSICAL instruction. Usage: STORECLASSICAL <reg> <var>".into())
+                Err(
+                    "Malformed STORECLASSICAL instruction. Usage: STORECLASSICAL <reg> <var>"
+                        .into(),
+                )
             }
         }
         "ENTANGLEMULTI" => {
@@ -558,8 +1459,14 @@ pub fn parse_simple_opcode(tokens: &[&str]) -> Result<Instruction, String> {
         "APPLY_MULTI_QUBIT_ROTATION" => {
             if tokens.len() >= 4 {
                 let axis = parse_axis(tokens[2])?;
-                let qubits = tokens[1].split(',').map(parse_u8).collect::<Result<Vec<u8>, _>>()?;
-                let angles = tokens[3..].iter().map(|s| parse_f64(s)).collect::<Result<Vec<f64>, _>>()?;
+                let qubits = tokens[1]
+                    .split(',')
+                    .map(parse_u8)
+                    .collect::<Result<Vec<u8>, _>>()?;
+                let angles = tokens[3..]
+                    .iter()
+                    .map(|s| parse_f64(s))
+                    .collect::<Result<Vec<f64>, _>>()?;
                 Ok(Instruction::ApplyMultiQubitRotation(qubits, axis, angles))
             } else {
                 Err("Malformed APPLY_MULTI_QUBIT_ROTATION instruction. Usage: APPLY_MULTI_QUBIT_ROTATION <q1,q2,...> <X|Y|Z> <angle1> <angle2> ...".into())
@@ -579,7 +1486,10 @@ pub fn parse_simple_opcode(tokens: &[&str]) -> Result<Instruction, String> {
                 let dest = tokens[3].to_string();
                 Ok(Instruction::PhotonRoute(n, source, dest))
             } else {
-                Err("Malformed PHOTONROUTE instruction. Usage: PHOTONROUTE <qubit> <source> <dest>".into())
+                Err(
+                    "Malformed PHOTONROUTE instruction. Usage: PHOTONROUTE <qubit> <source> <dest>"
+                        .into(),
+                )
             }
         }
         "SYNC" => {
@@ -597,7 +1507,10 @@ pub fn parse_simple_opcode(tokens: &[&str]) -> Result<Instruction, String> {
                 let d = parse_u8(tokens[4])?;
                 Ok(Instruction::EntangleSwap(a, b, c, d))
             } else {
-                Err("Malformed ENTANGLESWAP instruction. Usage: ENTANGLESWAP <q1> <q2> <q3> <q4>".into())
+                Err(
+                    "Malformed ENTANGLESWAP instruction. Usage: ENTANGLESWAP <q1> <q2> <q3> <q4>"
+                        .into(),
+                )
             }
         }
         "ERRORCORRECT" => {
@@ -633,7 +1546,10 @@ pub fn parse_simple_opcode(tokens: &[&str]) -> Result<Instruction, String> {
                 let val = parse_f64(tokens[2])?;
                 Ok(Instruction::ApplySqueezing(n, val))
             } else {
-                Err("Malformed APPLYSQUEEZING instruction. Usage: APPLYSQUEEZING <qubit> <value>".into())
+                Err(
+                    "Malformed APPLYSQUEEZING instruction. Usage: APPLYSQUEEZING <qubit> <value>"
+                        .into(),
+                )
             }
         }
         "MEASUREPARITY" => {
@@ -720,7 +1636,10 @@ pub fn parse_simple_opcode(tokens: &[&str]) -> Result<Instruction, String> {
         }
         "PHOTONDETECTCOINCIDENCE" => {
             if tokens.len() >= 3 {
-                let qubits = tokens[1].split(',').map(parse_u8).collect::<Result<Vec<u8>, _>>()?;
+                let qubits = tokens[1]
+                    .split(',')
+                    .map(parse_u8)
+                    .collect::<Result<Vec<u8>, _>>()?;
                 let reg = tokens[2].to_string();
                 Ok(Instruction::PhotonDetectCoincidence(qubits, reg))
             } else {
@@ -755,10 +1674,20 @@ pub fn parse_simple_opcode(tokens: &[&str]) -> Result<Instruction, String> {
         "APPLYLINEAROPTICALTRANSFORM" => {
             if tokens.len() >= 5 {
                 let name = tokens[1].to_string();
-                let inputs = tokens[2].split(',').map(parse_u8).collect::<Result<Vec<u8>, _>>()?;
-                let outputs = tokens[3].split(',').map(parse_u8).collect::<Result<Vec<u8>, _>>()?;
-                let size = tokens[4].parse::<usize>().map_err(|_| format!("Invalid usize '{}'", tokens[4]))?;
-                Ok(Instruction::ApplyLinearOpticalTransform(name, inputs, outputs, size))
+                let inputs = tokens[2]
+                    .split(',')
+                    .map(parse_u8)
+                    .collect::<Result<Vec<u8>, _>>()?;
+                let outputs = tokens[3]
+                    .split(',')
+                    .map(parse_u8)
+                    .collect::<Result<Vec<u8>, _>>()?;
+                let size = tokens[4]
+                    .parse::<usize>()
+                    .map_err(|_| format!("Invalid usize '{}'", tokens[4]))?;
+                Ok(Instruction::ApplyLinearOpticalTransform(
+                    name, inputs, outputs, size,
+                ))
             } else {
                 Err("Malformed APPLYLINEAROPTICALTRANSFORM instruction. Usage: APPLYLINEAROPTICALTRANSFORM <name> <in1,in2,...> <out1,out2,...> <size>".into())
             }
@@ -834,7 +1763,10 @@ pub fn parse_simple_opcode(tokens: &[&str]) -> Result<Instruction, String> {
                 let basis = tokens[2].to_string();
                 Ok(Instruction::MeasureInBasis(n, basis))
             } else {
-                Err("Malformed MEASUREINBASIS instruction. Usage: MEASUREINBASIS <qubit> <basis>".into())
+                Err(
+                    "Malformed MEASUREINBASIS instruction. Usage: MEASUREINBASIS <qubit> <basis>"
+                        .into(),
+                )
             }
         }
         "DECOHERENCEPROTECT" => {
@@ -861,7 +1793,10 @@ pub fn parse_simple_opcode(tokens: &[&str]) -> Result<Instruction, String> {
                 let angle = parse_f64(tokens[3])?;
                 Ok(Instruction::ApplyCPhase(a, b, angle))
             } else {
-                Err("Malformed APPLYC_PHASE instruction. Usage: APPLYC_PHASE <q1> <q2> <angle>".into())
+                Err(
+                    "Malformed APPLYC_PHASE instruction. Usage: APPLYC_PHASE <q1> <q2> <angle>"
+                        .into(),
+                )
             }
         }
         "APPLYKERRNONLINEARITY" => {
@@ -1011,7 +1946,11 @@ pub fn parse_simple_opcode(tokens: &[&str]) -> Result<Instruction, String> {
         "ERRORSYNDROME" => {
             if tokens.len() == 4 {
                 let q = parse_u8(tokens[1])?;
-                Ok(Instruction::ErrorSyndrome(q, tokens[2].to_string(), tokens[3].to_string()))
+                Ok(Instruction::ErrorSyndrome(
+                    q,
+                    tokens[2].to_string(),
+                    tokens[3].to_string(),
+                ))
             } else {
                 Err("Malformed ERRORSYNDROME instruction. Usage: ERRORSYNDROME <qubit> <type> <result_reg>".into())
             }
@@ -1039,41 +1978,85 @@ pub fn parse_simple_opcode(tokens: &[&str]) -> Result<Instruction, String> {
         "VERBOSELOG" => {
             if tokens.len() >= 2 {
                 let r = parse_u8(tokens[1])?;
-                let msg = if tokens.len() > 2 { tokens[2..].join(" ") } else { "".into() };
+                let msg = if tokens.len() > 2 {
+                    tokens[2..].join(" ")
+                } else {
+                    "".into()
+                };
                 Ok(Instruction::VerboseLog(r, msg))
-            } else { Err("Usage: VerboseLog reg [message]".into()) }
+            } else {
+                Err("Usage: VerboseLog reg [message]".into())
+            }
         }
         "SETPOS" => {
             if tokens.len() == 4 {
-                Ok(Instruction::SetPos(parse_u8(tokens[1])?, tokens[2].parse::<u16>().map_err(|_| format!("Invalid u16 '{}'", tokens[2]))?, tokens[3].parse::<u16>().map_err(|_| format!("Invalid u16 '{}'", tokens[3]))?))
+                Ok(Instruction::SetPos(
+                    parse_u8(tokens[1])?,
+                    tokens[2]
+                        .parse::<u16>()
+                        .map_err(|_| format!("Invalid u16 '{}'", tokens[2]))?
+                        .into(),
+                    tokens[3]
+                        .parse::<u16>()
+                        .map_err(|_| format!("Invalid u16 '{}'", tokens[3]))?
+                        .into(),
+                ))
             } else {
                 Err("Malformed SETPOS instruction. Usage: SETPOS <reg> <x> <y>".into())
             }
         }
+
         "SETWL" => {
             if tokens.len() == 3 {
-                Ok(Instruction::SetWl(parse_u8(tokens[1])?, tokens[2].parse::<u16>().map_err(|_| format!("Invalid u16 '{}'", tokens[2]))?))
+                Ok(Instruction::SetWl(
+                    tokens[1]
+                        .parse::<u8>()
+                        .map_err(|_| format!("Invalid u8 '{}'", tokens[1]))?,
+                    tokens[2]
+                        .parse::<u16>()
+                        .map_err(|_| format!("Invalid u16 '{}'", tokens[2]))?
+                        .into(),
+                ))
             } else {
                 Err("Malformed SETWL instruction. Usage: SETWL <reg> <wavelength>".into())
             }
         }
         "SETPHASE" => {
             if tokens.len() == 3 {
-                Ok(Instruction::SetPhase(parse_u8(tokens[1])?, parse_f64(tokens[2])?))
+                Ok(Instruction::SetPhase(
+                    parse_u8(tokens[1])?,
+                    parse_f64(tokens[2])?,
+                ))
             } else {
                 Err("Malformed SETPHASE instruction. Usage: SETPHASE <reg> <phase>".into())
             }
         }
         "WLSHIFT" => {
             if tokens.len() == 3 {
-                Ok(Instruction::WlShift(parse_u8(tokens[1])?, tokens[2].parse::<i16>().map_err(|_| format!("Invalid i16 '{}'", tokens[2]))?))
+                Ok(Instruction::WlShift(
+                    parse_u8(tokens[1])?,
+                    tokens[2]
+                        .parse::<i16>()
+                        .map_err(|_| format!("Invalid i16 '{}'", tokens[2]))?
+                        .into(),
+                ))
             } else {
                 Err("Malformed WLSHIFT instruction. Usage: WLSHIFT <reg> <shift>".into())
             }
         }
         "MOVE" => {
             if tokens.len() == 4 {
-                Ok(Instruction::Move(parse_u8(tokens[1])?, tokens[2].parse::<i16>().map_err(|_| format!("Invalid i16 '{}'", tokens[2]))?, tokens[3].parse::<i16>().map_err(|_| format!("Invalid i16 '{}'", tokens[3]))?))
+                Ok(Instruction::Move(
+                    parse_u8(tokens[1])?,
+                    tokens[2]
+                        .parse::<i16>()
+                        .map_err(|_| format!("Invalid i16 '{}'", tokens[2]))?
+                        .into(),
+                    tokens[3]
+                        .parse::<i16>()
+                        .map_err(|_| format!("Invalid i16 '{}'", tokens[3]))?
+                        .into(),
+                ))
             } else {
                 Err("Malformed MOVE instruction. Usage: MOVE <reg> <dx> <dy>".into())
             }
@@ -1113,11 +2096,21 @@ pub fn parse_simple_opcode(tokens: &[&str]) -> Result<Instruction, String> {
 impl Instruction {
     pub fn encode(&self) -> Vec<u8> {
         match self {
-            // Initialization and Measurement
-            Instruction::QInit(n)     => vec![0x01, *n],
-            Instruction::QMeas(n)     => vec![0x03, *n],   // prints char via CharLoad
-            Instruction::CharLoad(r,c)=> vec![0x04, *r, *c],
+            Instruction::Halt => vec![0xFF],
 
+            // fix the HE error
+            Instruction::Hadamard(reg) => vec![0x10, *reg as u8],
+
+            // Handle variants with data by pattern matching on their content
+            Instruction::InitQubit(reg) => vec![0x01, *reg],
+            Instruction::Measure(reg) => vec![0x02, *reg],
+            Instruction::Barrier => vec![0x03],
+
+            Instruction::CharLoad(reg, val) => vec![0x31, *reg, *val],
+            Instruction::QMeas(reg) => vec![0x32, *reg],
+
+            // Instruction::Not(_) => vec![0x00],
+            Instruction::QInit(n) => vec![0x04, *n],
 
             // Core
             Instruction::ControlledPhaseRotation(q1, q2, angle) => {
@@ -1153,7 +2146,7 @@ impl Instruction {
                 v.push(0);
                 v
             }
-            
+
             // Measurement in specific basis
             Instruction::MeasureInBasis(n, basis) => {
                 let basis_code = match basis.as_str() {
@@ -1634,7 +2627,8 @@ impl Instruction {
             }
             Instruction::MarkObserved(reg) => vec![0xF0, *reg],
             Instruction::Release(reg) => vec![0xF1, *reg],
-            Instruction::Halt => vec![0xFF],
+            // catchall arm
+            // => todo!(),
         }
     }
 }

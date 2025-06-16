@@ -1,8 +1,6 @@
-; Hello World in QOA
-; Each CHARLOAD loads an ASCII value, and QMEAS simulates emitting that character
-; Written for demonstration
+; Hello World in QOA - Updated for 0.2.0
 
-; Initalize QUBIT 0
+; Initialize qubit 0
 QINIT 0
 
 ; 'H'
@@ -56,3 +54,6 @@ QMEAS 0
 ; '!'
 CHARLOAD 0 33
 QMEAS 0
+
+; Halt program
+HALT
