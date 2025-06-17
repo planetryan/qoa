@@ -39,6 +39,13 @@ pub enum Instruction {
     ApplyGate(String, u8),
     Measure(u8),
 
+    // regset
+    RegSet(u8, f64),
+
+    // loop
+    LoopStart(u8),
+    LoopEnd,
+
     // rotations
     ApplyRotation(u8, char, f64),
     ApplyMultiQubitRotation(Vec<u8>, char, Vec<f64>),
@@ -165,6 +172,36 @@ pub fn parse_instruction(line: &str) -> Result<Instruction, String> {
     };
 
     match op.as_str() {
+        // regset
+        "REGSET" => {
+            if tokens.len() == 3 {
+                let reg = parse_u8(tokens[1])?;
+                let val = tokens[2]
+                    .parse::<f64>()
+                    .map_err(|_| "REGSET <reg> <float>".to_string())?;
+                Ok(Instruction::RegSet(reg, val))
+            } else {
+                Err("REGSET <reg> <value>".into())
+            }
+        }
+
+        // loop stuff
+        "LOOP" => {
+            if tokens.len() == 2 {
+                let reg = parse_u8(tokens[1])?;
+                Ok(Instruction::LoopStart(reg))
+            } else {
+                Err("LOOP <reg>".into())
+            }
+        }
+        "ENDLOOP" => {
+            if tokens.len() == 1 {
+                Ok(Instruction::LoopEnd)
+            } else {
+                Err("ENDLOOP".into())
+            }
+        }
+
         // normal qoa base stuff
         "QINIT" => {
             if tokens.len() == 2 {
@@ -2097,12 +2134,29 @@ impl Instruction {
         match self {
             Instruction::Halt => vec![0xFF],
 
-            // fix the HE error
+            // Loop
+            Instruction::ApplyGate(gate, q) => {
+                let mut v = vec![0x02, *q];
+                let mut gate_bytes = gate.as_bytes().to_vec();
+                gate_bytes.resize(8, 0); // Pad or truncate gate name to 8 bytes
+                v.extend(gate_bytes);
+                v
+            }
+
+            Instruction::RegSet(reg, val) => {
+                let mut v = vec![0x10, *reg];
+                v.extend_from_slice(&val.to_le_bytes());
+                v
+            }
+            Instruction::LoopStart(times) => vec![0x20, *times],
+            Instruction::LoopEnd => vec![0x21],
+            Instruction::Measure(q) => vec![0x03, *q],
+
+            // Hadamard gate
             Instruction::Hadamard(reg) => vec![0x10, *reg as u8],
 
             // Handle variants with data by pattern matching on their content
             Instruction::InitQubit(reg) => vec![0x01, *reg],
-            Instruction::Measure(reg) => vec![0x02, *reg],
             Instruction::Barrier => vec![0x03],
 
             Instruction::CharLoad(reg, val) => vec![0x31, *reg, *val],
@@ -2155,17 +2209,6 @@ impl Instruction {
                     _ => panic!("Unknown basis: {}", basis),
                 };
                 vec![0xA1, *n, basis_code]
-            }
-
-            // Gate applications
-            Instruction::ApplyGate(gate, q) => {
-                let mut v = Vec::with_capacity(10);
-                v.push(0x02);
-                v.push(*q);
-                let mut name = gate.as_bytes().to_vec();
-                name.resize(8, 0);
-                v.extend_from_slice(&name);
-                v
             }
 
             Instruction::ApplyHadamard(q) => vec![0x05, *q],
