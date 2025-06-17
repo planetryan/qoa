@@ -96,7 +96,6 @@ impl QuantumState {
         let mask = 1 << q;
         let len = self.amps.len();
         for i in 0..len {
-            // Only swap when bit q is 0 and i < i | mask to avoid double-swap
             if (i & mask) == 0 && i < (i | mask) {
                 self.amps.swap(i, i | mask);
             }
@@ -182,33 +181,32 @@ fn run_exe(filedata: &[u8]) {
     while i < payload.len() {
         match payload[i] {
             0x04 /* QInit */ => {
-                if i + 1 >= payload.len() {
-                    break;
-                }
+                if i + 1 >= payload.len() { break; }
                 let q = payload[i + 1] as usize;
                 max_q = max_q.max(q);
                 i += 2;
             }
             0x02 /* QGate */ => {
-                if i + 9 >= payload.len() {
-                    break;
-                }
+                if i + 9 >= payload.len() { break; }
                 let q = payload[i + 1] as usize;
                 max_q = max_q.max(q);
                 i += 10;
             }
+            0x05 /* ApplyHadamard */ => {
+                // FIX: handle new opcode for H in first pass
+                if i + 1 >= payload.len() { break; }
+                let q = payload[i + 1] as usize;
+                max_q = max_q.max(q);
+                i += 2;
+            }
             0x31 /* CHARLOAD */ => {
-                if i + 2 >= payload.len() {
-                    break;
-                }
+                if i + 2 >= payload.len() { break; }
                 let q = payload[i + 1] as usize;
                 max_q = max_q.max(q);
                 i += 3;
             }
             0x32 /* QMEAS */ => {
-                if i + 1 >= payload.len() {
-                    break;
-                }
+                if i + 1 >= payload.len() { break; }
                 let q = payload[i + 1] as usize;
                 max_q = max_q.max(q);
                 i += 2;
@@ -237,11 +235,9 @@ fn run_exe(filedata: &[u8]) {
         match payload[i] {
             0x04 /* QInit */ => {
                 // QInit opcode + qubit index, total 2 bytes
-                // Usually handled during first pass, so just skip here
                 i += 2;
             }
             0x02 /* QGate */ => {
-                // QGate opcode (1 byte) + qubit index (1 byte) + gate name (8 bytes) = 10 bytes
                 let q = payload[i + 1] as usize;
                 let name_bytes = &payload[i + 2..i + 10];
                 let name = String::from_utf8_lossy(name_bytes)
@@ -251,14 +247,13 @@ fn run_exe(filedata: &[u8]) {
                 match name.as_str() {
                     "H" => {
                         qs.apply_h(q);
-                        println!("Applied H gate on qubit {}", q);
+                        println!("Applied H gate on qubit {} (via QGate)", q);
                     }
                     "X" => {
                         qs.apply_x(q);
                         println!("Applied X gate on qubit {}", q);
                     }
                     "CZ" => {
-                        // Controlled-Z: control qubit q, target qubit q+1 (or last qubit if q+1 out of range)
                         let tgt = if q + 1 < qs.n { q + 1 } else { qs.n - 1 };
                         qs.apply_cz(q, tgt);
                         println!(
@@ -269,28 +264,30 @@ fn run_exe(filedata: &[u8]) {
                     other => eprintln!("Unknown gate: {}", other),
                 }
 
-                // Print current amplitudes after gate application
                 println!("Current amplitudes after gate:");
                 for (idx, amp) in qs.amps.iter().enumerate() {
                     println!(
                         "{:0width$b}: {:.4} + {:.4}i",
-                        idx,
-                        amp.re,
-                        amp.im,
+                        idx, amp.re, amp.im,
                         width = qs.n
                     );
                 }
 
                 i += 10;
             }
+            0x05 /* ApplyHadamard */ => {
+                // FIX: decode new Hadamard opcode, apply H
+                let q = payload[i + 1] as usize;
+                qs.apply_h(q);
+                println!("Applied H gate on qubit {}", q);
+                i += 2;
+            }
             0x31 /* CHARLOAD */ => {
-                // CHARLOAD opcode + unused? + byte value
                 let val = payload[i + 2];
                 print!("{}", val as char);
                 i += 3;
             }
             0x32 /* QMEAS */ => {
-                // QMEAS opcode + qubit index
                 let q = payload[i + 1] as usize;
                 let meas_result = qs.measure(q);
                 println!("\nMeasurement of qubit {}: {}", q, meas_result);
@@ -347,7 +344,6 @@ fn main() {
                 eprintln!("Compile error: {}", e);
                 std::process::exit(1);
             });
-            // Choose header based on extension
             let magic = if args[3].ends_with(".qexe") {
                 QEXE_MAGIC
             } else if args[3].ends_with(".oexe") {

@@ -189,14 +189,13 @@ pub fn parse_instruction(line: &str) -> Result<Instruction, String> {
             }
         }
         // "MEASURE" => { if tokens.len() == 2 { Ok(Measure(parse_u8(tokens[1])?)) } else { Err("MEASURE <qubit>".into()) } }
-        "APPLY_GATE" => {
+        "QGATE" => {
             if tokens.len() == 3 {
-                Ok(Instruction::ApplyGate(
-                    tokens[1].to_string(),
-                    parse_u8(tokens[2])?,
-                ))
+                let q = parse_u8(tokens[1])?;
+                let gate = tokens[2].to_string();
+                Ok(Instruction::ApplyGate(gate, q))
             } else {
-                Err("APPLY_GATE <gate> <qubit>".into())
+                Err("QGATE <qubit> <gate>".into())
             }
         }
         "APPLYHADAMARD" => {
@@ -2160,12 +2159,15 @@ impl Instruction {
 
             // Gate applications
             Instruction::ApplyGate(gate, q) => {
-                let mut v = vec![0x04, *q];
-                let mut gate_bytes = gate.as_bytes().to_vec();
-                gate_bytes.resize(8, 0); // pad or truncate gate name to 8 bytes
-                v.extend(gate_bytes);
+                let mut v = Vec::with_capacity(10);
+                v.push(0x02);
+                v.push(*q);
+                let mut name = gate.as_bytes().to_vec();
+                name.resize(8, 0);
+                v.extend_from_slice(&name);
                 v
             }
+
             Instruction::ApplyHadamard(q) => vec![0x05, *q],
             Instruction::ControlledNot(c, t) => vec![0x06, *c, *t],
             Instruction::ApplyPhaseFlip(q) => vec![0x07, *q],
