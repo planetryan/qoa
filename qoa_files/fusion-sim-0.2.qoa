@@ -1,25 +1,6 @@
 ; fusion sim for QOA 0.2.0
+; SIMULATES 4 QUBITS
 
-CHARLOAD 0 70    ; 'F'
-CHARLOAD 1 117   ; 'u'
-CHARLOAD 2 115   ; 's'
-CHARLOAD 3 105   ; 'i'
-CHARLOAD 4 111   ; 'o'
-CHARLOAD 5 110   ; 'n'
-CHARLOAD 6 32    ; ' '
-CHARLOAD 7 83    ; 'S'
-CHARLOAD 8 105   ; 'i'
-CHARLOAD 9 109   ; 'm'
-CHARLOAD 10 32   ; ' '
-CHARLOAD 11 109  ; 'm'
-CHARLOAD 12 101  ; 'e'
-CHARLOAD 13 97   ; 'a'
-CHARLOAD 14 115  ; 's'
-CHARLOAD 15 117  ; 'u'
-CHARLOAD 16 114  ; 'r'
-CHARLOAD 17 101  ; 'e'
-CHARLOAD 18 100  ; 'd'
-CHARLOAD 19 10   ; newline
 
 ; Initialize qubits:
 QINIT 0        ; proton A wavefunction
@@ -27,17 +8,20 @@ QINIT 1        ; proton B wavefunction
 QINIT 2        ; barrier site wavefunction
 QINIT 3        ; fusion marker qubit
 
+; NO REGSET FOR NOW UNTIL I FIX THE OPCODE ERROR
+
 ; Initialize constants in registers:
-REGSET 0 1000        ; number of fusion trials (loop count)
-REGSET 1 1300        ; thermal energy in eV
-REGSET 2 1           ; tunneling probability (integer only)
-REGSET 3 0           ; fusion count (external counting)
+; REGSET 0 1000        ; number of fusion trials (loop count)
+; REGSET 1 1300        ; thermal energy in eV
+; REGSET 2 1           ; tunneling probability (integer only)
+; REGSET 3 0           ; fusion count (external counting)
 
 ; NOTE: REGSET ONLY USES INT, NOT FLOATING POINT, SO USE FOR EXAMPLE
 ; REGSET 2 1 INSTEAD OF 2 0.01
 
 ; Loop over fusion trials
-LOOP 0               ; loop count from register 0
+; NOTE: LOOP removed due to missing REGSET for loop count
+; Replace with single trial below or re-enable once REGSET parsing is fixed
 
   ; Create superposition of protons (quantum state before tunneling)
   QGATE 0 H
@@ -58,6 +42,6 @@ LOOP 0               ; loop count from register 0
   QINIT 2
   QINIT 3
 
-ENDLOOP
+; ENDLOOP  -- removed
 
 HALT
