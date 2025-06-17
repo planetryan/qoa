@@ -11,7 +11,7 @@ mod instructions;
     9/6/2025
 
     This is the main compiler + emulator + quantum simulator for QOA.
-    This Compiles qoa assembly (using src/instructions.rs) into .qexe binaries.
+    This compiles qoa assembly (using src/instructions.rs) into .qexe binaries.
     Runs .qexe, decoding instructions and simulating up to n-qubit quantum programs
     with Hadamard, X, CZ, and measurement.
 
@@ -23,10 +23,10 @@ mod instructions;
 */
 
 // ----------- Supported Executable Headers -----------
-const QEXE_MAGIC: &[u8; 4] = b"QEXE";
-const OEXE_MAGIC: &[u8; 4] = b"OEXE";
-const QOEXE_MAGIC: &[u8; 4] = b"QOEX";
-const XEXE_MAGIC: &[u8; 4] = b"XEXE";
+const QEXE: &[u8; 4] = b"QEXE";
+const OEXE: &[u8; 4] = b"OEXE";
+const QOEXE: &[u8; 4] = b"QOEX";
+const XEXE: &[u8; 4] = b"XEXE";
 
 // Compile a .qoa file into a binary payload (Vec<u8>).
 fn compile_qoa_to_bin(src_path: &str) -> io::Result<Vec<u8>> {
@@ -148,11 +148,14 @@ impl QuantumState {
 
 // Returns (header name, version, payload slice)
 fn parse_exe_file(filedata: &[u8]) -> Option<(&'static str, u8, &[u8])> {
+    if filedata.len() < 9 {
+        return None;
+    }
     let name = match &filedata[0..4] {
-        m if m == QEXE_MAGIC => "QEXE",
-        m if m == OEXE_MAGIC => "OEXE",
-        m if m == QOEXE_MAGIC => "QOEXE",
-        m if m == XEXE_MAGIC => "XEXE",
+        m if m == QEXE => "QEXE",
+        m if m == OEXE => "OEXE",
+        m if m == QOEXE => "QOEXE",
+        m if m == XEXE => "XEXE",
         _ => return None,
     };
     let version = filedata[4];
@@ -181,35 +184,57 @@ fn run_exe(filedata: &[u8]) {
     while i < payload.len() {
         match payload[i] {
             0x04 /* QInit */ => {
-                if i + 1 >= payload.len() { break; }
+                if i + 2 > payload.len() {
+                    eprintln!("Incomplete QInit instruction at byte {}", i);
+                    break;
+                }
                 let q = payload[i + 1] as usize;
                 max_q = max_q.max(q);
                 i += 2;
             }
             0x02 /* QGate */ => {
-                if i + 9 >= payload.len() { break; }
+                if i + 10 > payload.len() {
+                    eprintln!("Incomplete QGate instruction at byte {}", i);
+                    break;
+                }
                 let q = payload[i + 1] as usize;
                 max_q = max_q.max(q);
                 i += 10;
             }
             0x05 /* ApplyHadamard */ => {
-                // FIX: handle new opcode for H in first pass
-                if i + 1 >= payload.len() { break; }
+                if i + 2 > payload.len() {
+                    eprintln!("Incomplete ApplyHadamard instruction at byte {}", i);
+                    break;
+                }
                 let q = payload[i + 1] as usize;
                 max_q = max_q.max(q);
                 i += 2;
             }
             0x31 /* CHARLOAD */ => {
-                if i + 2 >= payload.len() { break; }
+                if i + 3 > payload.len() {
+                    eprintln!("Incomplete CHARLOAD instruction at byte {}", i);
+                    break;
+                }
                 let q = payload[i + 1] as usize;
                 max_q = max_q.max(q);
                 i += 3;
             }
             0x32 /* QMEAS */ => {
-                if i + 1 >= payload.len() { break; }
+                if i + 2 > payload.len() {
+                    eprintln!("Incomplete QMEAS instruction at byte {}", i);
+                    break;
+                }
                 let q = payload[i + 1] as usize;
                 max_q = max_q.max(q);
                 i += 2;
+            }
+            0x21 /* REGSET */ => {
+                if i + 10 > payload.len() {
+                    eprintln!("Incomplete REGSET instruction at byte {}", i);
+                    break;
+                }
+                // reg index, val bytes skipped for max_q
+                i += 10;
             }
             0xFF /* HALT */ => {
                 i += 1;
@@ -229,15 +254,21 @@ fn run_exe(filedata: &[u8]) {
     );
     let mut qs = QuantumState::new(n_qubits);
 
+    // Registers for REGSET simulation (dummy placeholder)
+    let mut registers: Vec<f64> = vec![0.0; 16]; // adjust size as needed
+
     // SECOND PASS: execute instructions + print chars + measure qubits
     let mut i = 0;
     while i < payload.len() {
         match payload[i] {
             0x04 /* QInit */ => {
-                // QInit opcode + qubit index, total 2 bytes
                 i += 2;
             }
             0x02 /* QGate */ => {
+                if i + 10 > payload.len() {
+                    eprintln!("Incomplete QGate instruction at byte {}", i);
+                    break;
+                }
                 let q = payload[i + 1] as usize;
                 let name_bytes = &payload[i + 2..i + 10];
                 let name = String::from_utf8_lossy(name_bytes)
@@ -254,6 +285,8 @@ fn run_exe(filedata: &[u8]) {
                         println!("Applied X gate on qubit {}", q);
                     }
                     "CZ" => {
+                        // For CZ gate, requires two qubits: control q, target t
+                        // If target qubit is encoded as q+1 or fallback to last qubit
                         let tgt = if q + 1 < qs.n { q + 1 } else { qs.n - 1 };
                         qs.apply_cz(q, tgt);
                         println!(
@@ -276,22 +309,50 @@ fn run_exe(filedata: &[u8]) {
                 i += 10;
             }
             0x05 /* ApplyHadamard */ => {
-                // FIX: decode new Hadamard opcode, apply H
+                if i + 2 > payload.len() {
+                    eprintln!("Incomplete ApplyHadamard instruction at byte {}", i);
+                    break;
+                }
                 let q = payload[i + 1] as usize;
                 qs.apply_h(q);
                 println!("Applied H gate on qubit {}", q);
                 i += 2;
             }
             0x31 /* CHARLOAD */ => {
+                if i + 3 > payload.len() {
+                    eprintln!("Incomplete CHARLOAD instruction at byte {}", i);
+                    break;
+                }
                 let val = payload[i + 2];
                 print!("{}", val as char);
+                io::stdout().flush().unwrap();
                 i += 3;
             }
             0x32 /* QMEAS */ => {
+                if i + 2 > payload.len() {
+                    eprintln!("Incomplete QMEAS instruction at byte {}", i);
+                    break;
+                }
                 let q = payload[i + 1] as usize;
                 let meas_result = qs.measure(q);
                 println!("\nMeasurement of qubit {}: {}", q, meas_result);
                 i += 2;
+            }
+            0x21 /* REGSET */ => {
+                if i + 10 > payload.len() {
+                    eprintln!("Incomplete REGSET instruction at byte {}", i);
+                    break;
+                }
+                let reg = payload[i + 1] as usize;
+                let val_bytes = &payload[i + 2..i + 10];
+                let val = f64::from_le_bytes(val_bytes.try_into().unwrap());
+                if reg < registers.len() {
+                    registers[reg] = val;
+                    println!("Set register {} to value {}", reg, val);
+                } else {
+                    eprintln!("Register index {} out of range", reg);
+                }
+                i += 10;
             }
             0xFF /* HALT */ => {
                 io::stdout().flush().unwrap();
@@ -345,13 +406,13 @@ fn main() {
                 std::process::exit(1);
             });
             let magic = if args[3].ends_with(".qexe") {
-                QEXE_MAGIC
+                QEXE
             } else if args[3].ends_with(".oexe") {
-                OEXE_MAGIC
+                OEXE
             } else if args[3].ends_with(".qoexe") {
-                QOEXE_MAGIC
+                QOEXE
             } else if args[3].ends_with(".xexe") {
-                XEXE_MAGIC
+                XEXE
             } else {
                 eprintln!("Unknown output extension. Use .qexe, .oexe, .qoexe, or .xexe");
                 std::process::exit(1);

@@ -4,8 +4,8 @@
 
 #![allow(dead_code)] // this makes the compiler shut up
 #![allow(unused_variables)]
-
 #[derive(Debug)]
+
 pub enum Instruction {
     // core
     QInit(u8),
@@ -178,10 +178,10 @@ pub fn parse_instruction(line: &str) -> Result<Instruction, String> {
                 let reg = parse_u8(tokens[1])?;
                 let val = tokens[2]
                     .parse::<f64>()
-                    .map_err(|_| "REGSET <reg> <float>".to_string())?;
+                    .map_err(|_| "Invalid float value in REGSET <reg> <float>".to_string())?;
                 Ok(Instruction::RegSet(reg, val))
             } else {
-                Err("REGSET <reg> <value>".into())
+                Err("Usage: REGSET <reg> <float_value>".into())
             }
         }
 
