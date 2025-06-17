@@ -2,6 +2,8 @@
 
 ## High Priority: Register and Data Operations
 
+ # - FIX HADAMARD GATE - DONE
+
 - Add the REGSET instruction (opcode 0x10):  
   Set register to immediate 8-byte IEEE 754 float
 
