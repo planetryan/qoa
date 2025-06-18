@@ -8,7 +8,7 @@ use rand::rngs::StdRng;
 
 // --- Config ---
 
-const NOISE_PROBABILITY: f64 = 0.01; // 1% chance of an error after each gate
+const NOISE_PROBABILITY: f64 = 0.01; // chance of an error after each gate
 const MAX_REGISTERS: u8 = 255; // Using u8, so this is the natural limit
 
 // Opcodes for the binary .qexe format, improving readability over magic numbers
