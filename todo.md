@@ -1,13 +1,13 @@
-# QOA v0.3.0 Development TODO
+# QOA release v0.3.0 Development TODO
 
 ## High Priority: Register and Data Operations
 
  # - FIX HADAMARD GATE - DONE
 
-- Add the REGSET instruction (opcode 0x10):  
-  Set register to immediate 8-byte IEEE 754 float
+# - Add the REGSET instruction (opcode 0x20 something i forgot):  - DONE
+#  Set register to immediate 8-byte IEEE 754 float
 
-- Implement REGADD, REGSUB, REGMUL, REGDIV with IEEE 754 compliance:  
+# - Implement REGADD, REGSUB, REGMUL, REGDIV with IEEE 754 compliance:  - DONE (50%)
   Handle NaN, overflow, division by zero
 
 - Implement REGCOPY for register-to-register moves
@@ -17,6 +17,21 @@
 - Add register bounds checking and validation for all register operations
 
 ## Specific Instructions
+
+# QUANTUM NOISE:
+
+- Fix noise generation for outputs
+
+- improve noise-gen and make it high quality
+
+- confirm qubit indexing and ordering conventions used by the simulator.
+
+- analyze the effect of the first Hadamard gate on qubit 0 starting from ∣0000⟩.
+
+- analyze the effect of the second Hadamard gate on qubit 1 applied to the resulting superposition.
+
+- fix the effect of measuring qubit 3 when it is already in state 0 across all superposed components.
+
 
 - Implement THERMAL_AVG:  
   Sample Maxwell-Boltzmann energy distribution at given temperature (keV)

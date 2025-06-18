@@ -1,5 +1,5 @@
 use num_complex::Complex64;
-use rand::prelude::*;
+use rand::Rng;
 use std::env;
 use std::fs::{self, File};
 use std::io::{self, BufRead, BufReader, Write};
@@ -18,30 +18,28 @@ mod instructions;
     You can also compile into .oexe, .qoexe or .xexe, but .qexe is enough for now.
 
     This is the main interpreter, this effectively "simulates" random chance and measurement in quantum mechanics.
-    This does NOT make your CPU a QPU, in the same way simulating another CPU on your CPU doesn't make it the simulated CPU inherently.
+    This does NOT make your CPU a QPU, in the same way simulating another CPU on your CPU doesn't make the simulated CPU inherently.
     This is effectively emulating behavior outputted by a QPU; to actually test QOA effectively, I recommend a QPU of at least 160 logical Qubits or more.
 */
 
 // ----------- Supported Executable Headers -----------
+
 const QEXE: &[u8; 4] = b"QEXE";
 const OEXE: &[u8; 4] = b"OEXE";
 const QOEXE: &[u8; 4] = b"QOEX";
 const XEXE: &[u8; 4] = b"XEXE";
 
-// Compile a .qoa file into a binary payload (Vec<u8>).
+// Compile a .qoa file into a binary payload (Vec<u8>)
 fn compile_qoa_to_bin(src_path: &str) -> io::Result<Vec<u8>> {
     let file = File::open(src_path)?;
     let reader = BufReader::new(file);
     let mut payload = Vec::new();
-
-    // Read each line and parse to instructions, encode into binary payload
     for line in reader.lines() {
         let line = line?;
         if let Ok(inst) = instructions::parse_instruction(&line) {
             payload.extend(inst.encode());
         }
     }
-
     Ok(payload)
 }
 
@@ -124,7 +122,7 @@ impl QuantumState {
             .map(|(_, a)| a.norm_sqr())
             .sum();
 
-        let mut rng = thread_rng();
+        let mut rng = rand::thread_rng();
         let r: f64 = rng.gen();
         let outcome = if r < prob1 { 1 } else { 0 };
 
@@ -167,7 +165,6 @@ fn parse_exe_file(filedata: &[u8]) -> Option<(&'static str, u8, &[u8])> {
     Some((name, version, &filedata[9..9 + payload_len]))
 }
 
-// run executables
 fn run_exe(filedata: &[u8]) {
     // parse header + get payload slice
     let (header, version, payload) = match parse_exe_file(filedata) {
@@ -181,6 +178,10 @@ fn run_exe(filedata: &[u8]) {
     // FIRST PASS: scan payload to find highest qubit index only
     let mut max_q = 0usize;
     let mut i = 0usize;
+
+    // 16 registers, initialize to 0.0
+    let mut registers: Vec<f64> = vec![0.0; 16];
+
     while i < payload.len() {
         match payload[i] {
             0x04 /* QInit */ => {
@@ -215,8 +216,6 @@ fn run_exe(filedata: &[u8]) {
                     eprintln!("Incomplete CHARLOAD instruction at byte {}", i);
                     break;
                 }
-                let q = payload[i + 1] as usize;
-                max_q = max_q.max(q);
                 i += 3;
             }
             0x32 /* QMEAS */ => {
@@ -233,7 +232,14 @@ fn run_exe(filedata: &[u8]) {
                     eprintln!("Incomplete REGSET instruction at byte {}", i);
                     break;
                 }
-                // reg index, val bytes skipped for max_q
+                let reg = payload[i + 1] as usize;
+                if reg >= registers.len() {
+                    eprintln!("Register index {} out of range", reg);
+                    break;
+                }
+                let val_bytes = &payload[i + 2..i + 10];
+                let val = f64::from_le_bytes(val_bytes.try_into().unwrap());
+                registers[reg] = val;
                 i += 10;
             }
             0xFF /* HALT */ => {
@@ -246,16 +252,13 @@ fn run_exe(filedata: &[u8]) {
         }
     }
 
-    // Print header + init quantum state with enough qubits
-    let n_qubits = max_q + 1;
     println!(
         "Initializing quantum state with {} qubits (type {}, ver {})",
-        n_qubits, header, version
+        max_q + 1,
+        header,
+        version
     );
-    let mut qs = QuantumState::new(n_qubits);
-
-    // Registers for REGSET simulation (dummy placeholder)
-    let mut registers: Vec<f64> = vec![0.0; 16]; // adjust size as needed
+    let mut qs = QuantumState::new(max_q + 1);
 
     // SECOND PASS: execute instructions + print chars + measure qubits
     let mut i = 0;
@@ -285,8 +288,6 @@ fn run_exe(filedata: &[u8]) {
                         println!("Applied X gate on qubit {}", q);
                     }
                     "CZ" => {
-                        // For CZ gate, requires two qubits: control q, target t
-                        // If target qubit is encoded as q+1 or fallback to last qubit
                         let tgt = if q + 1 < qs.n { q + 1 } else { qs.n - 1 };
                         qs.apply_cz(q, tgt);
                         println!(
@@ -344,14 +345,14 @@ fn run_exe(filedata: &[u8]) {
                     break;
                 }
                 let reg = payload[i + 1] as usize;
+                if reg >= registers.len() {
+                    eprintln!("Register index {} out of range", reg);
+                    break;
+                }
                 let val_bytes = &payload[i + 2..i + 10];
                 let val = f64::from_le_bytes(val_bytes.try_into().unwrap());
-                if reg < registers.len() {
-                    registers[reg] = val;
-                    println!("Set register {} to value {}", reg, val);
-                } else {
-                    eprintln!("Register index {} out of range", reg);
-                }
+                registers[reg] = val;
+                println!("Set register {} to value {}", reg, val);
                 i += 10;
             }
             0xFF /* HALT */ => {
@@ -365,7 +366,7 @@ fn run_exe(filedata: &[u8]) {
         }
     }
 
-    // Final newline + amplitudes dump at end
+    // Final amplitudes dump at end
     println!("\nFinal amplitudes:");
     for (idx, amp) in qs.amps.iter().enumerate() {
         println!(

@@ -8,20 +8,17 @@ QINIT 1        ; proton B wavefunction
 QINIT 2        ; barrier site wavefunction
 QINIT 3        ; fusion marker qubit
 
-; NO REGSET FOR NOW UNTIL I FIX THE OPCODE ERROR
-
 ; Initialize constants in registers:
-; REGSET 0 1000        ; number of fusion trials (loop count)
-; REGSET 1 1300        ; thermal energy in eV
-; REGSET 2 1           ; tunneling probability (integer only)
-; REGSET 3 0           ; fusion count (external counting)
+REGSET 0 1000  ; R0: number of fusion trials (loop count)
+REGSET 1 1300  ; R1: thermal energy in eV
+REGSET 2 1     ; R2: tunneling probability (integer only)
+REGSET 3 0     ; R3: fusion count (external counting)
 
 ; NOTE: REGSET ONLY USES INT, NOT FLOATING POINT, SO USE FOR EXAMPLE
 ; REGSET 2 1 INSTEAD OF 2 0.01
 
 ; Loop over fusion trials
-; NOTE: LOOP removed due to missing REGSET for loop count
-; Replace with single trial below or re-enable once REGSET parsing is fixed
+LOOPSTART 0    ; Start loop, using register R0 as the loop counter
 
   ; Create superposition of protons (quantum state before tunneling)
   QGATE 0 H
@@ -33,6 +30,9 @@ QINIT 3        ; fusion marker qubit
   ; Controlled-Z gate entangles barrier and fusion marker
   QGATE 2 CZ 3
 
+  ; Add a Hadamard gate to put qubit 3 into superposition before measurement
+  QGATE 3 H  ; <--- ADD THIS LINE!
+
   ; Measure fusion marker qubit (fusion event)
   QMEAS 3
 
@@ -42,6 +42,6 @@ QINIT 3        ; fusion marker qubit
   QINIT 2
   QINIT 3
 
-; ENDLOOP  -- removed
+ENDLOOP        ; End loop
 
 HALT

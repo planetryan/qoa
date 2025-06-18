@@ -40,7 +40,7 @@ pub enum Instruction {
     Measure(u8),
 
     // regset
-    RegSet(u8, f64),
+    RegSet(u8, i64),
 
     // loop
     LoopStart(u8),
@@ -157,6 +157,7 @@ pub fn parse_instruction(line: &str) -> Result<Instruction, String> {
     let parse_i16 = |s: &str| s.parse::<i16>().map_err(|_| format!("Invalid i16 '{}'", s));
     let parse_u64 = |s: &str| s.parse::<u64>().map_err(|_| format!("Invalid u64 '{}'", s));
     let parse_f64 = |s: &str| s.parse::<f64>().map_err(|_| format!("Invalid f64 '{}'", s));
+    let parse_i64 = |s: &str| s.parse::<i64>().map_err(|_| format!("Invalid i64 '{}'", s));
     let parse_bool = |s: &str| match s.to_uppercase().as_str() {
         "TRUE" | "ON" => Ok(true),
         "FALSE" | "OFF" => Ok(false),
@@ -176,12 +177,10 @@ pub fn parse_instruction(line: &str) -> Result<Instruction, String> {
         "REGSET" => {
             if tokens.len() == 3 {
                 let reg = parse_u8(tokens[1])?;
-                let val = tokens[2]
-                    .parse::<f64>()
-                    .map_err(|_| "Invalid float value in REGSET <reg> <float>".to_string())?;
+                let val = parse_i64(tokens[2])?;
                 Ok(Instruction::RegSet(reg, val))
             } else {
-                Err("Usage: REGSET <reg> <float_value>".into())
+                Err("Usage: REGSET <reg> <int_value>".into())
             }
         }
 
@@ -2144,10 +2143,13 @@ impl Instruction {
             }
 
             Instruction::RegSet(reg, val) => {
-                let mut v = vec![0x10, *reg];
+                // opcode 0x21 to match emulator run code
+                let mut v = vec![0x21, *reg];
                 v.extend_from_slice(&val.to_le_bytes());
                 v
             }
+
+            // Looping stuff
             Instruction::LoopStart(times) => vec![0x20, *times],
             Instruction::LoopEnd => vec![0x21],
             Instruction::Measure(q) => vec![0x03, *q],
