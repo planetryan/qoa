@@ -1,6 +1,6 @@
 ; ==============================================
 ; I have yet to extend the ISA for this, but ive created a syntax of what it *should* be like
-; For now, Ive also made a 0.2.0 version of the fusion sim
+; For now, Ive also made a 0.2.2 version of the fusion sim
 ; QOA 0.3.0? Proton Proton Tunneling + Fusion Rate Implementation
 ; ==============================================
 
