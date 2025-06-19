@@ -1,0 +1,15 @@
+{
+  "name": "fusion-sim-step",
+  "shots": 1024,
+  "target": "simulator",
+  "input": {
+    "qubits": 4,
+    "circuit": [
+      { "gate": "h", "target": 0 },
+      { "gate": "h", "target": 1 },
+      { "gate": "rz", "target": 2, "angle": 3.0 },
+      { "gate": "cz", "control": 2, "target": 3 },
+      { "gate": "h", "target": 3 }
+    ]
+  }
+}

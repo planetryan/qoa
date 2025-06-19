@@ -1,0 +1,15 @@
+{
+  "name": "fusion-sim-0.3-step",
+  "shots": 1024,
+  "target": "simulator",
+  "notes": "RZ angle is pi*(1 - tunneling probability), replace with computed value before submission.",
+  "input": {
+    "qubits": 4,
+    "circuit": [
+      { "gate": "h", "target": 0 },
+      { "gate": "h", "target": 1 },
+      { "gate": "rz", "target": 2, "angle": 3.141592653589793 },
+      { "gate": "cz", "control": 2, "target": 3 }
+    ]
+  }
+}

@@ -5,6 +5,8 @@ use std::fs::{self, File};
 use std::io::{self, BufRead, BufReader, Write};
 
 mod instructions;
+use serde::Serialize;
+use serde_json::to_writer_pretty;
 
 /*
     Written by Rayan
@@ -379,6 +381,111 @@ fn run_exe(filedata: &[u8]) {
     }
 }
 
+// ------------------ IonQ JSON support structs and function ------------------
+
+#[derive(Serialize)]
+struct JsonGate {
+    gate: String,
+    target: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    control: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    angle: Option<f64>,
+}
+
+// Parse minimal subset of QOA source lines into IonQ JSON gates
+fn parse_line_to_json(line: &str) -> Option<(JsonGate, usize)> {
+    let parts: Vec<_> = line.trim().split_whitespace().collect();
+    if parts.is_empty() {
+        return None;
+    }
+
+    match parts[0].to_uppercase().as_str() {
+        "QGATE" => {
+            if parts.len() == 3 {
+                // QGATE <target> <gate>
+                let target = parts[1].parse().ok()?;
+                let gate = parts[2].to_lowercase();
+                Some((
+                    JsonGate {
+                        gate,
+                        target,
+                        control: None,
+                        angle: None,
+                    },
+                    target,
+                ))
+            } else if parts.len() == 4 {
+                // QGATE <control> <gate> <target>
+                let control = parts[1].parse().ok()?;
+                let gate = parts[2].to_lowercase();
+                let target = parts[3].parse().ok()?;
+                Some((
+                    JsonGate {
+                        gate,
+                        target,
+                        control: Some(control),
+                        angle: None,
+                    },
+                    control.max(target),
+                ))
+            } else {
+                None
+            }
+        }
+        "RZ" => {
+            if parts.len() == 3 {
+                // RZ <target> <angle>
+                let target = parts[1].parse().ok()?;
+                let angle = parts[2].parse().ok()?;
+                Some((
+                    JsonGate {
+                        gate: "rz".to_string(),
+                        target,
+                        control: None,
+                        angle: Some(angle),
+                    },
+                    target,
+                ))
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
+// Compile QOA source to IonQ JSON file
+fn compile_qoa_to_json(src_path: &str, out_path: &str) -> io::Result<()> {
+    let file = File::open(src_path)?;
+    let reader = BufReader::new(file);
+    let mut circuit = Vec::new();
+    let mut max_qubit = 0usize;
+
+    for line in reader.lines() {
+        let line = line?;
+        if let Some((gate, max_q)) = parse_line_to_json(&line) {
+            max_qubit = max_qubit.max(max_q);
+            circuit.push(gate);
+        }
+    }
+
+    let json_obj = serde_json::json!({
+        "name": "compiled-qoa-circuit",
+        "shots": 1024,
+        "target": "simulator",
+        "input": {
+            "qubits": max_qubit + 1,
+            "circuit": circuit,
+        }
+    });
+
+    let out_file = File::create(out_path)?;
+    to_writer_pretty(out_file, &json_obj)?;
+    println!("Sucessfully Compiled QOA source to {}", out_path);
+    Ok(())
+}
+
 // ------------------ CLI ------------------
 
 fn main() {
@@ -390,6 +497,7 @@ fn main() {
             args[0]
         );
         eprintln!("  {} run <program.[qexe|oexe|qoexe|xexe]>", args[0]);
+        eprintln!("  {} compile-json <source.qoa> <out.json>", args[0]);
         std::process::exit(1);
     }
 
@@ -434,6 +542,17 @@ fn main() {
                 std::process::exit(1);
             });
             run_exe(&filedata);
+        }
+        "compile-json" => {
+            // CLI command to compile QOA source to IonQ JSON format with automatic qubit count detection
+            if args.len() != 4 {
+                eprintln!("Usage: {} compile-json <source.qoa> <out.json>", args[0]);
+                std::process::exit(1);
+            }
+            compile_qoa_to_json(&args[2], &args[3]).unwrap_or_else(|e| {
+                eprintln!("Error compiling to JSON: {}", e);
+                std::process::exit(1);
+            });
         }
         other => {
             eprintln!("Unknown command: {}", other);

@@ -1,0 +1,28 @@
+{
+  "input": {
+    "circuit": [
+      {
+        "gate": "h",
+        "target": 0
+      },
+      {
+        "gate": "h",
+        "target": 1
+      },
+      {
+        "angle": 3.0,
+        "gate": "rz",
+        "target": 2
+      },
+      {
+        "control": 2,
+        "gate": "cz",
+        "target": 3
+      }
+    ],
+    "qubits": 4
+  },
+  "name": "compiled-qoa-circuit",
+  "shots": 1024,
+  "target": "simulator"
+}
