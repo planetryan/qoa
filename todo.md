@@ -1,13 +1,6 @@
 # QOA release v0.3.0 Development TODO
 
-## High Priority: Register and Data Operations
-
-# ADD IONQ QPU ACCESS, COMPILER, ETC - DONE
-
-# - FIX HADAMARD GATE - DONE
-
-# - Add the REGSET instruction (opcode 0x20 something i forgot):  - DONE
-#  Set register to immediate 8-byte IEEE 754 float
+## High Priority
 
 # - Implement REGADD, REGSUB, REGMUL, REGDIV with IEEE 754 compliance:  - DONE (50%)
   Handle NaN, overflow, division by zero

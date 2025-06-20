@@ -1,5 +1,5 @@
 ; this ** should ** work with IonQ, if it dosent, then its probably their fault
-; IonQ compabile QOA entanglement simulation of some quantum teleportation stuff
+; IonQ compabile QOA entanglement simulation of some quantum teleportation simulation using 25 ish qubits when corrected for noise (assuming noise env, disable if used in ideal)
 ; 
 ; detail:
 ; this qoa code prepares qubit 0 in state |1>, creates entanglement between qubits 1 and 2, applies additional gates to qubits 0, 1, and 2, and applies no-op rotations to qubits 3 through 24.
