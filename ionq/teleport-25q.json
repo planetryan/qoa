@@ -1,0 +1,40 @@
+{
+  "name": "teleport-sim-qoa",
+  "target": "simulator",
+  "shots": 1024,
+  "input": {
+    "qubits": 25,
+    "circuit": [
+      { "gate": "x", "target": 0 },                          
+      { "gate": "h", "target": 1 },                          
+      { "gate": "cnot", "control": 1, "target": 2 },         
+      { "gate": "cnot", "control": 0, "target": 1 },        
+      { "gate": "h", "target": 0 },                         
+      { "gate": "cnot", "control": 1, "target": 2 },         
+      { "gate": "cnot", "control": 0, "target": 2 },         
+
+      { "gate": "rz", "target": 3, "angle": 0.0 },
+      { "gate": "rz", "target": 4, "angle": 0.0 },
+      { "gate": "rz", "target": 5, "angle": 0.0 },
+      { "gate": "rz", "target": 6, "angle": 0.0 },
+      { "gate": "rz", "target": 7, "angle": 0.0 },
+      { "gate": "rz", "target": 8, "angle": 0.0 },
+      { "gate": "rz", "target": 9, "angle": 0.0 },
+      { "gate": "rz", "target": 10, "angle": 0.0 },
+      { "gate": "rz", "target": 11, "angle": 0.0 },
+      { "gate": "rz", "target": 12, "angle": 0.0 },
+      { "gate": "rz", "target": 13, "angle": 0.0 },
+      { "gate": "rz", "target": 14, "angle": 0.0 },
+      { "gate": "rz", "target": 15, "angle": 0.0 },
+      { "gate": "rz", "target": 16, "angle": 0.0 },
+      { "gate": "rz", "target": 17, "angle": 0.0 },
+      { "gate": "rz", "target": 18, "angle": 0.0 },
+      { "gate": "rz", "target": 19, "angle": 0.0 },
+      { "gate": "rz", "target": 20, "angle": 0.0 },
+      { "gate": "rz", "target": 21, "angle": 0.0 },
+      { "gate": "rz", "target": 22, "angle": 0.0 },
+      { "gate": "rz", "target": 23, "angle": 0.0 },
+      { "gate": "rz", "target": 24, "angle": 0.0 }
+    ]
+  }
+}

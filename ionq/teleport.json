@@ -1,0 +1,80 @@
+{
+  "input": {
+    "circuit": [
+      {
+        "angle": 3.0,
+        "gate": "rz",
+        "target": 0
+      },
+      {
+        "angle": 6.0,
+        "gate": "rz",
+        "target": 0
+      },
+      {
+        "angle": 4.0,
+        "gate": "rz",
+        "target": 2
+      },
+      {
+        "angle": 4.0,
+        "gate": "rz",
+        "target": 4
+      },
+      {
+        "angle": 4.0,
+        "gate": "rz",
+        "target": 6
+      },
+      {
+        "angle": 4.0,
+        "gate": "rz",
+        "target": 8
+      },
+      {
+        "angle": 4.0,
+        "gate": "rz",
+        "target": 10
+      },
+      {
+        "angle": 4.0,
+        "gate": "rz",
+        "target": 12
+      },
+      {
+        "angle": 4.0,
+        "gate": "rz",
+        "target": 14
+      },
+      {
+        "angle": 4.0,
+        "gate": "rz",
+        "target": 16
+      },
+      {
+        "angle": 4.0,
+        "gate": "rz",
+        "target": 18
+      },
+      {
+        "angle": 4.0,
+        "gate": "rz",
+        "target": 20
+      },
+      {
+        "angle": 4.0,
+        "gate": "rz",
+        "target": 22
+      },
+      {
+        "angle": 4.0,
+        "gate": "rz",
+        "target": 24
+      }
+    ],
+    "qubits": 25
+  },
+  "name": "teleport-sim-qoa",
+  "shots": 1024,
+  "target": "simulator"
+}

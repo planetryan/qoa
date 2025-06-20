@@ -1,0 +1,57 @@
+; this ** should ** work with IonQ, if it dosent, then its probably their fault
+; IonQ compabile QOA entanglement simulation of some quantum teleportation stuff
+; 
+; detail:
+; this qoa code prepares qubit 0 in state |1>, creates entanglement between qubits 1 and 2, applies additional gates to qubits 0, 1, and 2, and applies no-op rotations to qubits 3 through 24.
+;
+; written on 19/6/2025 by Rayan. 
+
+
+; for IonQ formatting, we use QUBITS x amount of qubits needed, as QINIT is not specifed in the IonQ Instructions
+
+QUBITS 25
+
+; x gate qubit 0
+X 0
+
+; h gate qubit 1
+H 1
+
+; cnot w/ control qubit 1 and target qubit 2
+CNOT 1 2
+
+; cnot w/ control qubit 0 and target qubit 1
+CNOT 0 1
+
+; h gate on qubit 0
+H 0
+
+; same as before with cnot
+CNOT 1 2
+CNOT 0 2
+
+; rz 0.0 on qubits 3 through 24 (no rotation)
+RZ 3 0.0
+RZ 4 0.0
+RZ 5 0.0
+RZ 6 0.0
+RZ 7 0.0
+RZ 8 0.0
+RZ 9 0.0
+RZ 10 0.0
+RZ 11 0.0
+RZ 12 0.0
+RZ 13 0.0
+RZ 14 0.0
+RZ 15 0.0
+RZ 16 0.0
+RZ 17 0.0
+RZ 18 0.0
+RZ 19 0.0
+RZ 20 0.0
+RZ 21 0.0
+RZ 22 0.0
+RZ 23 0.0
+RZ 24 0.0
+
+HALT

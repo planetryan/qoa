@@ -31,7 +31,7 @@ LOOPSTART 0    ; Start loop, using register R0 as the loop counter
   QGATE 2 CZ 3
 
   ; Add a Hadamard gate to put qubit 3 into superposition before measurement
-  QGATE 3 H  ; <--- ADD THIS LINE!
+  QGATE 3 H
 
   ; Measure fusion marker qubit (fusion event)
   QMEAS 3
