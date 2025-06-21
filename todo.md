@@ -1,17 +1,8 @@
 # QOA release v0.3.0 Development TODO
 
-## High Priority
+## THIS TODO LIST WILL DECREASE IN SIZE AS I FINISH IT
 
-# - Implement REGADD, REGSUB, REGMUL, REGDIV with IEEE 754 compliance:  - DONE (50%)
-  Handle NaN, overflow, division by zero
-
-- Implement REGCOPY for register-to-register moves
-
-- Add 16 floating-point registers R0 to R15 in QuantumState
-
-- Add register bounds checking and validation for all register operations
-
-## Specific Instructions
+## High Priority:
 
 # QUANTUM NOISE:
 

@@ -1,0 +1,37 @@
+# QOA v0.2.3 Release Notes
+
+Release Date: 21/06/2025  
+Status: Pre Release Patch
+
+## Summary
+
+QOA v0.2.3 expands arithmetic instruction support in the runtime with full IEEE 754 compliance. This includes propagation of NaNs, detection of overflow and division by zero, and new test coverage. It also finalizes a full 16-register floating-point execution model for QPU emulation.
+
+## Changes
+
+### Things I Added:
+
+- Added a `REGCOPY` instruction for direct register-to-register transfers.
+- Added internal QStatus flags for `nan`, `overflow`, and `div_by_zero`.
+- Added register bounds checking logic to all read/write operations in `QuantumState`.
+- Implemented `execute_arithmetic` function for dispatching arithmetic instructions.
+
+### Things I Improved:
+
+- REGADD, REGSUB, REGDIV, and REGMUL now fully conform to IEEE 754:
+  - Proper NaN propagation in all cases.
+  - Detect and set overflow and div-by-zero flags.
+- Refactored `QuantumState` with 16 general-purpose floating-point registers (R0–R15).
+- Improved reliability of register access with detailed error messages on invalid indices.
+- Added unit tests for:
+  - NaN propagation
+  - Division by zero detection
+  - Overflow on large value multiplication
+  - Register copy correctness
+  - Register bounds checking
+
+## Migration of old qoa source files:
+
+- No syntax changes or instruction deprecations were introduced.
+- Existing `.qoa` files remain compatible.
+- The runtime now enforces IEEE 754 semantics, so instruction results may differ where edge-case behavior (e.g. NaN handling) was previously undefined.

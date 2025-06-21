@@ -4,6 +4,10 @@ use std::env;
 use std::fs::{self, File};
 use std::io::{self, BufRead, BufReader, Write};
 
+// compile test.rs for testing
+#[cfg(test)]
+mod test;
+
 mod instructions;
 use serde::Serialize;
 use serde_json::to_writer_pretty;

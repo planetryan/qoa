@@ -1,8 +1,7 @@
-// not done yet, but seems pretty verbose for now
-
 // all supported instructions in QOA
 
-#![allow(dead_code)] // this makes the compiler shut up
+#![allow(dead_code)] // use for debug / testing 
+//#![deny(dead_code)] // use for release
 #![allow(unused_variables)]
 #[derive(Debug)]
 
@@ -35,9 +34,9 @@ pub enum Instruction {
     ResetAll,
     VerboseLog(u8, String),
     SetPhase(u8, f64),
-    InitQubit(u8),
     ApplyGate(String, u8),
     Measure(u8),
+    InitQubit(u8),
 
     // regset
     RegSet(u8, i64),
@@ -81,6 +80,13 @@ pub enum Instruction {
     Return,
     TimeDelay(u8, u64),
 
+    // arithmetic operations
+    RegAdd(u8, u8, u8),  // rd, ra, rb
+    RegSub(u8, u8, u8),
+    RegMul(u8, u8, u8),
+    RegDiv(u8, u8, u8),
+    RegCopy(u8, u8),     // rd, ra
+
     // optics
     PhotonEmit(u8),
     PhotonDetect(u8),
@@ -108,9 +114,9 @@ pub enum Instruction {
     MeasureWithDelay(u8, u64, String),
     OpticalSwitchControl(u8, bool),
     PhotonLossSimulate(u8, f64, u64),
-    PhotonLossCorrection(u8, String),
+    PhotonLossCorrection(u8, String),    // Arithmetic operations (add these)
 
-    // some advanced stuff
+    // qubit measurement
     ApplyQndMeasurement(u8, String),
     ErrorCorrect(u8, String),
     ErrorSyndrome(u8, String, String),
@@ -209,7 +215,6 @@ pub fn parse_instruction(line: &str) -> Result<Instruction, String> {
                 Err("QINIT <qubit>".into())
             }
         }
-        // "INITQUBIT" => { if tokens.len() == 2 { Ok(InitQubit(parse_u8(tokens[1])?)) } else { Err("INITQUBIT <qubit>".into()) } }
         "QMEAS" => {
             if tokens.len() == 2 {
                 Ok(QMeas(parse_u8(tokens[1])?))
@@ -224,7 +229,6 @@ pub fn parse_instruction(line: &str) -> Result<Instruction, String> {
                 Err("CHARLOAD <qubit> <ascii_val>".into())
             }
         }
-        // "MEASURE" => { if tokens.len() == 2 { Ok(Measure(parse_u8(tokens[1])?)) } else { Err("MEASURE <qubit>".into()) } }
         "QGATE" => {
             if tokens.len() == 3 {
                 let q = parse_u8(tokens[1])?;
@@ -2131,13 +2135,13 @@ pub fn parse_simple_opcode(tokens: &[&str]) -> Result<Instruction, String> {
 impl Instruction {
     pub fn encode(&self) -> Vec<u8> {
         match self {
-            Instruction::Halt => vec![0xFF],
+            Instruction::Halt => vec![0xff],
 
-            // Loop
+            // loop
             Instruction::ApplyGate(gate, q) => {
                 let mut v = vec![0x02, *q];
                 let mut gate_bytes = gate.as_bytes().to_vec();
-                gate_bytes.resize(8, 0); // Pad or truncate gate name to 8 bytes
+                gate_bytes.resize(8, 0); // pad or truncate gate name to 8 bytes
                 v.extend(gate_bytes);
                 v
             }
@@ -2149,25 +2153,25 @@ impl Instruction {
                 v
             }
 
-            // Looping stuff
+            // more looping stuff
             Instruction::LoopStart(times) => vec![0x20, *times],
             Instruction::LoopEnd => vec![0x21],
             Instruction::Measure(q) => vec![0x03, *q],
 
-            // Hadamard gate
+            // hadamard gate
             Instruction::Hadamard(reg) => vec![0x10, *reg as u8],
 
-            // Handle variants with data by pattern matching on their content
+            // handle variants with data by pattern matching on their content
             Instruction::InitQubit(reg) => vec![0x01, *reg],
             Instruction::Barrier => vec![0x03],
 
             Instruction::CharLoad(reg, val) => vec![0x31, *reg, *val],
             Instruction::QMeas(reg) => vec![0x32, *reg],
 
-            // Instruction::Not(_) => vec![0x00],
+            // instruction::not(_) => vec![0x00],
             Instruction::QInit(n) => vec![0x04, *n],
 
-            // Core
+            // core
             Instruction::ControlledPhaseRotation(q1, q2, angle) => {
                 let mut v = vec![0x90, *q1, *q2];
                 v.extend(&angle.to_le_bytes());
@@ -2202,15 +2206,15 @@ impl Instruction {
                 v
             }
 
-            // Measurement in specific basis
+            // measurement in specific basis
             Instruction::MeasureInBasis(n, basis) => {
                 let basis_code = match basis.as_str() {
                     "X" => 0x00,
                     "Y" => 0x01,
                     "Z" => 0x02,
-                    _ => panic!("Unknown basis: {}", basis),
+                    _ => panic!("unknown basis: {}", basis),
                 };
-                vec![0xA1, *n, basis_code]
+                vec![0xa1, *n, basis_code]
             }
 
             Instruction::ApplyHadamard(q) => vec![0x05, *q],
@@ -2218,31 +2222,31 @@ impl Instruction {
             Instruction::ApplyPhaseFlip(q) => vec![0x07, *q],
             Instruction::ApplyBitFlip(q) => vec![0x08, *q],
             Instruction::ApplyTGate(q) => vec![0x09, *q],
-            Instruction::ApplySGate(q) => vec![0x0A, *q],
+            Instruction::ApplySGate(q) => vec![0x0a, *q],
 
-            // Phase shift with floating-point value
+            // phase shift with floating-point value
             Instruction::PhaseShift(q, val) => {
-                let mut v = vec![0x0B, *q];
+                let mut v = vec![0x0b, *q];
                 v.extend(&val.to_le_bytes());
                 v
             }
 
-            // Wait (delay) cycles
+            // wait (delay) cycles
             Instruction::Wait(cycles) => {
-                let mut v = vec![0x0C];
+                let mut v = vec![0x0c];
                 v.extend(&cycles.to_le_bytes());
                 v
             }
 
-            // Reset operations
-            Instruction::Reset(q) => vec![0x0D, *q],
-            Instruction::ResetAll => vec![0x0E],
+            // reset operations
+            Instruction::Reset(q) => vec![0x0d, *q],
+            Instruction::ResetAll => vec![0x0e],
 
-            // Swapping qubits
-            Instruction::Swap(q1, q2) => vec![0x0F, *q1, *q2],
+            // swapping qubits
+            Instruction::Swap(q1, q2) => vec![0x0f, *q1, *q2],
             Instruction::ControlledSwap(c, t1, t2) => vec![0x10, *c, *t1, *t2],
 
-            // Entanglement operations
+            // entanglement operations
             Instruction::Entangle(q1, q2) => vec![0x11, *q1, *q2],
             Instruction::EntangleBell(q1, q2) => vec![0x12, *q1, *q2],
 
@@ -2280,7 +2284,7 @@ impl Instruction {
                 v
             }
 
-            // Rotations
+            // rotations
             Instruction::ApplyRotation(q, axis, angle) => {
                 let mut v = vec![0x20, *q, *axis as u8];
                 v.extend(&angle.to_le_bytes());
@@ -2295,7 +2299,7 @@ impl Instruction {
                 v
             }
 
-            // Memory/classical ops
+            // memory/classical ops
             Instruction::Load(q, reg) => {
                 let mut v = vec![0x30, *q];
                 v.extend(reg.as_bytes());
@@ -2381,7 +2385,7 @@ impl Instruction {
                 v
             }
             Instruction::Xor(dst, src1, src2) => {
-                let mut v = vec![0x3A];
+                let mut v = vec![0x3a];
                 v.extend(dst.as_bytes());
                 v.push(0);
                 v.extend(src1.as_bytes());
@@ -2391,19 +2395,19 @@ impl Instruction {
                 v
             }
             Instruction::Not(reg) => {
-                let mut v = vec![0x3B];
+                let mut v = vec![0x3b];
                 v.extend(reg.as_bytes());
                 v.push(0);
                 v
             }
             Instruction::Push(reg) => {
-                let mut v = vec![0x3C];
+                let mut v = vec![0x3c];
                 v.extend(reg.as_bytes());
                 v.push(0);
                 v
             }
             Instruction::Pop(reg) => {
-                let mut v = vec![0x3D];
+                let mut v = vec![0x3d];
                 v.extend(reg.as_bytes());
                 v.push(0);
                 v
@@ -2486,28 +2490,28 @@ impl Instruction {
             }
             Instruction::SinglePhotonSourceOn(q) => vec![0x58, *q],
             Instruction::SinglePhotonSourceOff(q) => vec![0x59, *q],
-            Instruction::PhotonBunchingControl(q, b) => vec![0x5A, *q, *b as u8],
+            Instruction::PhotonBunchingControl(q, b) => vec![0x5a, *q, *b as u8],
             Instruction::PhotonRoute(q, from, to) => {
-                let mut v = vec![0x5B, *q];
+                let mut v = vec![0x5b, *q];
                 v.extend(from.as_bytes());
                 v.push(0);
                 v.extend(to.as_bytes());
                 v.push(0);
                 v
             }
-            Instruction::OpticalRouting(q1, q2) => vec![0x5C, *q1, *q2],
+            Instruction::OpticalRouting(q1, q2) => vec![0x5c, *q1, *q2],
             Instruction::SetOpticalAttenuation(q, att) => {
-                let mut v = vec![0x5D, *q];
+                let mut v = vec![0x5d, *q];
                 v.extend(&att.to_le_bytes());
                 v
             }
             Instruction::DynamicPhaseCompensation(q, phase) => {
-                let mut v = vec![0x5E, *q];
+                let mut v = vec![0x5e, *q];
                 v.extend(&phase.to_le_bytes());
                 v
             }
             Instruction::OpticalDelayLineControl(q, delay) => {
-                let mut v = vec![0x5F, *q];
+                let mut v = vec![0x5f, *q];
                 v.extend(&delay.to_le_bytes());
                 v
             }
@@ -2560,122 +2564,14 @@ impl Instruction {
                 v
             }
             Instruction::PhotonLossCorrection(q, reg) => {
-                let mut v = vec![0x6A, *q];
+                let mut v = vec![0x6a, *q];
                 v.extend(reg.as_bytes());
-                v.push(0);
-                v
-            }
-            // Advanced / error correction
-            Instruction::ApplyQndMeasurement(q, mode) => {
-                let mut v = vec![0x70, *q];
-                v.extend(mode.as_bytes());
-                v.push(0);
-                v
-            }
-            Instruction::ErrorCorrect(q, code) => {
-                let mut v = vec![0x71, *q];
-                v.extend(code.as_bytes());
-                v.push(0);
-                v
-            }
-            Instruction::ErrorSyndrome(q, typ, reg) => {
-                let mut v = vec![0x72, *q];
-                v.extend(typ.as_bytes());
-                v.push(0);
-                v.extend(reg.as_bytes());
-                v.push(0);
-                v
-            }
-            Instruction::QuantumStateTomography(q, basis) => {
-                let mut v = vec![0x73, *q];
-                v.extend(basis.as_bytes());
-                v.push(0);
-                v
-            }
-            Instruction::BellStateVerification(q1, q2, mode) => {
-                let mut v = vec![0x74, *q1, *q2];
-                v.extend(mode.as_bytes());
-                v.push(0);
-                v
-            }
-            Instruction::QuantumZenoEffect(q, freq, dur) => {
-                let mut v = vec![0x75, *q];
-                v.extend(&freq.to_le_bytes());
-                v.extend(&dur.to_le_bytes());
-                v
-            }
-            Instruction::ApplyNonlinearPhaseShift(q, phase) => {
-                let mut v = vec![0x76, *q];
-                v.extend(&phase.to_le_bytes());
-                v
-            }
-            Instruction::ApplyNonlinearSigma(q, sigma) => {
-                let mut v = vec![0x77, *q];
-                v.extend(&sigma.to_le_bytes());
-                v
-            }
-            Instruction::ApplyLinearOpticalTransform(name, ins, outs, sz) => {
-                let mut v = vec![0x78];
-                v.extend(name.as_bytes());
-                v.push(0);
-                v.push(ins.len() as u8);
-                v.extend(ins.iter());
-                v.push(outs.len() as u8);
-                v.extend(outs.iter());
-                v.extend(&sz.to_le_bytes());
-                v
-            }
-            Instruction::PhotonNumberResolvingDetection(q, reg) => {
-                let mut v = vec![0x79, *q];
-                v.extend(reg.as_bytes());
-                v.push(0);
-                v
-            }
-            Instruction::FeedbackControl(q, sig) => {
-                let mut v = vec![0x7A, *q];
-                v.extend(sig.as_bytes());
                 v.push(0);
                 v
             }
 
-            // Misc / QOA specific
-            Instruction::SetPos(reg, x, y) => {
-                let mut v = vec![0x80, *reg];
-                v.extend(&x.to_le_bytes());
-                v.extend(&y.to_le_bytes());
-                v
-            }
-            Instruction::SetWl(reg, wl) => {
-                let mut v = vec![0x81, *reg];
-                v.extend(&wl.to_le_bytes());
-                v
-            }
-            Instruction::SetPhase(reg, phase) => {
-                let mut v = vec![0x82, *reg];
-                v.extend(&phase.to_le_bytes());
-                v
-            }
-            Instruction::WlShift(reg, shift) => {
-                let mut v = vec![0x83, *reg];
-                v.extend(&shift.to_le_bytes());
-                v
-            }
-            Instruction::Move(reg, dx, dy) => {
-                let mut v = vec![0x84, *reg];
-                v.extend(&dx.to_le_bytes());
-                v.extend(&dy.to_le_bytes());
-                v
-            }
-            Instruction::Comment(msg) => {
-                let mut v = vec![0xFE];
-                v.extend(msg.as_bytes());
-                v.push(0);
-                v
-            }
-            Instruction::MarkObserved(reg) => vec![0xF0, *reg],
-            Instruction::Release(reg) => vec![0xF1, *reg],
-            // catchall arm
-            // => todo!(),
+            // default fallback for unhandled instructions
+            _ => todo!("encoding not implemented for {:?}", self),
         }
     }
 }
