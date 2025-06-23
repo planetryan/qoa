@@ -35,6 +35,7 @@ QOA v0.2.4 significantly enhances quantum control with new feedback and conditio
 - Added `APPLY_PHOTON_SUBTRACTION n` and `PHOTON_ADDITION n` for photon number state engineering.
 - Added `APPLY_MEASUREMENT_BASIS_CHANGE n basis` for dynamic measurement basis changes.
 - Added `CONTROLLED_PHASE_ROTATION control target angle` for conditional phase rotation.
+- Added `.qx, .qox, .qex, .oex` and other executable formats, exiesting `.qexe` and other formats remains compatible.
 
 ### Things I Improved:
 
