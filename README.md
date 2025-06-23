@@ -238,4 +238,4 @@ HALT
 ### This is all for now. qoa is still being modeled and developed solely by me, and any practical applications would not be relevant until optical and quantum systems become more commonplace. as these technologies mature and gain wider adoption, qoa aims to provide a unified low-level assembly language capable of efficiently programming and controlling purely optical, purely quantum, or hybrid quantum-optical computing platforms. until then, qoa remains my theoretical passion project focused on laying the groundwork for future advancements in these future fields of computing.
 
 ## Thanks for reading! 
-### -- rayan
+### -- Rayan
