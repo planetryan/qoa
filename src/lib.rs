@@ -1,2 +1,2 @@
-pub mod instructions; // also for Instruction enum
-pub mod runtime;
+pub mod instructions; // for Instruction enum
+pub mod runtime; // for runtime
