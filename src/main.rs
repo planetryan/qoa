@@ -9,7 +9,7 @@ use std::io::{self, BufRead, BufReader, Write};
 use std::time::Instant;
 
 mod instructions;
-#[cfg(test)]
+#[cfg(test)] // for testing
 mod test;
 
 const QEX: &[u8; 4] = b"QEX ";
