@@ -1,4 +1,10 @@
-; Initialize 10 qubits (0 to 9)
+; Grover algorithm on 10 qubits, searching for |1111111111>
+
+; FOR VERSION 0.2.4 UNLESS SPECIFIED!
+
+; Written by Rayan on 20/06/2025
+
+; --- Initialize qubits ---
 QINIT 0
 QINIT 1
 QINIT 2
@@ -10,7 +16,7 @@ QINIT 7
 QINIT 8
 QINIT 9
 
-; Apply Hadamard gates to all 10 qubits to create superposition
+; --- Create superposition ---
 QGATE 0 H
 QGATE 1 H
 QGATE 2 H
@@ -22,79 +28,95 @@ QGATE 7 H
 QGATE 8 H
 QGATE 9 H
 
-; Mark the |1111111111> state by flipping its phase
-; Typically done via multi-controlled Z on all qubits
-; simulate with 2 qubit CZ gates cascaded (simplified)
+; --- Grover iterations ---
+LOOP 25                    ; ~ pi/4 * sqrt(1024) ≈ 25 iterations
 
-QGATE 0 CZ
-QGATE 1 CZ
-QGATE 2 CZ
-QGATE 3 CZ
-QGATE 4 CZ
-QGATE 5 CZ
-QGATE 6 CZ
-QGATE 7 CZ
-QGATE 8 CZ
-QGATE 9 CZ
+  ; --- Oracle: flip phase of |1111111111>
+  ; Apply X gates to flip bits for controls that should be 1 if your multi-control uses |0> controls
+  QGATE 0 X
+  QGATE 1 X
+  QGATE 2 X
+  QGATE 3 X
+  QGATE 4 X
+  QGATE 5 X
+  QGATE 6 X
+  QGATE 7 X
+  QGATE 8 X
+  QGATE 9 X
 
-; Diffusion operator (inversion about the mean)
-; Apply H, then X, then multi-controlled Z, then X, then H on all qubits
-QGATE 0 H
-QGATE 1 H
-QGATE 2 H
-QGATE 3 H
-QGATE 4 H
-QGATE 5 H
-QGATE 6 H
-QGATE 7 H
-QGATE 8 H
-QGATE 9 H
+  ; Multi-controlled Z placeholder - simulate with series of 2-qubit CZ or native gates
+  ; Assume QGATE 0 CZ 9 means CZ controlled by qubit 0 acting on qubit 9
+  ; This is a simplification; true multi-control needs ancillas and decomposition
+  QGATE 0 CZ 9
 
-QGATE 0 X
-QGATE 1 X
-QGATE 2 X
-QGATE 3 X
-QGATE 4 X
-QGATE 5 X
-QGATE 6 X
-QGATE 7 X
-QGATE 8 X
-QGATE 9 X
+  ; Undo X gates
+  QGATE 0 X
+  QGATE 1 X
+  QGATE 2 X
+  QGATE 3 X
+  QGATE 4 X
+  QGATE 5 X
+  QGATE 6 X
+  QGATE 7 X
+  QGATE 8 X
+  QGATE 9 X
 
-QGATE 0 CZ
-QGATE 1 CZ
-QGATE 2 CZ
-QGATE 3 CZ
-QGATE 4 CZ
-QGATE 5 CZ
-QGATE 6 CZ
-QGATE 7 CZ
-QGATE 8 CZ
-QGATE 9 CZ
+  ; --- Diffusion operator ---
 
-QGATE 0 X
-QGATE 1 X
-QGATE 2 X
-QGATE 3 X
-QGATE 4 X
-QGATE 5 X
-QGATE 6 X
-QGATE 7 X
-QGATE 8 X
-QGATE 9 X
+  ; H gates
+  QGATE 0 H
+  QGATE 1 H
+  QGATE 2 H
+  QGATE 3 H
+  QGATE 4 H
+  QGATE 5 H
+  QGATE 6 H
+  QGATE 7 H
+  QGATE 8 H
+  QGATE 9 H
 
-QGATE 0 H
-QGATE 1 H
-QGATE 2 H
-QGATE 3 H
-QGATE 4 H
-QGATE 5 H
-QGATE 6 H
-QGATE 7 H
-QGATE 8 H
-QGATE 9 H
+  ; X gates
+  QGATE 0 X
+  QGATE 1 X
+  QGATE 2 X
+  QGATE 3 X
+  QGATE 4 X
+  QGATE 5 X
+  QGATE 6 X
+  QGATE 7 X
+  QGATE 8 X
+  QGATE 9 X
 
-; Measure all qubits
+  ; Multi-controlled Z (same as oracle)
+  QGATE 0 CZ 9
+
+  ; X gates
+  QGATE 0 X
+  QGATE 1 X
+  QGATE 2 X
+  QGATE 3 X
+  QGATE 4 X
+  QGATE 5 X
+  QGATE 6 X
+  QGATE 7 X
+  QGATE 8 X
+  QGATE 9 X
+
+  ; H gates
+  QGATE 0 H
+  QGATE 1 H
+  QGATE 2 H
+  QGATE 3 H
+  QGATE 4 H
+  QGATE 5 H
+  QGATE 6 H
+  QGATE 7 H
+  QGATE 8 H
+  QGATE 9 H
+
+ENDLOOP
+
+; --- Measure all qubits ---
 QMEAS 0
 QMEAS 1
 QMEAS 2
@@ -105,3 +127,5 @@ QMEAS 6
 QMEAS 7
 QMEAS 8
 QMEAS 9
+
+HALT

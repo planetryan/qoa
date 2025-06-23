@@ -4,53 +4,7 @@
 
 ## High Priority:
 
-# QUANTUM NOISE:
-
-- Fix noise generation for outputs
-
-- improve noise-gen and make it high quality
-
-- confirm qubit indexing and ordering conventions used by the simulator.
-
-- analyze the effect of the first Hadamard gate on qubit 0 starting from ∣0000⟩.
-
-- analyze the effect of the second Hadamard gate on qubit 1 applied to the resulting superposition.
-
-- fix the effect of measuring qubit 3 when it is already in state 0 across all superposed components.
-
-
-- Implement THERMAL_AVG:  
-  Sample Maxwell-Boltzmann energy distribution at given temperature (keV)
-
-- Implement WKB_FACTOR:  
-  Calculate Gamow tunneling factor exp(-2πη), where η depends on physical constants and energy
-
-- Define key physical constants:  
-  Proton mass, fine structure constant, Coulomb barrier, etc.
-
-- Implement SQRT, EXP, LOG with domain and error checks
-
-- Implement RAND:  
-  Generate random floating-point number between 0 and 1
-
-- Ensure proper NaN and error propagation for all math operations
-
-## Quantum Gate Enhancements
-
-- Implement RX, RY, RZ parametric rotation gates using angle values from registers
-
-- Implement PHASE gate for arbitrary phase rotation on qubits
-
-- Implement CNOT gate (controlled-NOT)
-
-- Implement QRESET to reset qubit to |0⟩ state
-
-- Update quantum state operations for parametric gates and normalize after application
-
-
 ## Control Flow & Program Structure
-
-- Implement LOOP and ENDLOOP instructions with iteration counters on program counter stack
 
 - Implement JMP (relative) and JMPABS (absolute) jump instructions
 
@@ -87,10 +41,9 @@
 
 ### System & Debug Utilities
 
-- Implement NOP (no operation) and BREAK (breakpoint) instructions
+- Implement BREAK (breakpoint) instruction
 - Implement TIME instruction to get system timestamp in register
 - Implement SEED instruction to seed RNG for reproducible results
-- Implement VERSION instruction to output current QOA version
 - Implement EXIT instruction to terminate program with exit code
 
 
@@ -100,7 +53,6 @@
 
 - Extend opcode handling to cover 0x10 through 0xFF and variable-length instructions
 - Improve parsing validation and error messaging
-- Ensure backward compatibility with QOA v0.2.0 programs
 
 ### Quantum State Management
 

@@ -1,59 +1,43 @@
-; Hello World in QOA - Updated for 0.2.0
-
-; Initialize qubit 0
-QINIT 0
+; Hello World in QOA - Updated for 0.2.4
 
 ; 'H'
-CHARLOAD 0 72
-QMEAS 0
+CHARLOAD 0 'H'
 
 ; 'e'
-CHARLOAD 0 101
-QMEAS 0
+CHARLOAD 0 'e'
 
 ; 'l'
-CHARLOAD 0 108
-QMEAS 0
+CHARLOAD 0 'l'
 
 ; 'l'
-CHARLOAD 0 108
-QMEAS 0
+CHARLOAD 0 'l'
 
 ; 'o'
-CHARLOAD 0 111
-QMEAS 0
+CHARLOAD 0 'o'
 
 ; ','
-CHARLOAD 0 44
-QMEAS 0
+CHARLOAD 0 ','
 
 ; ' '
-CHARLOAD 0 32
-QMEAS 0
+CHARLOAD 0 ' '
 
 ; 'W'
-CHARLOAD 0 87
-QMEAS 0
+CHARLOAD 0 'W'
 
 ; 'o'
-CHARLOAD 0 111
-QMEAS 0
+CHARLOAD 0 'o'
 
 ; 'r'
-CHARLOAD 0 114
-QMEAS 0
+CHARLOAD 0 'r'
 
 ; 'l'
-CHARLOAD 0 108
-QMEAS 0
+CHARLOAD 0 'l'
 
 ; 'd'
-CHARLOAD 0 100
-QMEAS 0
+CHARLOAD 0 'd'
 
 ; '!'
-CHARLOAD 0 33
-QMEAS 0
+CHARLOAD 0 '!'
 
 ; Halt program
 HALT
