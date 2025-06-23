@@ -1,7 +1,7 @@
 # QOA v0.2.4 Release Notes
 
 Release Date: 23/06/2025
-Status: Pre Release Patch
+Status: Pre Release
 
 ## Summary
 
