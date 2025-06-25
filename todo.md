@@ -6,6 +6,8 @@
 
 ## Control Flow & Program Structure
 
+- Fully implement Loops and such
+
 - Implement JMP (relative) and JMPABS (absolute) jump instructions
 
 - Implement conditional jumps:  
