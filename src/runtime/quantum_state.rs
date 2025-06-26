@@ -1,9 +1,9 @@
 use crate::instructions::Instruction;
 use num_complex::Complex64;
+use rand::rngs::StdRng;
 use rand::Rng;
 use rand::SeedableRng;
-use rand::rngs::StdRng;
-use rand_distr::{Distribution, StandardNormal}; 
+use rand_distr::{Distribution, StandardNormal};
 
 #[derive(Debug, Clone)]
 pub enum NoiseConfig {
@@ -294,7 +294,10 @@ impl QuantumState {
             // temporarily take ownership of the rng from self.
             // this ensures `self` is not mutably borrowed by `rng` during the loop
             // when `_apply_*_pure` methods (which also borrow `self` mutably) are called.
-            let mut temp_rng = self.rng.take().expect("rng should be initialized for noise application in apply_noise");
+            let mut temp_rng = self
+                .rng
+                .take()
+                .expect("rng should be initialized for noise application in apply_noise");
 
             match config {
                 NoiseConfig::Random => {
@@ -593,15 +596,22 @@ impl QuantumState {
             .sum();
 
         // temporarily take the rng for use in this function
-        let mut temp_rng = self.rng.take().expect("rng should be initialized for measurement in current context.");
+        let mut temp_rng = self
+            .rng
+            .take()
+            .expect("rng should be initialized for measurement in current context.");
 
         let outcome = {
             let r: f64 = temp_rng.gen(); // use the temporary rng
-            if r < prob1 { 1 } else { 0 }
+            if r < prob1 {
+                1
+            } else {
+                0
+            }
         };
 
         // put the rng back before any subsequent `self` mutable operations that might conflict
-        self.rng = Some(temp_rng); 
+        self.rng = Some(temp_rng);
 
         let norm_sqr = if outcome == 1 { prob1 } else { 1.0 - prob1 };
 
@@ -637,19 +647,26 @@ impl QuantumState {
         }
 
         eprintln!("[info] applying final state amplitude randomization.");
-        
+
         // temporarily take the rng for use
-        let mut temp_rng = self.rng.take().expect("rng should be initialized for final state noise.");
-        
+        let mut temp_rng = self
+            .rng
+            .take()
+            .expect("rng should be initialized for final state noise.");
+
         let noise_strength = 0.1; // noise strength
 
         for amp in self.amps.iter_mut() {
             // add small random gaussian noise to real and imaginary parts
-            let random_re: f64 = <StandardNormal as Distribution<f64>>::sample(&StandardNormal, &mut temp_rng) * noise_strength;
-            let random_im: f64 = <StandardNormal as Distribution<f64>>::sample(&StandardNormal, &mut temp_rng) * noise_strength;
+            let random_re: f64 =
+                <StandardNormal as Distribution<f64>>::sample(&StandardNormal, &mut temp_rng)
+                    * noise_strength;
+            let random_im: f64 =
+                <StandardNormal as Distribution<f64>>::sample(&StandardNormal, &mut temp_rng)
+                    * noise_strength;
             *amp += Complex64::new(random_re, random_im);
         }
-        
+
         // put the rng back
         self.rng = Some(temp_rng);
         self.normalize(); // ensure the state is still normalized after randomization

@@ -668,7 +668,7 @@ impl QuantumState {
 
     // New function to apply noise just before final amplitude display
     pub fn apply_final_state_noise(&mut self) {
-        eprintln!("[info] applying final state noise.");
+        eprintln!("[info] applying final state");
         self.apply_noise(); // Reuses existing noise logic and configuration
     }
 }
