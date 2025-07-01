@@ -1,18 +1,20 @@
-use clap::CommandFactory;
 use clap::Parser;
+use log::{debug, error, info, warn}; // import logging macros
 use qoa::runtime::quantum_state::NoiseConfig;
 use qoa::runtime::quantum_state::QuantumState;
-use serde::Serialize;
+use rand::rngs::StdRng;
+use rand::{Rng, SeedableRng}; // keep Rng for rng.gen()
 use serde_json::to_writer_pretty;
 use std::fs::{self, File};
 use std::io::{self, BufRead, BufReader, Write};
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
-use rand::rngs::StdRng;
-use rand::{Rng, SeedableRng}; // keep Rng for rng.gen()
+use std::path::PathBuf;
+use std::time::{Instant, SystemTime, UNIX_EPOCH}; // added for PathBuf
+use crate::visualizer::SpectrumDirection;
 
 mod instructions;
 #[cfg(test)] // for testing
 mod test;
+mod visualizer;
 
 const QEX: &[u8; 4] = b"QEX ";
 const QEXE: &[u8; 4] = b"QEXE";
@@ -21,14 +23,14 @@ const QOX: &[u8; 4] = b"QOX ";
 const XEXE: &[u8; 4] = b"XEXE";
 const QX: &[u8; 4] = b"QX\0\0";
 
-const QOA_VERSION: &str = "0.2.4";
+const QOA_VERSION: &str = "0.2.6";
 const QOA_AUTHOR: &str = "Rayan (@planetryan on GitHub)";
 
 #[derive(Parser, Debug)]
 #[command(name = "QOA", author = QOA_AUTHOR, version = QOA_VERSION,
-    about = format!("QOA (Quantum Optical Assembly Language) - A Free, Open Source, Quantum QPU simulator and assembly language.\n\
-             Author: {QOA_AUTHOR}\n\
-             Version: {QOA_VERSION}\n\n\
+    about = format!("QOA (Quantum Optical Assembly Language) - A Free, Open Source, Quantum QPU simulator and assembly language.\n
+             Author: {QOA_AUTHOR}
+             Version: {QOA_VERSION}\n
              Use 'qoa help <command>' for more information on a specific command, e.g., 'qoa help run'."),
     long_about = None)]
 struct Cli {
@@ -62,7 +64,7 @@ enum Commands {
         #[arg(long, num_args = 0..=1, default_missing_value = "random", value_name = "PROBABILITY")]
         noise: Option<String>,
         /// Apply an additional noise step to the final amplitudes before displaying them (default: true). Use --final-noise false to disable this specific noise.
-        #[arg(long, default_value_t = true)] // This makes --final-noise true by default
+        #[arg(long, default_value_t = true)] // this makes --final-noise true by default
         final_noise: bool,
     },
     /// Compiles a .qoa source file into a .json circuit description (IonQ format).
@@ -72,10 +74,55 @@ enum Commands {
         /// Output .json file path
         output: String,
     },
-    /// Prints the qoa version.
-    Version,
-    /// Prints all available global flags (options) for the 'run' command.
-    Flags,
+    /// Visualizes quantum state or circuit based on input data.
+
+Visual {
+    /// Input file path (e.g., .qexe or raw data for visualization)
+    input: String,
+
+    /// Output file path for the visualization (e.g., .png, .gif, .mp4)
+    output: String,
+
+    /// Resolution of the output visualization (e.g., "1920x1080")
+    #[arg(long, default_value = "1920x1080")]
+    resolution: String,
+
+    /// Frames per second for animation (if applicable)
+    #[arg(long, default_value_t = 60)] // default 60fps
+    fps: u32,
+
+    /// Spectrum direction Left-to-Right
+    #[arg(long, conflicts_with = "rtl", default_value_t = false)]
+    ltr: bool,
+
+    /// Spectrum direction Right-to-Left
+    #[arg(long, conflicts_with = "ltr", default_value_t = false)]
+    rtl: bool,
+
+    /// Additional ffmpeg arguments passed directly to ffmpeg (e.g., "-c:v libx264 -crf 23")
+    #[arg(last = true, allow_hyphen_values = true)]
+    ffmpeg_args: Vec<String>,
+},
+
+Version,
+
+Flags,
+
+}
+
+
+// Helper function to parse resolution string
+#[allow(dead_code)]
+fn parse_resolution(res: &str) -> Option<(u32, u32)> {
+    let parts: Vec<&str> = res.split('x').collect();
+    if parts.len() == 2 {
+        let width = parts[0].parse::<u32>().ok();
+        let height = parts[1].parse::<u32>().ok();
+        if let (Some(w), Some(h)) = (width, height) {
+            return Some((w, h));
+        }
+    }
+    None
 }
 
 fn compile_qoa_to_bin(src_path: &str, debug_mode: bool) -> io::Result<Vec<u8>> {
@@ -91,12 +138,12 @@ fn compile_qoa_to_bin(src_path: &str, debug_mode: bool) -> io::Result<Vec<u8>> {
             Ok(inst) => {
                 let encoded = inst.encode();
                 if debug_mode {
-                    println!("parsing line: '{}', encoded bytes: {:?}", line, encoded);
+                    debug!("parsing line: '{}', encoded bytes: {:?}", line, encoded);
                 }
                 payload.extend(encoded);
             }
             Err(e) => {
-                eprintln!("warning: failed to parse instruction '{}': {}", line, e);
+                warn!("failed to parse instruction '{}': {}", line, e);
             }
         }
     }
@@ -106,7 +153,7 @@ fn compile_qoa_to_bin(src_path: &str, debug_mode: bool) -> io::Result<Vec<u8>> {
 fn write_exe(payload: &[u8], out_path: &str, magic: &[u8; 4]) -> io::Result<()> {
     let mut f = File::create(out_path)?;
     f.write_all(magic)?;
-    f.write_all(&[1])?;
+    f.write_all(&[1])?; 
     f.write_all(&(payload.len() as u32).to_le_bytes())?;
     f.write_all(payload)?;
     Ok(())
@@ -114,7 +161,7 @@ fn write_exe(payload: &[u8], out_path: &str, magic: &[u8; 4]) -> io::Result<()> 
 
 fn parse_exe_file(filedata: &[u8]) -> Option<(&'static str, u8, &[u8])> {
     if filedata.len() < 9 {
-        eprintln!("error: file too short to contain a valid header and payload length.");
+        error!("file too short to contain a valid header and payload length.");
         return None;
     }
     let actual_header_bytes = &filedata[0..4];
@@ -126,8 +173,8 @@ fn parse_exe_file(filedata: &[u8]) -> Option<(&'static str, u8, &[u8])> {
         m if *m == *QEX => "QEX",
         m if *m == *QX => "QX",
         _ => {
-            eprintln!(
-                "error: unknown or unsupported header: {:?} (as string: {:?})",
+            error!(
+                "unknown or unsupported header: {:?} (as string: {:?})",
                 actual_header_bytes,
                 String::from_utf8_lossy(actual_header_bytes)
             );
@@ -138,8 +185,8 @@ fn parse_exe_file(filedata: &[u8]) -> Option<(&'static str, u8, &[u8])> {
     let payload_len =
         u32::from_le_bytes([filedata[5], filedata[6], filedata[7], filedata[8]]) as usize;
     if filedata.len() < 9 + payload_len {
-        eprintln!(
-            "error: file too short. expected {} bytes, got {}",
+        error!(
+            "file too short. expected {} bytes, got {}",
             9 + payload_len,
             filedata.len()
         );
@@ -157,16 +204,16 @@ fn run_exe(
     let (header, version, payload) = match parse_exe_file(filedata) {
         Some(x) => x,
         None => {
-            eprintln!("invalid or unsupported exe file, please check its header.");
+            error!("invalid or unsupported exe file, please check its header.");
             return;
         }
     };
 
     if debug_mode {
-        eprintln!("payload length: {}", payload.len());
-        eprintln!("payload snippet (first 32 bytes):");
+        debug!("payload length: {}", payload.len());
+        debug!("payload snippet (first 32 bytes):");
         for j in 0..payload.len().min(32) {
-            eprintln!(
+            debug!(
                 "byte[{:#04}] = 0x{:02X} '{}'",
                 j,
                 payload[j],
@@ -182,13 +229,13 @@ fn run_exe(
     if let Some(config) = &noise_config {
         match config {
             NoiseConfig::Random => {
-                eprintln!("[info] noise mode: random depolarizing");
+                info!("noise mode: random depolarizing");
             }
             NoiseConfig::Fixed(value) => {
-                eprintln!("[info] noise mode: fixed depolarizing ({})", value);
+                info!("noise mode: fixed depolarizing ({})", value);
             }
             NoiseConfig::Ideal => {
-                eprintln!("[info] noise mode: ideal state (no noise)");
+                info!("noise mode: ideal state (no noise)");
             }
         }
     }
@@ -201,7 +248,7 @@ fn run_exe(
     // it also tracks the maximum qubit index accessed.
     while i < payload.len() {
         if debug_mode {
-            eprintln!("scanning opcode 0x{:02X} at byte {}", payload[i], i);
+            debug!("scanning opcode 0x{:02X} at byte {}", payload[i], i);
         }
         let opcode = payload[i];
         match opcode {
@@ -212,8 +259,8 @@ fn run_exe(
             0x61 /* SinglePhotonSourceOn */ | 0x62 /* SinglePhotonSourceOff */ |
             0x6F /* MeasureParity */ | 0x71 /* OpticalSwitchControl */ | 0x79 /* MarkObserved */ |
             0x7A /* Release */ | 0x9B /* Input */ | 0xA0 /* PushReg */ | 0xA1 /* PopReg */ |
-            0xAC /* GetTime */ | 0x50 /* Rand */ | 0x18 /* CharOut */ => { // Added Rand and CharOut
-                if i + 1 >= payload.len() { eprintln!("incomplete instruction at byte {}", i); break; }
+            0xAC /* GetTime */ | 0x50 /* Rand */ | 0x18 /* CharOut */ => { // added Rand and CharOut
+                if i + 1 >= payload.len() { error!("incomplete instruction at byte {}", i); break; }
                 max_q = max_q.max(payload[i+1] as usize);
                 i += 2;
             }
@@ -221,46 +268,47 @@ fn run_exe(
             0x24 /* Phase */ | 0x66 /* SetOpticalAttenuation */ | 0x67 /* DynamicPhaseCompensation */ |
             0x6A /* ApplyDisplacement */ | 0x6D /* ApplySqueezing */ |
             0x82 /* ApplyNonlinearPhaseShift */ | 0x83 /* ApplyNonlinearSigma */ |
-            0x21 /* RegSet */ => { // Added RegSet
-                if i + 9 >= payload.len() { eprintln!("incomplete instruction at byte {}", i); break; }
+            0x21 /* RegSet */ => { // added RegSet
+                if i + 9 >= payload.len() { error!("incomplete instruction at byte {}", i); break; }
                 max_q = max_q.max(payload[i+1] as usize);
                 i += 10;
             }
             0x17 /* ControlledNot / CNOT */ | 0x1E /* CZ */ | 0x0B /* Swap */ |
             0x1F /* ThermalAvg */ | 0x65 /* OpticalRouting */ | 0x69 /* CrossPhaseModulation */ |
-            0xA4 /* Cmp */ | 0x51 /* Sqrt */ | 0x52 /* Exp */ | 0x53 /* Log */ => { // Added Sqrt, Exp, Log
-                if i + 2 >= payload.len() { eprintln!("incomplete instruction at byte {}", i); break; }
+            0x20 /* WkbFactor */ | // moved WkbFactor here, it's 3 bytes
+            0xA4 /* Cmp */ | 0x51 /* Sqrt */ | 0x52 /* Exp */ | 0x53 /* Log */ => { // added Sqrt, Exp, Log
+                if i + 2 >= payload.len() { error!("incomplete instruction at byte {}", i); break; }
                 max_q = max_q.max(payload[i+1] as usize).max(payload[i+2] as usize);
                 i += 3;
             }
-            0x0C /* ControlledSwap */ | 0x20 /* WkbFactor */ | 0x54 /* RegAdd */ |
+            0x0C /* ControlledSwap */ | 0x54 /* RegAdd */ |
             0x55 /* RegSub */ | 0x56 /* RegMul */ | 0x57 /* RegDiv */ | 0x58 /* RegCopy */ |
-            0x63 /* PhotonBunchingControl */ | 0xA8 /* NotBits */ | 0x31 /* CharLoad */ => { // Added CharLoad
-                if i + 3 >= payload.len() { eprintln!("incomplete instruction at byte {}", i); break; }
-                max_q = max_q.max(payload[i+1] as usize).max(payload[i+2] as usize).max(payload[i+3] as usize); // This line might be incorrect for all these opcodes, review
+            0x63 /* PhotonBunchingControl */ | 0xA8 /* NotBits */ | 0x31 /* CharLoad */ => { // added CharLoad
+                if i + 3 >= payload.len() { error!("incomplete instruction at byte {}", i); break; }
+                max_q = max_q.max(payload[i+1] as usize).max(payload[i+2] as usize).max(payload[i+3] as usize); // this line might be incorrect for all these opcodes, review
                 i += 4;
             }
             0x11 /* Entangle */ | 0x12 /* EntangleBell */ => {
-                if i + 2 >= payload.len() { eprintln!("incomplete instruction at byte {}", i); break; }
+                if i + 2 >= payload.len() { error!("incomplete instruction at byte {}", i); break; }
                 max_q = max_q.max(payload[i+1] as usize).max(payload[i+2] as usize);
                 i += 3;
             }
             0x13 /* EntangleMulti */ | 0x14 /* EntangleCluster */ => {
-                if i + 1 >= payload.len() { eprintln!("incomplete instruction at byte {}", i); break; }
+                if i + 1 >= payload.len() { error!("incomplete instruction at byte {}", i); break; }
                 let num_qubits_in_list = payload[i+1] as usize;
-                if i + 1 + num_qubits_in_list >= payload.len() { eprintln!("incomplete instruction (entangle multi/cluster) at byte {}", i); break; }
+                if i + 1 + num_qubits_in_list >= payload.len() { error!("incomplete instruction (entangle multi/cluster) at byte {}", i); break; }
                 for q_idx in 0..num_qubits_in_list {
                     max_q = max_q.max(payload[i + 2 + q_idx] as usize);
                 }
                 i += 2 + num_qubits_in_list;
             }
             0x15 /* EntangleSwap */ => {
-                if i + 4 >= payload.len() { eprintln!("incomplete instruction at byte {}", i); break; }
+                if i + 4 >= payload.len() { error!("incomplete instruction at byte {}", i); break; }
                 max_q = max_q.max(payload[i+1] as usize).max(payload[i+2] as usize).max(payload[i+3] as usize).max(payload[i+4] as usize);
                 i += 5;
             }
             0x16 /* EntangleSwapMeasure */ => {
-                if i + 4 >= payload.len() { eprintln!("incomplete instruction at byte {}", i); break; }
+                if i + 4 >= payload.len() { error!("incomplete instruction at byte {}", i); break; }
                 max_q = max_q.max(payload[i+1] as usize).max(payload[i+2] as usize).max(payload[i+3] as usize).max(payload[i+4] as usize);
                 let label_start = i + 5;
                 let label_end = label_start + payload[label_start..].iter().position(|&b| b == 0).unwrap_or(0);
@@ -274,7 +322,7 @@ fn run_exe(
             0x7C /* ApplyQndMeasurement */ | 0x7D /* ErrorCorrect */ |
             0x7F /* QuantumStateTomography */ | 0x85 /* PhotonNumberResolvingDetection */ |
             0x86 /* FeedbackControl */ => {
-                if i + 1 >= payload.len() { eprintln!("incomplete instruction at byte {}", i); break; }
+                if i + 1 >= payload.len() { error!("incomplete instruction at byte {}", i); break; }
                 max_q = max_q.max(payload[i+1] as usize);
                 let label_start = i + 2;
                 let label_end = label_start + payload[label_start..].iter().position(|&b| b == 0).unwrap_or(0);
@@ -285,17 +333,13 @@ fn run_exe(
             0x9D /* DumpRegs */ | 0xAB /* BreakPoint */ => {
                 i += 1;
             }
-            0x01 /* LoopStart */ => {
-                if i + 1 >= payload.len() { eprintln!("incomplete instruction at byte {}", i); break; }
-                i += 2;
-            }
             0x02 /* ApplyGate (QGATE) */ => {
-                if i + 9 >= payload.len() { eprintln!("incomplete qgate instruction at byte {}", i); break; }
+                if i + 9 >= payload.len() { error!("incomplete qgate instruction at byte {}", i); break; }
                 max_q = max_q.max(payload[i+1] as usize);
                 let name_bytes = &payload[i + 2..i + 10];
                 let name = String::from_utf8_lossy(name_bytes).trim_end_matches('\0').to_string();
                 if name.as_str() == "cz" {
-                    if i + 10 >= payload.len() { eprintln!("incomplete cz qgate instruction at byte {}", i); break; }
+                    if i + 10 >= payload.len() { error!("incomplete cz qgate instruction at byte {}", i); break; }
                     max_q = max_q.max(payload[i+10] as usize);
                     i += 11;
                 } else {
@@ -303,31 +347,31 @@ fn run_exe(
                 }
             }
             0x33 /* ApplyRotation */ => {
-                if i + 10 >= payload.len() { eprintln!("incomplete instruction at byte {}", i); break; }
+                if i + 10 >= payload.len() { error!("incomplete instruction at byte {}", i); break; }
                 max_q = max_q.max(payload[i+1] as usize);
                 i += 11; // q (1 byte) + axis (1 byte) + angle (8 bytes) + opcode (1 byte)
             }
             0x34 /* ApplyMultiQubitRotation */ => {
-                if i + 2 >= payload.len() { eprintln!("incomplete instruction at byte {}", i); break; }
+                if i + 2 >= payload.len() { error!("incomplete instruction at byte {}", i); break; }
                 let num_qubits_in_list = payload[i+2] as usize;
-                if i + 3 + num_qubits_in_list * 9 > payload.len() { eprintln!("incomplete instruction (multi qubit rotation) at byte {}", i); break; }
+                if i + 3 + num_qubits_in_list * 9 > payload.len() { error!("incomplete instruction (multi qubit rotation) at byte {}", i); break; }
                 for q_idx in 0..num_qubits_in_list {
                     max_q = max_q.max(payload[i + 3 + q_idx] as usize);
                 }
                 i += 3 + num_qubits_in_list + num_qubits_in_list * 8; // opcode + axis + num_qs + qs_list + angles
             }
             0x35 /* ControlledPhaseRotation */ | 0x36 /* ApplyCPhase */ => {
-                if i + 10 >= payload.len() { eprintln!("incomplete instruction at byte {}", i); break; }
+                if i + 10 >= payload.len() { error!("incomplete instruction at byte {}", i); break; }
                 max_q = max_q.max(payload[i+1] as usize).max(payload[i+2] as usize);
                 i += 11; // c (1 byte) + t (1 byte) + angle (8 bytes) + opcode (1 byte)
             }
             0x37 /* ApplyKerrNonlinearity */ => {
-                if i + 17 >= payload.len() { eprintln!("incomplete instruction at byte {}", i); break; }
+                if i + 17 >= payload.len() { error!("incomplete instruction at byte {}", i); break; }
                 max_q = max_q.max(payload[i+1] as usize);
                 i += 18; // q (1 byte) + strength (8 bytes) + duration (8 bytes) + opcode (1 byte)
             }
             0x39 /* DecoherenceProtect */ | 0x68 /* OpticalDelayLineControl */ => {
-                if i + 9 >= payload.len() { eprintln!("incomplete instruction at byte {}", i); break; }
+                if i + 9 >= payload.len() { error!("incomplete instruction at byte {}", i); break; }
                 max_q = max_q.max(payload[i+1] as usize);
                 i += 10; // q (1 byte) + duration (8 bytes) + opcode (1 byte)
             }
@@ -372,29 +416,29 @@ fn run_exe(
                 i = label_end + 1;
             }
             0x4E /* TimeDelay */ => {
-                if i + 9 >= payload.len() { eprintln!("incomplete instruction at byte {}", i); break; }
+                if i + 9 >= payload.len() { error!("incomplete instruction at byte {}", i); break; }
                 max_q = max_q.max(payload[i+1] as usize);
                 i += 10;
             }
             0x5E /* PhotonEmissionPattern */ => {
-                if i + 1 >= payload.len() { eprintln!("incomplete instruction at byte {}", i); break; }
+                if i + 1 >= payload.len() { error!("incomplete instruction at byte {}", i); break; }
                 max_q = max_q.max(payload[i+1] as usize);
                 let reg_start = i + 2;
                 let reg_end = reg_start + payload[reg_start..].iter().position(|&b| b == 0).unwrap_or(0);
-                if reg_end + 8 >= payload.len() { eprintln!("incomplete instruction at byte {}", i); break; }
+                if reg_end + 8 >= payload.len() { error!("incomplete instruction at byte {}", i); break; }
                 i = reg_end + 9; // opcode + q + reg_str + null_term + cycles (8 bytes)
             }
             0x5F /* PhotonDetectWithThreshold */ => {
-                if i + 9 >= payload.len() { eprintln!("incomplete instruction at byte {}", i); break; }
+                if i + 9 >= payload.len() { error!("incomplete instruction at byte {}", i); break; }
                 max_q = max_q.max(payload[i+1] as usize);
                 let reg_start = i + 10;
                 let reg_end = reg_start + payload[reg_start..].iter().position(|&b| b == 0).unwrap_or(0);
                 i = reg_end + 1; // opcode + q + thresh (8 bytes) + reg_str + null_term
             }
             0x60 /* PhotonDetectCoincidence */ => {
-                if i + 1 >= payload.len() { eprintln!("incomplete instruction at byte {}", i); break; }
+                if i + 1 >= payload.len() { error!("incomplete instruction at byte {}", i); break; }
                 let num_qubits_in_list = payload[i+1] as usize;
-                if i + 2 + num_qubits_in_list >= payload.len() { eprintln!("incomplete instruction (photon detect coincidence) at byte {}", i); break; }
+                if i + 2 + num_qubits_in_list >= payload.len() { error!("incomplete instruction (photon detect coincidence) at byte {}", i); break; }
                 for q_idx in 0..num_qubits_in_list {
                     max_q = max_q.max(payload[i + 2 + q_idx] as usize);
                 }
@@ -403,7 +447,7 @@ fn run_exe(
                 i = reg_end + 1;
             }
             0x64 /* PhotonRoute */ => {
-                if i + 1 >= payload.len() { eprintln!("incomplete instruction at byte {}", i); break; }
+                if i + 1 >= payload.len() { error!("incomplete instruction at byte {}", i); break; }
                 max_q = max_q.max(payload[i+1] as usize);
                 let from_start = i + 2;
                 let from_end = from_start + payload[from_start..].iter().position(|&b| b == 0).unwrap_or(0);
@@ -412,34 +456,34 @@ fn run_exe(
                 i = to_end + 1;
             }
             0x6C /* ApplyDisplacementOperator */ => {
-                if i + 17 >= payload.len() { eprintln!("incomplete instruction at byte {}", i); break; }
+                if i + 17 >= payload.len() { error!("incomplete instruction at byte {}", i); break; }
                 max_q = max_q.max(payload[i+1] as usize);
                 i += 18; // q (1 byte) + alpha (8 bytes) + dur (8 bytes) + opcode (1 byte)
             }
             0x70 /* MeasureWithDelay */ => {
-                if i + 9 >= payload.len() { eprintln!("incomplete instruction at byte {}", i); break; }
+                if i + 9 >= payload.len() { error!("incomplete instruction at byte {}", i); break; }
                 max_q = max_q.max(payload[i+1] as usize);
                 let reg_start = i + 10;
                 let reg_end = reg_start + payload[reg_start..].iter().position(|&b| b == 0).unwrap_or(0);
                 i = reg_end + 1; // opcode + q + delay (8 bytes) + reg_str + null_term
             }
             0x72 /* PhotonLossSimulate */ => {
-                if i + 17 >= payload.len() { eprintln!("incomplete instruction at byte {}", i); break; }
+                if i + 17 >= payload.len() { error!("incomplete instruction at byte {}", i); break; }
                 max_q = max_q.max(payload[i+1] as usize);
                 i += 18; // q (1 byte) + prob (8 bytes) + seed (8 bytes) + opcode (1 byte)
             }
             0x74 /* SetPos */ | 0x77 /* Move */ => {
-                if i + 17 >= payload.len() { eprintln!("incomplete instruction at byte {}", i); break; }
+                if i + 17 >= payload.len() { error!("incomplete instruction at byte {}", i); break; }
                 max_q = max_q.max(payload[i+1] as usize);
                 i += 18; // q (1 byte) + x (8 bytes) + y (8 bytes) + opcode (1 byte)
             }
             0x75 /* SetWl */ | 0x76 /* WlShift */ => {
-                if i + 9 >= payload.len() { eprintln!("incomplete instruction at byte {}", i); break; }
+                if i + 9 >= payload.len() { error!("incomplete instruction at byte {}", i); break; }
                 max_q = max_q.max(payload[i+1] as usize);
                 i += 10; // q (1 byte) + wl (8 bytes) + opcode (1 byte)
             }
             0x7E /* ErrorSyndrome */ => {
-                if i + 1 >= payload.len() { eprintln!("incomplete instruction at byte {}", i); break; }
+                if i + 1 >= payload.len() { error!("incomplete instruction at byte {}", i); break; }
                 max_q = max_q.max(payload[i+1] as usize);
                 let syndrome_start = i + 2;
                 let syndrome_end = syndrome_start + payload[syndrome_start..].iter().position(|&b| b == 0).unwrap_or(0);
@@ -448,35 +492,35 @@ fn run_exe(
                 i = result_reg_end + 1;
             }
             0x80 /* BellStateVerification */ => {
-                if i + 2 >= payload.len() { eprintln!("incomplete instruction at byte {}", i); break; }
+                if i + 2 >= payload.len() { error!("incomplete instruction at byte {}", i); }
                 max_q = max_q.max(payload[i+1] as usize).max(payload[i+2] as usize);
                 let reg_start = i + 3;
                 let reg_end = reg_start + payload[reg_start..].iter().position(|&b| b == 0).unwrap_or(0);
                 i = reg_end + 1;
             }
             0x81 /* QuantumZenoEffect */ => {
-                if i + 17 >= payload.len() { eprintln!("incomplete instruction at byte {}", i); break; }
+                if i + 17 >= payload.len() { error!("incomplete instruction at byte {}", i); break; }
                 max_q = max_q.max(payload[i+1] as usize);
                 i += 18; // q (1 byte) + num_measurements (8 bytes) + interval_cycles (8 bytes) + opcode (1 byte)
             }
             0x84 /* ApplyLinearOpticalTransform */ => {
-                if i + 4 >= payload.len() { eprintln!("incomplete instruction at byte {}", i); break; }
+                if i + 4 >= payload.len() { error!("incomplete instruction at byte {}", i); break; }
                 let name_start = i + 4;
                 let name_end = name_start + payload[name_start..].iter().position(|&b| b == 0).unwrap_or(0);
                 let input_qs_len = payload[i+1] as usize;
                 let output_qs_len = payload[i+2] as usize;
-                let _num_modes = payload[i+3] as usize; // Renamed to _num_modes to suppress warning
+                let _num_modes = payload[i+3] as usize; // renamed to _num_modes to suppress warning
 
                 let input_qs_start = name_end + 1;
                 let input_qs_end = input_qs_start + input_qs_len;
-                if input_qs_end > payload.len() { eprintln!("incomplete instruction (linear optical transform input qs) at byte {}", i); break; }
+                if input_qs_end > payload.len() { error!("incomplete instruction (linear optical transform input qs) at byte {}", i); break; }
                 for q_idx in 0..input_qs_len {
                     max_q = max_q.max(payload[input_qs_start + q_idx] as usize);
                 }
 
                 let output_qs_start = input_qs_end;
                 let output_qs_end = output_qs_start + output_qs_len;
-                if output_qs_end > payload.len() { eprintln!("incomplete instruction (linear optical transform output qs) at byte {}", i); break; }
+                if output_qs_end > payload.len() { error!("incomplete instruction (linear optical transform output qs) at byte {}", i); break; }
                 for q_idx in 0..output_qs_len {
                     max_q = max_q.max(payload[output_qs_start + q_idx] as usize);
                 }
@@ -488,48 +532,52 @@ fn run_exe(
                 i = text_end + 1;
             }
             0x90 /* Jmp */ | 0x91 /* JmpAbs */ | 0xA3 /* Free */ | 0xAD /* SeedRng */ => {
-                if i + 9 >= payload.len() { eprintln!("incomplete instruction at byte {}", i); break; }
+                if i + 9 >= payload.len() { error!("incomplete instruction at byte {}", i); break; }
                 i += 9;
             }
             0x92 /* IfGt */ | 0x93 /* IfLt */ | 0x94 /* IfEq */ | 0x95 /* IfNe */ => {
-                if i + 11 >= payload.len() { eprintln!("incomplete instruction at byte {}", i); break; }
+                if i + 11 >= payload.len() { error!("incomplete instruction at byte {}", i); break; }
                 i += 11;
             }
             0x96 /* CallAddr */ | 0x9E /* LoadRegMem */ | 0xA2 /* Alloc */ => {
-                if i + 9 >= payload.len() { eprintln!("incomplete instruction at byte {}", i); break; }
+                if i + 9 >= payload.len() { error!("incomplete instruction at byte {}", i); break; }
                 i += 10;
             }
             0x9F /* StoreMemReg */ => {
-                if i + 9 >= payload.len() { eprintln!("incomplete instruction at byte {}", i); break; }
+                if i + 9 >= payload.len() { error!("incomplete instruction at byte {}", i); break; }
                 i += 10;
             }
             0x98 /* Printf */ => {
-                if i + 9 >= payload.len() { eprintln!("incomplete printf string length at byte {}", i); break; }
+                if i + 9 >= payload.len() { error!("incomplete printf string length at byte {}", i); break; }
                 let str_len = u64::from_le_bytes(payload[i+1..i+9].try_into().unwrap()) as usize;
                 let num_regs_idx = i + 9 + str_len;
-                if num_regs_idx + 1 > payload.len() { eprintln!("incomplete printf num_regs at byte {}", i); break; }
+                if num_regs_idx + 1 > payload.len() { error!("incomplete printf num_regs at byte {}", i); break; }
                 let num_regs = payload[num_regs_idx] as usize;
                 i += 1 + 8 + str_len + 1 + num_regs;
             }
             0x99 /* Print */ | 0x9A /* Println */ => {
-                if i + 9 >= payload.len() { eprintln!("incomplete print/println string length at byte {}", i); break; }
+                if i + 9 >= payload.len() { error!("incomplete print/println string length at byte {}", i); break; }
                 let str_len = u64::from_le_bytes(payload[i+1..i+9].try_into().unwrap()) as usize;
                 i += 1 + 8 + str_len;
             }
             0xA5 /* AndBits */ | 0xA6 /* OrBits */ | 0xA7 /* XorBits */ | 0xA9 /* Shl */ | 0xAA /* Shr */ => {
-                if i + 3 >= payload.len() { eprintln!("incomplete instruction at byte {}", i); break; }
+                if i + 3 >= payload.len() { error!("incomplete instruction at byte {}", i); break; }
                 i += 4;
             }
             0xAE /* ExitCode */ => {
-                if i + 5 >= payload.len() { eprintln!("incomplete instruction at byte {}", i); break; }
+                if i + 5 >= payload.len() { error!("incomplete instruction at byte {}", i); break; }
                 i += 5;
             }
-            _ => {
-                eprintln!("warning: unknown opcode 0x{:02X} in scan at byte {}, skipping.", opcode, i);
+            0x01 /* LoopStart */ => {
+                if i + 1 >= payload.len() { error!("incomplete instruction at byte {}", i); break; }
+                i += 2;
+            }
+            _ => { // this catch-all should be last
+                warn!("unknown opcode 0x{:02X} in scan at byte {}, skipping.", opcode, i);
                 if debug_mode {
-                    eprintln!("payload near unknown opcode:");
+                    debug!("payload near unknown opcode:");
                     for j in i..(i + 10).min(payload.len()) {
-                        eprintln!(
+                        debug!(
                             "byte[{:#04}] = 0x{:02X} '{}'",
                             j,
                             payload[j],
@@ -553,15 +601,15 @@ fn run_exe(
     };
 
     if num_qubits > 16 {
-        eprintln!("warning: simulating more than 16 qubits can be very memory intensive.");
+        warn!("simulating more than 16 qubits can be very memory intensive.");
     }
 
-    println!(
+    info!(
         "initializing quantum state with {} qubits (type {}, ver {})",
         num_qubits, header, version
     );
     let mut qs = QuantumState::new(num_qubits, noise_config.clone());
-    let mut last_stats = Instant::now();
+    let _last_stats = Instant::now();
     let mut char_count: u64 = 0;
     let mut char_sum: u64 = 0;
 
@@ -574,20 +622,30 @@ fn run_exe(
                                           // removed `last_cmp_result` as it's not used by current conditional jumps
                                           // let mut last_cmp_result: Option<Ordering> = None; // for cmp instruction
 
-    let mut i = 0; // Reset 'i' for the second pass
+    let mut i = 0; // reset 'i' for the second pass
                    // second pass: execute instructions and interact with quantumstate
     while i < payload.len() {
         if debug_mode {
-            eprintln!("executing opcode 0x{:02X} at byte {}", payload[i], i);
+            debug!("executing opcode 0x{:02X} at byte {}", payload[i], i);
         }
         let opcode = payload[i];
         match opcode {
             0x04 /* QInit */ => {
+                // quantumstate::new already initializes to |0...0>, so this is mostly a logical no-op
+                // unless we want to reset a specific qubit to |0> if it's already entangled.
+                // for now, just log if in debug mode.
+                if debug_mode {
+                    debug!("initialized qubit {}", payload[i + 1]);
+                }
+                i += 2;
+            }
+            0x01 /* LoopStart */ => {
+                if i + 1 >= payload.len() { error!("incomplete instruction at byte {}", i); break; }
                 i += 2;
             }
             0x02 /* ApplyGate (QGATE) */ => {
                 if i + 9 >= payload.len() {
-                    eprintln!("incomplete qgate instruction at byte {}", i);
+                    error!("incomplete qgate instruction at byte {}", i);
                     break;
                 }
                 let q = payload[i + 1] as usize;
@@ -599,17 +657,17 @@ fn run_exe(
                 match name.as_str() {
                     "h" => {
                         qs.apply_h(q);
-                        println!("applied h gate on qubit {} (via qgate)", q);
+                        debug!("applied h gate on qubit {} (via qgate)", q);
                         i += 10;
                     }
                     "x" => {
                         qs.apply_x(q);
-                        println!("applied x gate on qubit {}", q);
+                        debug!("applied x gate on qubit {}", q);
                         i += 10;
                     }
                     "cz" => {
                         if i + 10 >= payload.len() {
-                            eprintln!(
+                            error!(
                                 "incomplete cz qgate instruction: missing target qubit at byte {}",
                                 i
                             );
@@ -617,963 +675,1679 @@ fn run_exe(
                         }
                         let tgt = payload[i + 10] as usize;
                         qs.apply_cz(q, tgt);
-                        println!(
+                        debug!(
                             "applied cz gate between qubits {} (control) and {} (target)",
                             q, tgt
                         );
                         i += 11;
                     }
-                    other => {
-                        eprintln!("unknown gate: {}", other);
-                        i += 10;
+                    _ => {
+                        warn!(
+                            "unsupported QGATE '{}' at byte {}, skipping.",
+                            name, i
+                        );
+                        i += 10; // skip the instruction
                     }
                 }
             }
             0x05 /* ApplyHadamard */ => {
-                if i + 1 >= payload.len() {
-                    eprintln!("incomplete applyhadamard instruction at byte {}", i);
-                    break;
+                qs.apply_h(payload[i + 1] as usize);
+                if debug_mode {
+                    debug!("applied hadamard on qubit {}", payload[i + 1]);
                 }
+                i += 2;
+            }
+            0x06 /* ApplyPhaseFlip */ => {
+                // qs.apply_z(payload[i + 1] as usize);
+                qs.apply_phase_flip(payload[i + 1] as usize); // corrected name
+                if debug_mode {
+                    debug!("applied phase flip (Z) on qubit {}", payload[i + 1]);
+                }
+                i += 2;
+            }
+            0x07 /* ApplyBitFlip */ => {
+                qs.apply_x(payload[i + 1] as usize);
+                if debug_mode {
+                    debug!("applied bit flip (X) on qubit {}", payload[i + 1]);
+                }
+                i += 2;
+            }
+            0x08 /* PhaseShift */ => {
                 let q = payload[i + 1] as usize;
-                qs.apply_h(q);
-                println!("applied h gate on qubit {}", q);
-                i += 2;
-            }
-            0x0d /* ApplyTGate */ => {
-                if i + 1 >= payload.len() {
-                    eprintln!("incomplete applytgate instruction at byte {}", i);
-                    break;
+                let angle_bytes: [u8; 8] = payload[i + 2..i + 10].try_into().unwrap();
+                let angle = f64::from_le_bytes(angle_bytes);
+                qs.apply_phase_shift(q, angle);
+                if debug_mode {
+                    debug!("applied phase shift on qubit {} with angle {}", q, angle);
                 }
-                let q = payload[i + 1] as usize;
-                qs.apply_t_gate(q);
-                println!("applied t gate on qubit {}", q);
-                i += 2;
-            }
-            0x0e /* ApplySGate */ => {
-                if i + 1 >= payload.len() {
-                    eprintln!("incomplete applysgate instruction at byte {}", i);
-                    break;
-                }
-                let q = payload[i + 1] as usize;
-                qs.apply_s_gate(q);
-                println!("applied s gate on qubit {}", q);
-                i += 2;
-            }
-            0x17 /* ControlledNot */ => {
-                if i + 2 >= payload.len() {
-                    eprintln!("incomplete controllednot instruction at byte {}", i);
-                    break;
-                }
-                let c = payload[i + 1] as usize;
-                let t = payload[i + 2] as usize;
-
-                qs.apply_cnot(c, t);
-                println!("applied cnot gate from control {} to target {}", c, t);
-                i += 3;
-            }
-            0x1E /* CZ */ => {
-                if i + 2 >= payload.len() {
-                    eprintln!("incomplete cz instruction at byte {}", i);
-                    break;
-                }
-                let c = payload[i + 1] as usize;
-                let t = payload[i + 2] as usize;
-                qs.apply_cz(c, t);
-                println!("applied cz gate between qubits {} and {}", c, t);
-                i += 3;
-            }
-            0x31 /* CharLoad */ => {
-                if i + 2 >= payload.len() {
-                    eprintln!("incomplete charload instruction at byte {}", i);
-                    break;
-                }
-                let reg = payload[i + 1] as usize;
-                if reg >= registers.len() {
-                    eprintln!("charload: register index {} out of range", reg);
-                    break;
-                }
-                let val = payload[i + 2];
-                registers[reg] = val as f64; // Store char as its ASCII value in the register
-                print!("{}", val as char);
-                std::io::stdout().flush().unwrap();
-                i += 3;
-
-                char_count += 1;
-                char_sum += val as u64;
-                if last_stats.elapsed() >= std::time::Duration::from_secs(1) {
-                    let avg = char_sum as f64 / char_count as f64;
-                    eprintln!(
-                        "\n[stats] {} chars → avg numeric value: {:.2}",
-                        char_count, avg
-                    );
-                    char_count = 0;
-                    char_sum = 0;
-                    last_stats = std::time::Instant::now();
-                }
-            }
-            0x18 /* CharOut */ => {
-                if i + 1 >= payload.len() {
-                    eprintln!("incomplete charout instruction at byte {}", i);
-                    break;
-                }
-                let reg = payload[i + 1] as usize;
-                if reg >= registers.len() {
-                    eprintln!("charout: register index {} out of range", reg);
-                    break;
-                }
-                let char_val = registers[reg] as u8;
-                print!("{}", char_val as char);
-                std::io::stdout().flush().unwrap();
-                i += 2;
-
-                char_count += 1;
-                char_sum += char_val as u64;
-                if last_stats.elapsed() >= std::time::Duration::from_secs(1) {
-                    let avg = char_sum as f64 / char_count as f64;
-                    eprintln!(
-                        "\n[stats] {} chars → avg numeric value: {:.2}",
-                        char_count, avg
-                    );
-                    char_count = 0;
-                    char_sum = 0;
-                    last_stats = std::time::Instant::now();
-                }
-            }
-            0x32 /* QMeas */ => {
-                if i + 1 >= payload.len() {
-                    eprintln!("incomplete qmeas instruction at byte {}", i);
-                    break;
-                }
-                let q = payload[i + 1] as usize;
-                let meas_result = qs.measure(q);
-                println!("\nmeasurement of qubit {}: {}", q, meas_result);
-                i += 2;
-            }
-            0x21 /* RegSet */ => {
-                if i + 9 >= payload.len() {
-                    eprintln!("incomplete regset instruction at byte {}", i);
-                    break;
-                }
-                let reg = payload[i + 1] as usize;
-                if reg >= registers.len() {
-                    eprintln!("regset: register index {} out of range", reg);
-                    break;
-                }
-                let val_bytes = &payload[i + 2..i + 10];
-                let val = f64::from_le_bytes(val_bytes.try_into().unwrap());
-                registers[reg] = val;
-                println!("set register {} to value {}", reg, val);
                 i += 10;
             }
-            0x48 /* Sync */ => {
-                println!("synchronized state (sync instruction encountered)");
-                i += 1;
-            }
-            0x00 /* NoOp */ => {
-                i += 1;
-            }
-            0xff /* Halt */ => {
-                std::io::stdout().flush().unwrap();
-                break;
-            }
-            0x01 /* LoopStart */ => {
-                if i + 1 >= payload.len() {
-                    eprintln!("incomplete loopstart instruction at byte {}", i);
-                    break;
-                }
-                let reg_idx = payload[i + 1] as usize;
-                if reg_idx >= registers.len() {
-                    eprintln!("loopstart: register index {} out of range", reg_idx);
-                    break;
-                }
-                let count = registers[reg_idx] as u64;
-                loop_stack.push((i + 2, count));
-                println!("loopstart: reg {} (count {})", reg_idx, count);
+            0x0A /* Reset / QReset */ => {
+                // qs.reset_qubit(payload[i + 1] as usize);
+                debug!("reset qubit {}", payload[i + 1]);
                 i += 2;
+            }
+            0x0B /* Swap */ => {
+                let q1 = payload[i + 1] as usize;
+                let q2 = payload[i + 2] as usize;
+                // qs.apply_swap(q1, q2);
+                debug!("swapped qubits {} and {}", q1, q2);
+                i += 3;
+            }
+            0x0C /* ControlledSwap */ => {
+                let c = payload[i + 1] as usize;
+                let q1 = payload[i + 2] as usize;
+                let q2 = payload[i + 3] as usize;
+                // qs.apply_cswap(c, q1, q2);
+                debug!(
+                    "applied controlled swap with control {} on qubits {} and {}",
+                    c, q1, q2
+                );
+                i += 4;
+            }
+            0x0D /* ApplyTGate */ => {
+                // qs.apply_t(payload[i + 1] as usize);
+                qs.apply_t_gate(payload[i + 1] as usize); // corrected name
+                if debug_mode {
+                    debug!("applied t-gate on qubit {}", payload[i + 1]);
+                }
+                i += 2;
+            }
+            0x0E /* ApplySGate */ => {
+                // qs.apply_s(payload[i + 1] as usize);
+                qs.apply_s_gate(payload[i + 1] as usize); // corrected name
+                if debug_mode {
+                    debug!("applied s-gate on qubit {}", payload[i + 1]);
+                }
+                i += 2;
+            }
+            0x0F /* RZ */ => {
+                let q = payload[i + 1] as usize;
+                let angle_bytes: [u8; 8] = payload[i + 2..i + 10].try_into().unwrap();
+                let angle = f64::from_le_bytes(angle_bytes);
+                qs.apply_rz(q, angle);
+                if debug_mode {
+                    debug!("applied rz gate on qubit {} with angle {}", q, angle);
+                }
+                i += 10;
             }
             0x10 /* LoopEnd */ => {
-                if let Some((loop_start_ptr, count)) = loop_stack.pop() {
-                    if count > 1 {
-                        loop_stack.push((loop_start_ptr, count - 1));
-                        i = loop_start_ptr; // jump back to loop start
-                        println!("looping back to {} ({} iterations left)", loop_start_ptr, count - 1);
+                if let Some((loop_start_ptr, iterations_left)) = loop_stack.pop() {
+                    if iterations_left > 1 {
+                        loop_stack.push((loop_start_ptr, iterations_left - 1));
+                        i = loop_start_ptr;
+                        if debug_mode {
+                            debug!(
+                                "looping back to {} ({} iterations left)",
+                                loop_start_ptr, iterations_left - 1
+                            );
+                        }
                     } else {
-                        println!("loop finished.");
-                        i += 1; // proceed to next instruction after loop
+                        if debug_mode {
+                            debug!("loop finished at {}", i);
+                        }
+                        i += 1;
                     }
                 } else {
-                    eprintln!("error: endloop without matching loopstart at byte {}", i);
-                    i += 1; // advance to avoid infinite loop on error
+                    error!("loopend without matching loopstart at byte {}", i);
+                    i += 1;
                 }
             }
-            0x0f /* RZ */ => {
-                if i + 9 >= payload.len() {
-                    eprintln!("incomplete rz instruction at byte {}", i);
-                    break;
+            0x11 /* Entangle */ => {
+                let q1 = payload[i + 1] as usize;
+                let q2 = payload[i + 2] as usize;
+                // qs.entangle(q1, q2);
+                debug!("entangled qubits {} and {}", q1, q2);
+                i += 3;
+            }
+            0x12 /* EntangleBell */ => {
+                let q1 = payload[i + 1] as usize;
+                let q2 = payload[i + 2] as usize;
+                // qs.entangle_bell_state(q1, q2);
+                debug!("created bell state with qubits {} and {}", q1, q2);
+                i += 3;
+            }
+            0x13 /* EntangleMulti */ => {
+                let num_qubits = payload[i + 1] as usize;
+                let qubits: Vec<usize> = payload[i + 2..i + 2 + num_qubits]
+                    .iter()
+                    .map(|&b| b as usize)
+                    .collect();
+                // qs.entangle_multi_qubit(&qubits);
+                debug!("entangled multiple qubits: {:?}", qubits);
+                i += 2 + num_qubits;
+            }
+            0x14 /* EntangleCluster */ => {
+                let num_qubits = payload[i + 1] as usize;
+                let qubits: Vec<usize> = payload[i + 2..i + 2 + num_qubits]
+                    .iter()
+                    .map(|&b| b as usize)
+                    .collect();
+                // qs.entangle_cluster_state(&qubits);
+                debug!("created cluster state with qubits: {:?}", qubits);
+                i += 2 + num_qubits;
+            }
+            0x15 /* EntangleSwap */ => {
+                let q1 = payload[i + 1] as usize;
+                let q2 = payload[i + 2] as usize;
+                let q3 = payload[i + 3] as usize;
+                let q4 = payload[i + 4] as usize;
+                // qs.entangle_swap(q1, q2, q3, q4);
+                debug!(
+                    "performed entanglement swap between ({}, {}) and ({}, {})",
+                    q1, q2, q3, q4
+                );
+                i += 5;
+            }
+            0x16 /* EntangleSwapMeasure */ => {
+                let q1 = payload[i + 1] as usize;
+                let q2 = payload[i + 2] as usize;
+                let q3 = payload[i + 3] as usize;
+                let q4 = payload[i + 4] as usize;
+                let label_start = i + 5;
+                let label_end = label_start + payload[label_start..].iter().position(|&b| b == 0).unwrap_or(0);
+                let label = String::from_utf8_lossy(&payload[label_start..label_end]);
+                debug!(
+                    "performed entanglement swap measure between ({}, {}) and ({}, {}) with label {}",
+                    q1, q2, q3, q4, label
+                );
+                i = label_end + 1;
+            }
+            0x17 /* ControlledNot / CNOT */ => {
+                qs.apply_cnot(payload[i + 1] as usize, payload[i + 2] as usize);
+                if debug_mode {
+                    debug!(
+                        "applied cnot with control {} and target {}",
+                        payload[i + 1],
+                        payload[i + 2]
+                    );
                 }
+                i += 3;
+            }
+            0x18 /* CharOut */ => {
+                let q = payload[i+1] as usize;
+                let classical_value = qs.measure(q) as u8;
+                print!("{}", classical_value as char);
+                if debug_mode {
+                    debug!("char_out: qubit {} measured as {} ('{}')", q, classical_value, classical_value as char);
+                }
+                char_count += 1;
+                char_sum += classical_value as u64;
+                i += 2;
+            }
+            0x19 /* EntangleWithClassicalFeedback */ => {
                 let q = payload[i + 1] as usize;
-                let angle_bytes = &payload[i + 2..i + 10];
-                let angle = f64::from_le_bytes(angle_bytes.try_into().unwrap());
-
-                qs.apply_rz(q, angle);
-                println!("applied rz gate on qubit {} with angle {}", q, angle);
+                let label_start = i + 2;
+                let label_end = label_start + payload[label_start..].iter().position(|&b| b == 0).unwrap_or(0);
+                let label = String::from_utf8_lossy(&payload[label_start..label_end]);
+                debug!(
+                    "entangled with classical feedback on qubit {} with label {}",
+                    q, label
+                );
+                i = label_end + 1;
+            }
+            0x1A /* EntangleDistributed */ => {
+                let q = payload[i + 1] as usize;
+                let label_start = i + 2;
+                let label_end = label_start + payload[label_start..].iter().position(|&b| b == 0).unwrap_or(0);
+                let label = String::from_utf8_lossy(&payload[label_start..label_end]);
+                debug!(
+                    "performed distributed entanglement on qubit {} with label {}",
+                    q, label
+                );
+                i = label_end + 1;
+            }
+            0x1B /* MeasureInBasis */ => {
+                let q = payload[i + 1] as usize;
+                let label_start = i + 2;
+                let label_end = label_start + payload[label_start..].iter().position(|&b| b == 0).unwrap_or(0);
+                let label = String::from_utf8_lossy(&payload[label_start..label_end]);
+                debug!("measured qubit {} in basis {}", q, label);
+                i = label_end + 1;
+            }
+            0x1C /* ResetAll */ => {
+                // qs.reset_all_qubits();
+                debug!("reset all qubits");
+                i += 1;
+            }
+            0x1E /* CZ */ => {
+                qs.apply_cz(payload[i + 1] as usize, payload[i + 2] as usize);
+                if debug_mode {
+                    debug!(
+                        "applied cz gate on qubits {} and {}",
+                        payload[i + 1],
+                        payload[i + 2]
+                    );
+                }
+                i += 3;
+            }
+            0x1F /* ThermalAvg */ => {
+                let q1 = payload[i + 1] as usize;
+                let q2 = payload[i + 2] as usize;
+                debug!("performed thermal averaging on qubits {} and {}", q1, q2);
+                i += 3;
+            }
+            0x20 /* WkbFactor */ => { // 3-byte opcode for WkbFactor
+                debug!("WkbFactor instruction (placeholder)");
+                i += 3; // Fixed to consume 3 bytes as per first pass
+            }
+            0x21 /* RegSet */ => {
+                let reg_idx = payload[i+1] as usize;
+                let value_bytes: [u8; 8] = payload[i+2..i+10].try_into().unwrap();
+                let value = f64::from_le_bytes(value_bytes);
+                if reg_idx < registers.len() {
+                    registers[reg_idx] = value;
+                    if debug_mode {
+                        debug!("set register {} to {}", reg_idx, value);
+                    }
+                } else {
+                    error!("invalid register index {} at byte {}", reg_idx, i);
+                }
                 i += 10;
             }
-            // new instructions for v0.3.0
+            0x22 /* RX */ => {
+                let q = payload[i + 1] as usize;
+                let angle_bytes: [u8; 8] = payload[i + 2..i + 10].try_into().unwrap();
+                let angle = f64::from_le_bytes(angle_bytes);
+                qs.apply_rx(q, angle);
+                if debug_mode {
+                    debug!("applied rx gate on qubit {} with angle {}", q, angle);
+                }
+                i += 10;
+            }
+            0x23 /* RY */ => {
+                let q = payload[i + 1] as usize;
+                let angle_bytes: [u8; 8] = payload[i + 2..i + 10].try_into().unwrap();
+                let angle = f64::from_le_bytes(angle_bytes);
+                qs.apply_ry(q, angle);
+                if debug_mode {
+                    debug!("applied ry gate on qubit {} with angle {}", q, angle);
+                }
+                i += 10;
+            }
+            0x24 /* Phase */ => {
+                let q = payload[i+1] as usize;
+                let angle_bytes: [u8; 8] = payload[i+2..i+10].try_into().unwrap();
+                let angle = f64::from_le_bytes(angle_bytes);
+                // qs.apply_phase(q, angle);
+                if debug_mode {
+                    debug!("applied phase gate on qubit {} with angle {}", q, angle);
+                }
+                i += 10;
+            }
+            0x31 /* CharLoad */ => {
+                let dest_reg = payload[i+1] as usize;
+                let char_val = payload[i+2] as char;
+                if dest_reg < registers.len() {
+                    registers[dest_reg] = char_val as u8 as f64;
+                    if debug_mode {
+                        debug!("loaded char '{}' into register {}", char_val, dest_reg);
+                    }
+                } else {
+                    error!("invalid register index {} for CharLoad at byte {}", dest_reg, i);
+                }
+                i += 4; // opcode (1) + dest_reg (1) + char_val (1) + padding (1)
+            }
+            0x32 /* QMeas / Measure */ => {
+                let q = payload[i + 1] as usize;
+                let result = qs.measure(q);
+                if debug_mode {
+                    debug!("measured qubit {}: {:?}", q, result);
+                }
+                i += 2;
+            }
+            0x33 /* ApplyRotation */ => {
+                let q = payload[i + 1] as usize;
+                let axis = payload[i + 2] as char; // 'x', 'y', or 'z'
+                let angle_bytes: [u8; 8] = payload[i + 3..i + 11].try_into().unwrap();
+                let angle = f64::from_le_bytes(angle_bytes);
+                match axis {
+                    'x' => qs.apply_rx(q, angle),
+                    'y' => qs.apply_ry(q, angle),
+                    'z' => qs.apply_rz(q, angle),
+                    _ => warn!("unknown rotation axis '{}' at byte {}", axis, i),
+                }
+                if debug_mode {
+                    debug!(
+                        "applied rotation around {} axis on qubit {} with angle {}",
+                        axis, q, angle
+                    );
+                }
+                i += 11;
+            }
+            0x34 /* ApplyMultiQubitRotation */ => {
+                let axis = payload[i + 1] as char;
+                let num_qubits = payload[i + 2] as usize;
+                let mut qubits = Vec::with_capacity(num_qubits);
+                let mut current_idx = i + 3;
+                for _ in 0..num_qubits {
+                    qubits.push(payload[current_idx] as usize);
+                    current_idx += 1;
+                }
+                let angle_bytes: [u8; 8] = payload[current_idx..current_idx + 8].try_into().unwrap();
+                let angle = f64::from_le_bytes(angle_bytes);
+
+                // This is a simplified application for a multi-qubit rotation.
+                // In a real scenario, this would apply a global rotation or a series of single-qubit rotations.
+                for &q in &qubits {
+                    match axis {
+                        'x' => qs.apply_rx(q, angle),
+                        'y' => qs.apply_ry(q, angle),
+                        'z' => qs.apply_rz(q, angle),
+                        _ => warn!("unknown rotation axis '{}' for multi-qubit rotation at byte {}", axis, i),
+                    }
+                }
+                if debug_mode {
+                    debug!(
+                        "applied multi-qubit rotation around {} axis on qubits {:?} with angle {}",
+                        axis, qubits, angle
+                    );
+                }
+                i = current_idx + 8; // Move past the angle bytes
+            }
+            0x35 /* ControlledPhaseRotation */ => {
+                let c = payload[i + 1] as usize;
+                let t = payload[i + 2] as usize;
+                let angle_bytes: [u8; 8] = payload[i + 3..i + 11].try_into().unwrap();
+                let angle = f64::from_le_bytes(angle_bytes);
+                qs.apply_controlled_phase(c, t, angle);
+                if debug_mode {
+                    debug!(
+                        "applied controlled phase rotation on control {} and target {} with angle {}",
+                        c, t, angle
+                    );
+                }
+                i += 11;
+            }
+            0x36 /* ApplyCPhase */ => {
+                let c = payload[i + 1] as usize;
+                let t = payload[i + 2] as usize;
+                let angle_bytes: [u8; 8] = payload[i + 3..i + 11].try_into().unwrap();
+                let angle = f64::from_le_bytes(angle_bytes);
+                // qs.apply_cphase(c, t, angle);
+                if debug_mode {
+                    debug!(
+                        "applied controlled phase gate on control {} and target {} with angle {}",
+                        c, t, angle
+                    );
+                }
+                i += 11;
+            }
+            0x37 /* ApplyKerrNonlinearity */ => {
+                let q = payload[i + 1] as usize;
+                let strength_bytes: [u8; 8] = payload[i + 2..i + 10].try_into().unwrap();
+                let strength = f64::from_le_bytes(strength_bytes);
+                let duration_bytes: [u8; 8] = payload[i + 10..i + 18].try_into().unwrap();
+                let duration = f64::from_le_bytes(duration_bytes);
+                debug!(
+                    "applied kerr nonlinearity on qubit {} with strength {} and duration {}",
+                    q, strength, duration
+                );
+                i += 18;
+            }
+            0x38 /* ApplyFeedforwardGate */ => {
+                let q = payload[i + 1] as usize;
+                let label_start = i + 2;
+                let label_end = label_start + payload[label_start..].iter().position(|&b| b == 0).unwrap_or(0);
+                let label = String::from_utf8_lossy(&payload[label_start..label_end]);
+                debug!(
+                    "applied feedforward gate on qubit {} with label {}",
+                    q, label
+                );
+                i = label_end + 1;
+            }
+            0x39 /* DecoherenceProtect */ => {
+                let q = payload[i + 1] as usize;
+                let duration_bytes: [u8; 8] = payload[i + 2..i + 10].try_into().unwrap();
+                let duration = f64::from_le_bytes(duration_bytes);
+                debug!(
+                    "applied decoherence protection on qubit {} for duration {}",
+                    q, duration
+                );
+                i += 10;
+            }
+            0x3A /* ApplyMeasurementBasisChange */ => {
+                let q = payload[i + 1] as usize;
+                let label_start = i + 2;
+                let label_end = label_start + payload[label_start..].iter().position(|&b| b == 0).unwrap_or(0);
+                let label = String::from_utf8_lossy(&payload[label_start..label_end]);
+                debug!(
+                    "applied measurement basis change on qubit {} to basis {}",
+                    q, label
+                );
+                i = label_end + 1;
+            }
+            0x3B /* Load */ => {
+                let q = payload[i + 1] as usize;
+                let label_start = i + 2;
+                let label_end = label_start + payload[label_start..].iter().position(|&b| b == 0).unwrap_or(0);
+                let label = String::from_utf8_lossy(&payload[label_start..label_end]);
+                debug!("loaded state to qubit {} from label {}", q, label);
+                i = label_end + 1;
+            }
+            0x3C /* Store */ => {
+                let q = payload[i + 1] as usize;
+                let label_start = i + 2;
+                let label_end = label_start + payload[label_start..].iter().position(|&b| b == 0).unwrap_or(0);
+                let label = String::from_utf8_lossy(&payload[label_start..label_end]);
+                debug!("stored state from qubit {} to label {}", q, label);
+                i = label_end + 1;
+            }
+            0x3D /* LoadMem */ => {
+                let reg_name_start = i + 1;
+                let reg_name_end = reg_name_start + payload[reg_name_start..].iter().position(|&b| b == 0).unwrap_or(0);
+                let reg_name = String::from_utf8_lossy(&payload[reg_name_start..reg_name_end]);
+
+                let addr_name_start = reg_name_end + 1;
+                let addr_name_end = addr_name_start + payload[addr_name_start..].iter().position(|&b| b == 0).unwrap_or(0);
+                let addr_name = String::from_utf8_lossy(&payload[addr_name_start..addr_name_end]);
+                debug!("loaded value from memory address {} into register {}", addr_name, reg_name);
+                i = addr_name_end + 1;
+            }
+            0x3E /* StoreMem */ => {
+                let reg_name_start = i + 1;
+                let reg_name_end = reg_name_start + payload[reg_name_start..].iter().position(|&b| b == 0).unwrap_or(0);
+                let reg_name = String::from_utf8_lossy(&payload[reg_name_start..reg_name_end]);
+
+                let addr_name_start = reg_name_end + 1;
+                let addr_name_end = addr_name_start + payload[addr_name_start..].iter().position(|&b| b == 0).unwrap_or(0);
+                let addr_name = String::from_utf8_lossy(&payload[addr_name_start..addr_name_end]);
+                debug!("stored value from register {} into memory address {}", reg_name, addr_name);
+                i = addr_name_end + 1;
+            }
+            0x3F /* LoadClassical */ => {
+                let reg_name_start = i + 1;
+                let reg_name_end = reg_name_start + payload[reg_name_start..].iter().position(|&b| b == 0).unwrap_or(0);
+                let reg_name = String::from_utf8_lossy(&payload[reg_name_start..reg_name_end]);
+
+                let var_name_start = reg_name_end + 1;
+                let var_name_end = var_name_start + payload[var_name_start..].iter().position(|&b| b == 0).unwrap_or(0);
+                let var_name = String::from_utf8_lossy(&payload[var_name_start..var_name_end]);
+                debug!("loaded value from classical variable {} into register {}", var_name, reg_name);
+                i = var_name_end + 1;
+            }
+            0x40 /* StoreClassical */ => {
+                let reg_name_start = i + 1;
+                let reg_name_end = reg_name_start + payload[reg_name_start..].iter().position(|&b| b == 0).unwrap_or(0);
+                let reg_name = String::from_utf8_lossy(&payload[reg_name_start..reg_name_end]);
+
+                let var_name_start = reg_name_end + 1;
+                let var_name_end = var_name_start + payload[var_name_start..].iter().position(|&b| b == 0).unwrap_or(0);
+                let var_name = String::from_utf8_lossy(&payload[var_name_start..var_name_end]);
+                debug!("stored value from register {} into classical variable {}", reg_name, var_name);
+                i = var_name_end + 1;
+            }
+            0x41 /* Add */ => {
+                let dst_reg_start = i + 1;
+                let dst_reg_end = dst_reg_start + payload[dst_reg_start..].iter().position(|&b| b == 0).unwrap_or(0);
+                let dst_reg_name = String::from_utf8_lossy(&payload[dst_reg_start..dst_reg_end]);
+
+                let src1_reg_start = dst_reg_end + 1;
+                let src1_reg_end = src1_reg_start + payload[src1_reg_start..].iter().position(|&b| b == 0).unwrap_or(0);
+                let src1_reg_name = String::from_utf8_lossy(&payload[src1_reg_start..src1_reg_end]);
+
+                let src2_reg_start = src1_reg_end + 1;
+                let src2_reg_end = src2_reg_start + payload[src2_reg_start..].iter().position(|&b| b == 0).unwrap_or(0);
+                let src2_reg_name = String::from_utf8_lossy(&payload[src2_reg_start..src2_reg_end]);
+                debug!("added {} and {} into {}", src1_reg_name, src2_reg_name, dst_reg_name);
+                i = src2_reg_end + 1;
+            }
+            0x42 /* Sub */ => {
+                let dst_reg_start = i + 1;
+                let dst_reg_end = dst_reg_start + payload[dst_reg_start..].iter().position(|&b| b == 0).unwrap_or(0);
+                let dst_reg_name = String::from_utf8_lossy(&payload[dst_reg_start..dst_reg_end]);
+
+                let src1_reg_start = dst_reg_end + 1;
+                let src1_reg_end = src1_reg_start + payload[src1_reg_start..].iter().position(|&b| b == 0).unwrap_or(0);
+                let src1_reg_name = String::from_utf8_lossy(&payload[src1_reg_start..src1_reg_end]);
+
+                let src2_reg_start = src1_reg_end + 1;
+                let src2_reg_end = src2_reg_start + payload[src2_reg_start..].iter().position(|&b| b == 0).unwrap_or(0);
+                let src2_reg_name = String::from_utf8_lossy(&payload[src2_reg_start..src2_reg_end]);
+                debug!("subtracted {} from {} into {}", src2_reg_name, src1_reg_name, dst_reg_name);
+                i = src2_reg_end + 1;
+            }
+            0x43 /* And */ => {
+                let dst_reg_start = i + 1;
+                let dst_reg_end = dst_reg_start + payload[dst_reg_start..].iter().position(|&b| b == 0).unwrap_or(0);
+                let dst_reg_name = String::from_utf8_lossy(&payload[dst_reg_start..dst_reg_end]);
+
+                let src1_reg_start = dst_reg_end + 1;
+                let src1_reg_end = src1_reg_start + payload[src1_reg_start..].iter().position(|&b| b == 0).unwrap_or(0);
+                let src1_reg_name = String::from_utf8_lossy(&payload[src1_reg_start..src1_reg_end]);
+
+                let src2_reg_start = src1_reg_end + 1;
+                let src2_reg_end = src2_reg_start + payload[src2_reg_start..].iter().position(|&b| b == 0).unwrap_or(0);
+                let src2_reg_name = String::from_utf8_lossy(&payload[src2_reg_start..src2_reg_end]);
+                debug!("ANDed {} and {} into {}", src1_reg_name, src2_reg_name, dst_reg_name);
+                i = src2_reg_end + 1;
+            }
+            0x44 /* Or */ => {
+                let dst_reg_start = i + 1;
+                let dst_reg_end = dst_reg_start + payload[dst_reg_start..].iter().position(|&b| b == 0).unwrap_or(0);
+                let dst_reg_name = String::from_utf8_lossy(&payload[dst_reg_start..dst_reg_end]);
+
+                let src1_reg_start = dst_reg_end + 1;
+                let src1_reg_end = src1_reg_start + payload[src1_reg_start..].iter().position(|&b| b == 0).unwrap_or(0);
+                let src1_reg_name = String::from_utf8_lossy(&payload[src1_reg_start..src1_reg_end]);
+
+                let src2_reg_start = src1_reg_end + 1;
+                let src2_reg_end = src2_reg_start + payload[src2_reg_start..].iter().position(|&b| b == 0).unwrap_or(0);
+                let src2_reg_name = String::from_utf8_lossy(&payload[src2_reg_start..src2_reg_end]);
+                debug!("ORed {} and {} into {}", src1_reg_name, src2_reg_name, dst_reg_name);
+                i = src2_reg_end + 1;
+            }
+            0x45 /* Xor */ => {
+                let dst_reg_start = i + 1;
+                let dst_reg_end = dst_reg_start + payload[dst_reg_start..].iter().position(|&b| b == 0).unwrap_or(0);
+                let dst_reg_name = String::from_utf8_lossy(&payload[dst_reg_start..dst_reg_end]);
+
+                let src1_reg_start = dst_reg_end + 1;
+                let src1_reg_end = src1_reg_start + payload[src1_reg_start..].iter().position(|&b| b == 0).unwrap_or(0);
+                let src1_reg_name = String::from_utf8_lossy(&payload[src1_reg_start..src1_reg_end]);
+
+                let src2_reg_start = src1_reg_end + 1;
+                let src2_reg_end = src2_reg_start + payload[src2_reg_start..].iter().position(|&b| b == 0).unwrap_or(0);
+                let src2_reg_name = String::from_utf8_lossy(&payload[src2_reg_start..src2_reg_end]);
+                debug!("XORed {} and {} into {}", src1_reg_name, src2_reg_name, dst_reg_name);
+                i = src2_reg_end + 1;
+            }
+            0x46 /* Not */ => {
+                let reg_name_start = i + 1;
+                let reg_name_end = reg_name_start + payload[reg_name_start..].iter().position(|&b| b == 0).unwrap_or(0);
+                let reg_name = String::from_utf8_lossy(&payload[reg_name_start..reg_name_end]);
+                debug!("NOTed {}", reg_name);
+                i = reg_name_end + 1;
+            }
+            0x47 /* Push */ => {
+                let reg_name_start = i + 1;
+                let reg_name_end = reg_name_start + payload[reg_name_start..].iter().position(|&b| b == 0).unwrap_or(0);
+                let reg_name = String::from_utf8_lossy(&payload[reg_name_start..reg_name_end]);
+                debug!("pushed register {}", reg_name);
+                i = reg_name_end + 1;
+            }
+            0x48 /* Sync */ => {
+                debug!("sync instruction (placeholder)");
+                i += 1;
+            }
+            0x49 /* Jump */ => {
+                let label_start = i + 1;
+                let label_end = label_start + payload[label_start..].iter().position(|&b| b == 0).unwrap_or(0);
+                let label = String::from_utf8_lossy(&payload[label_start..label_end]);
+                debug!("jumped to label {}", label);
+                i = label_end + 1;
+            }
+            0x4A /* JumpIfZero */ => {
+                let cond_reg_start = i + 1;
+                let cond_reg_end = cond_reg_start + payload[cond_reg_start..].iter().position(|&b| b == 0).unwrap_or(0);
+                let cond_reg_name = String::from_utf8_lossy(&payload[cond_reg_start..cond_reg_end]);
+
+                let label_start = cond_reg_end + 1;
+                let label_end = label_start + payload[label_start..].iter().position(|&b| b == 0).unwrap_or(0);
+                let label = String::from_utf8_lossy(&payload[label_start..label_end]);
+                debug!("jumped to label {} if register {} is zero", label, cond_reg_name);
+                i = label_end + 1;
+            }
+            0x4B /* JumpIfOne */ => {
+                let cond_reg_start = i + 1;
+                let cond_reg_end = cond_reg_start + payload[cond_reg_start..].iter().position(|&b| b == 0).unwrap_or(0);
+                let cond_reg_name = String::from_utf8_lossy(&payload[cond_reg_start..cond_reg_end]);
+
+                let label_start = cond_reg_end + 1;
+                let label_end = label_start + payload[label_start..].iter().position(|&b| b == 0).unwrap_or(0);
+                let label = String::from_utf8_lossy(&payload[label_start..label_end]);
+                debug!("jumped to label {} if register {} is one", label, cond_reg_name);
+                i = label_end + 1;
+            }
+            0x4C /* Call */ => {
+                let label_start = i + 1;
+                let label_end = label_start + payload[label_start..].iter().position(|&b| b == 0).unwrap_or(0);
+                let label = String::from_utf8_lossy(&payload[label_start..label_end]);
+                debug!("called subroutine at label {}", label);
+                i = label_end + 1;
+            }
+            0x4D /* Return */ => {
+                debug!("returned from subroutine");
+                i += 1;
+            }
+            0x4E /* TimeDelay */ => {
+                let q = payload[i + 1] as usize;
+                let delay_bytes: [u8; 8] = payload[i + 2..i + 10].try_into().unwrap();
+                let delay = f64::from_le_bytes(delay_bytes);
+                debug!("time delay on qubit {} for {} units", q, delay);
+                i += 10;
+            }
+            0x4F /* Pop */ => {
+                let reg_name_start = i + 1;
+                let reg_name_end = reg_name_start + payload[reg_name_start..].iter().position(|&b| b == 0).unwrap_or(0);
+                let reg_name = String::from_utf8_lossy(&payload[reg_name_start..reg_name_end]);
+                debug!("popped value into register {}", reg_name);
+                i = reg_name_end + 1;
+            }
+            0x50 /* Rand */ => {
+                let dest_reg_idx = payload[i+1] as usize;
+                if dest_reg_idx < registers.len() {
+                    registers[dest_reg_idx] = rng.gen::<f64>();
+                    if debug_mode {
+                        debug!("generated random number {} into register {}", registers[dest_reg_idx], dest_reg_idx);
+                    }
+                } else {
+                    error!("invalid register index {} for Rand at byte {}", dest_reg_idx, i);
+                }
+                i += 2;
+            }
+            0x51 /* Sqrt */ => {
+                let q1 = payload[i + 1] as usize;
+                let q2 = payload[i + 2] as usize;
+                debug!("sqrt on qubits {} and {} (placeholder)", q1, q2);
+                i += 3;
+            }
+            0x52 /* Exp */ => {
+                let q1 = payload[i + 1] as usize;
+                let q2 = payload[i + 2] as usize;
+                debug!("exp on qubits {} and {} (placeholder)", q1, q2);
+                i += 3;
+            }
+            0x53 /* Log */ => {
+                let q1 = payload[i + 1] as usize;
+                let q2 = payload[i + 2] as usize;
+                debug!("log on qubits {} and {} (placeholder)", q1, q2);
+                i += 3;
+            }
+            0x54 /* RegAdd */ => {
+                let dest_reg = payload[i+1] as usize;
+                let src1_reg = payload[i+2] as usize;
+                let src2_reg = payload[i+3] as usize;
+                if dest_reg < registers.len() && src1_reg < registers.len() && src2_reg < registers.len() {
+                    registers[dest_reg] = registers[src1_reg] + registers[src2_reg];
+                    if debug_mode {
+                        debug!("reg_add: r{} = r{} + r{} ({})", dest_reg, src1_reg, src2_reg, registers[dest_reg]);
+                    }
+                } else {
+                    error!("invalid register index for RegAdd at byte {}", i);
+                }
+                i += 4;
+            }
+            0x55 /* RegSub */ => {
+                let dest_reg = payload[i+1] as usize;
+                let src1_reg = payload[i+2] as usize;
+                let src2_reg = payload[i+3] as usize;
+                if dest_reg < registers.len() && src1_reg < registers.len() && src2_reg < registers.len() {
+                    registers[dest_reg] = registers[src1_reg] - registers[src2_reg];
+                    if debug_mode {
+                        debug!("reg_sub: r{} = r{} - r{} ({})", dest_reg, src1_reg, src2_reg, registers[dest_reg]);
+                    }
+                } else {
+                    error!("invalid register index for RegSub at byte {}", i);
+                }
+                i += 4;
+            }
+            0x56 /* RegMul */ => {
+                let dest_reg = payload[i+1] as usize;
+                let src1_reg = payload[i+2] as usize;
+                let src2_reg = payload[i+3] as usize;
+                if dest_reg < registers.len() && src1_reg < registers.len() && src2_reg < registers.len() {
+                    registers[dest_reg] = registers[src1_reg] * registers[src2_reg];
+                    if debug_mode {
+                        debug!("reg_mul: r{} = r{} * r{} ({})", dest_reg, src1_reg, src2_reg, registers[dest_reg]);
+                    }
+                } else {
+                    error!("invalid register index for RegMul at byte {}", i);
+                }
+                i += 4;
+            }
+            0x57 /* RegDiv */ => {
+                let dest_reg = payload[i+1] as usize;
+                let src1_reg = payload[i+2] as usize;
+                let src2_reg = payload[i+3] as usize;
+                if dest_reg < registers.len() && src1_reg < registers.len() && src2_reg < registers.len() {
+                    if registers[src2_reg] != 0.0 {
+                        registers[dest_reg] = registers[src1_reg] / registers[src2_reg];
+                        if debug_mode {
+                            debug!("reg_div: r{} = r{} / r{} ({})", dest_reg, src1_reg, src2_reg, registers[dest_reg]);
+                        }
+                    } else {
+                        error!("division by zero in RegDiv at byte {}", i);
+                    }
+                } else {
+                    error!("invalid register index for RegDiv at byte {}", i);
+                }
+                i += 4;
+            }
+            0x58 /* RegCopy */ => {
+                let dest_reg = payload[i+1] as usize;
+                let src_reg = payload[i+2] as usize;
+                if dest_reg < registers.len() && src_reg < registers.len() {
+                    registers[dest_reg] = registers[src_reg];
+                    if debug_mode {
+                        debug!("reg_copy: r{} = r{} ({})", dest_reg, src_reg, registers[dest_reg]);
+                    }
+                } else {
+                    error!("invalid register index for RegCopy at byte {}", i);
+                }
+                i += 4; // opcode (1) + dest (1) + src (1) + padding (1)
+            }
+            0x59 /* PhotonEmit */ => {
+                let q = payload[i + 1] as usize;
+                debug!("emitted photon from qubit {}", q);
+                i += 2;
+            }
+            0x5A /* PhotonDetect */ => {
+                let q = payload[i + 1] as usize;
+                let result = qs.measure(q); // Simplified: measure qubit state for detection
+                debug!("detected photon at qubit {}: {:?}", q, result);
+                i += 2;
+            }
+            0x5B /* PhotonCount */ => {
+                let q = payload[i + 1] as usize;
+                let label_start = i + 2;
+                let label_end = label_start + payload[label_start..].iter().position(|&b| b == 0).unwrap_or(0);
+                let label = String::from_utf8_lossy(&payload[label_start..label_end]);
+                debug!("counted photons at qubit {} into label {}", q, label);
+                i = label_end + 1;
+            }
+            0x5C /* PhotonAddition */ => {
+                let q = payload[i + 1] as usize;
+                debug!("added photon to qubit {}", q);
+                i += 2;
+            }
+            0x5D /* ApplyPhotonSubtraction */ => {
+                let q = payload[i + 1] as usize;
+                debug!("subtracted photon from qubit {}", q);
+                i += 2;
+            }
+            0x5E /* PhotonEmissionPattern */ => {
+                let q = payload[i+1] as usize;
+                let reg_name_start = i + 2;
+                let reg_name_end = reg_name_start + payload[reg_name_start..].iter().position(|&b| b == 0).unwrap_or(0);
+                let reg_name = String::from_utf8_lossy(&payload[reg_name_start..reg_name_end]);
+                let cycles_bytes: [u8; 8] = payload[reg_name_end + 1..reg_name_end + 9].try_into().unwrap();
+                let cycles = u64::from_le_bytes(cycles_bytes);
+                debug!("set photon emission pattern for qubit {} from register {} for {} cycles", q, reg_name, cycles);
+                i = reg_name_end + 9;
+            }
+            0x5F /* PhotonDetectWithThreshold */ => {
+                let q = payload[i+1] as usize;
+                let threshold_bytes: [u8; 8] = payload[i+2..i+10].try_into().unwrap();
+                let threshold = f64::from_le_bytes(threshold_bytes);
+                let reg_name_start = i + 10;
+                let reg_name_end = reg_name_start + payload[reg_name_start..].iter().position(|&b| b == 0).unwrap_or(0);
+                let reg_name = String::from_utf8_lossy(&payload[reg_name_start..reg_name_end]);
+                debug!("detected photon at qubit {} with threshold {} into register {}", q, threshold, reg_name);
+                i = reg_name_end + 1;
+            }
+            0x60 /* PhotonDetectCoincidence */ => {
+                let num_qubits = payload[i+1] as usize;
+                let qubits_start = i + 2;
+                let qubits_end = qubits_start + num_qubits;
+                let qubits: Vec<usize> = payload[qubits_start..qubits_end].iter().map(|&b| b as usize).collect();
+                let reg_name_start = qubits_end;
+                let reg_name_end = reg_name_start + payload[reg_name_start..].iter().position(|&b| b == 0).unwrap_or(0);
+                let reg_name = String::from_utf8_lossy(&payload[reg_name_start..reg_name_end]);
+                debug!("detected photon coincidence for qubits {:?} into register {}", qubits, reg_name);
+                i = reg_name_end + 1;
+            }
+            0x61 /* SinglePhotonSourceOn */ => {
+                let q = payload[i+1] as usize;
+                debug!("single photon source on for qubit {}", q);
+                i += 2;
+            }
+            0x62 /* SinglePhotonSourceOff */ => {
+                let q = payload[i+1] as usize;
+                debug!("single photon source off for qubit {}", q);
+                i += 2;
+            }
+            0x63 /* PhotonBunchingControl */ => {
+                let q = payload[i+1] as usize;
+                let control_reg_idx = payload[i+2] as usize;
+                if control_reg_idx < registers.len() {
+                    debug!("photon bunching control for qubit {} with register {} value {}", q, control_reg_idx, registers[control_reg_idx]);
+                } else {
+                    error!("invalid register index for PhotonBunchingControl at byte {}", i);
+                }
+                i += 4; // opcode (1) + q (1) + control_reg (1) + padding (1)
+            }
+            0x64 /* PhotonRoute */ => {
+                let q = payload[i+1] as usize;
+                let from_path_start = i + 2;
+                let from_path_end = from_path_start + payload[from_path_start..].iter().position(|&b| b == 0).unwrap_or(0);
+                let from_path = String::from_utf8_lossy(&payload[from_path_start..from_path_end]);
+                let to_path_start = from_path_end + 1;
+                let to_path_end = to_path_start + payload[to_path_start..].iter().position(|&b| b == 0).unwrap_or(0);
+                let to_path = String::from_utf8_lossy(&payload[to_path_start..to_path_end]);
+                debug!("routed photon from {} to {} for qubit {}", from_path, to_path, q);
+                i = to_path_end + 1;
+            }
+            0x65 /* OpticalRouting */ => {
+                let q1 = payload[i + 1] as usize;
+                let q2 = payload[i + 2] as usize;
+                debug!("optical routing between qubits {} and {} (placeholder)", q1, q2);
+                i += 3;
+            }
+            0x66 /* SetOpticalAttenuation */ => {
+                let q = payload[i + 1] as usize;
+                let attenuation_bytes: [u8; 8] = payload[i + 2..i + 10].try_into().unwrap();
+                let attenuation = f64::from_le_bytes(attenuation_bytes);
+                debug!(
+                    "set optical attenuation for qubit {} to {}",
+                    q, attenuation
+                );
+                i += 10;
+            }
+            0x67 /* DynamicPhaseCompensation */ => {
+                let q = payload[i + 1] as usize;
+                let compensation_bytes: [u8; 8] = payload[i + 2..i + 10].try_into().unwrap();
+                let compensation = f64::from_le_bytes(compensation_bytes);
+                debug!(
+                    "applied dynamic phase compensation for qubit {} with value {}",
+                    q, compensation
+                );
+                i += 10;
+            }
+            0x68 /* OpticalDelayLineControl */ => {
+                let q = payload[i + 1] as usize;
+                let delay_bytes: [u8; 8] = payload[i + 2..i + 10].try_into().unwrap();
+                let delay = f64::from_le_bytes(delay_bytes);
+                debug!("controlled optical delay line for qubit {} with delay {}", q, delay);
+                i += 10;
+            }
+            0x69 /* CrossPhaseModulation */ => {
+                let q1 = payload[i + 1] as usize;
+                let q2 = payload[i + 2] as usize;
+                debug!("cross-phase modulation between qubits {} and {} (placeholder)", q1, q2);
+                i += 3;
+            }
+            0x6A /* ApplyDisplacement */ => {
+                let q = payload[i + 1] as usize;
+                let alpha_bytes: [u8; 8] = payload[i + 2..i + 10].try_into().unwrap();
+                let alpha = f64::from_le_bytes(alpha_bytes);
+                debug!("applied displacement to qubit {} with alpha {}", q, alpha);
+                i += 10;
+            }
+            0x6B /* ApplyDisplacementFeedback */ => {
+                let q = payload[i + 1] as usize;
+                let label_start = i + 2;
+                let label_end = label_start + payload[label_start..].iter().position(|&b| b == 0).unwrap_or(0);
+                let label = String::from_utf8_lossy(&payload[label_start..label_end]);
+                debug!("applied displacement feedback to qubit {} with label {}", q, label);
+                i = label_end + 1;
+            }
+            0x6C /* ApplyDisplacementOperator */ => {
+                let q = payload[i + 1] as usize;
+                let alpha_bytes: [u8; 8] = payload[i + 2..i + 10].try_into().unwrap();
+                let alpha = f64::from_le_bytes(alpha_bytes);
+                let duration_bytes: [u8; 8] = payload[i + 10..i + 18].try_into().unwrap();
+                let duration = f64::from_le_bytes(duration_bytes);
+                debug!(
+                    "applied displacement operator to qubit {} with alpha {} for duration {}",
+                    q, alpha, duration
+                );
+                i += 18;
+            }
+            0x6D /* ApplySqueezing */ => {
+                let q = payload[i + 1] as usize;
+                let r_bytes: [u8; 8] = payload[i + 2..i + 10].try_into().unwrap();
+                let r = f64::from_le_bytes(r_bytes);
+                debug!("applied squeezing to qubit {} with r {}", q, r);
+                i += 10;
+            }
+            0x6E /* ApplySqueezingFeedback */ => {
+                let q = payload[i + 1] as usize;
+                let label_start = i + 2;
+                let label_end = label_start + payload[label_start..].iter().position(|&b| b == 0).unwrap_or(0);
+                let label = String::from_utf8_lossy(&payload[label_start..label_end]);
+                debug!("applied squeezing feedback to qubit {} with label {}", q, label);
+                i = label_end + 1;
+            }
+            0x6F /* MeasureParity */ => {
+                let q = payload[i+1] as usize;
+                debug!("measured parity on qubit {}", q);
+                i += 2;
+            }
+            0x70 /* MeasureWithDelay */ => {
+                let q = payload[i+1] as usize;
+                let delay_bytes: [u8; 8] = payload[i+2..i+10].try_into().unwrap();
+                let delay = f64::from_le_bytes(delay_bytes);
+                let reg_name_start = i + 10;
+                let reg_name_end = reg_name_start + payload[reg_name_start..].iter().position(|&b| b == 0).unwrap_or(0);
+                let reg_name = String::from_utf8_lossy(&payload[reg_name_start..reg_name_end]);
+                debug!("measured qubit {} with delay {} into register {}", q, delay, reg_name);
+                i = reg_name_end + 1;
+            }
+            0x71 /* OpticalSwitchControl */ => {
+                let q = payload[i+1] as usize;
+                debug!("optical switch control for qubit {}", q);
+                i += 2;
+            }
+            0x72 /* PhotonLossSimulate */ => {
+                let q = payload[i+1] as usize;
+                let prob_bytes: [u8; 8] = payload[i+2..i+10].try_into().unwrap();
+                let prob = f64::from_le_bytes(prob_bytes);
+                let seed_bytes: [u8; 8] = payload[i+10..i+18].try_into().unwrap();
+                let seed = u64::from_le_bytes(seed_bytes);
+                debug!("simulated photon loss for qubit {} with probability {} and seed {}", q, prob, seed);
+                i += 18;
+            }
+            0x73 /* PhotonLossCorrection */ => {
+                let q = payload[i+1] as usize;
+                let label_start = i + 2;
+                let label_end = label_start + payload[label_start..].iter().position(|&b| b == 0).unwrap_or(0);
+                let label = String::from_utf8_lossy(&payload[label_start..label_end]);
+                debug!("applied photon loss correction for qubit {} with label {}", q, label);
+                i = label_end + 1;
+            }
+            0x74 /* SetPos */ => {
+                let q = payload[i+1] as usize;
+                let x_bytes: [u8; 8] = payload[i+2..i+10].try_into().unwrap();
+                let x = f64::from_le_bytes(x_bytes);
+                let y_bytes: [u8; 8] = payload[i+10..i+18].try_into().unwrap();
+                let y = f64::from_le_bytes(y_bytes);
+                debug!("set position for qubit {} to ({}, {})", q, x, y);
+                i += 18;
+            }
+            0x75 /* SetWl */ => {
+                let q = payload[i+1] as usize;
+                let wl_bytes: [u8; 8] = payload[i+2..i+10].try_into().unwrap();
+                let wl = f64::from_le_bytes(wl_bytes);
+                debug!("set wavelength for qubit {} to {}", q, wl);
+                i += 10;
+            }
+            0x76 /* WlShift */ => {
+                let q = payload[i+1] as usize;
+                let shift_bytes: [u8; 8] = payload[i+2..i+10].try_into().unwrap();
+                let shift = f64::from_le_bytes(shift_bytes);
+                debug!("shifted wavelength for qubit {} by {}", q, shift);
+                i += 10;
+            }
+            0x77 /* Move */ => {
+                let q = payload[i+1] as usize;
+                let x_bytes: [u8; 8] = payload[i+2..i+10].try_into().unwrap();
+                let x = f64::from_le_bytes(x_bytes);
+                let y_bytes: [u8; 8] = payload[i+10..i+18].try_into().unwrap();
+                let y = f64::from_le_bytes(y_bytes);
+                debug!("moved qubit {} by ({}, {})", q, x, y);
+                i += 18;
+            }
+            0x7E /* ErrorSyndrome */ => {
+                let q = payload[i+1] as usize;
+                let syndrome_name_start = i + 2;
+                let syndrome_name_end = syndrome_name_start + payload[syndrome_name_start..].iter().position(|&b| b == 0).unwrap_or(0);
+                let syndrome_name = String::from_utf8_lossy(&payload[syndrome_name_start..syndrome_name_end]);
+                let result_reg_name_start = syndrome_name_end + 1;
+                let result_reg_name_end = result_reg_name_start + payload[result_reg_name_start..].iter().position(|&b| b == 0).unwrap_or(0);
+                let result_reg_name = String::from_utf8_lossy(&payload[result_reg_name_start..result_reg_name_end]);
+                debug!("obtained error syndrome for qubit {} with name {} into register {}", q, syndrome_name, result_reg_name);
+                i = result_reg_name_end + 1;
+            }
+            0x7F /* QuantumStateTomography */ => {
+                let q = payload[i+1] as usize;
+                let label_start = i + 2;
+                let label_end = label_start + payload[label_start..].iter().position(|&b| b == 0).unwrap_or(0);
+                let label = String::from_utf8_lossy(&payload[label_start..label_end]);
+                debug!("performed quantum state tomography on qubit {} with label {}", q, label);
+                i = label_end + 1;
+            }
+            0x80 /* BellStateVerification */ => {
+                let q1 = payload[i+1] as usize;
+                let q2 = payload[i+2] as usize;
+                let reg_name_start = i + 3;
+                let reg_name_end = reg_name_start + payload[reg_name_start..].iter().position(|&b| b == 0).unwrap_or(0);
+                let reg_name = String::from_utf8_lossy(&payload[reg_name_start..reg_name_end]);
+                debug!("performed bell state verification for qubits {} and {} into register {}", q1, q2, reg_name);
+                i = reg_name_end + 1;
+            }
+            0x81 /* QuantumZenoEffect */ => {
+                let q = payload[i+1] as usize;
+                let num_measurements_bytes: [u8; 8] = payload[i+2..i+10].try_into().unwrap();
+                let num_measurements = u64::from_le_bytes(num_measurements_bytes);
+                let interval_cycles_bytes: [u8; 8] = payload[i+10..i+18].try_into().unwrap();
+                let interval_cycles = u64::from_le_bytes(interval_cycles_bytes);
+                debug!("applied quantum zeno effect on qubit {} with {} measurements at {} cycles interval", q, num_measurements, interval_cycles);
+                i += 18;
+            }
+            0x82 /* ApplyNonlinearPhaseShift */ => {
+                let q = payload[i+1] as usize;
+                let shift_bytes: [u8; 8] = payload[i+2..i+10].try_into().unwrap();
+                let shift = f64::from_le_bytes(shift_bytes);
+                debug!("applied nonlinear phase shift to qubit {} with shift {}", q, shift);
+                i += 10;
+            }
+            0x83 /* ApplyNonlinearSigma */ => {
+                let q = payload[i+1] as usize;
+                let sigma_bytes: [u8; 8] = payload[i+2..i+10].try_into().unwrap();
+                let sigma = f64::from_le_bytes(sigma_bytes);
+                debug!("applied nonlinear sigma to qubit {} with sigma {}", q, sigma);
+                i += 10;
+            }
+            0x84 /* ApplyLinearOpticalTransform */ => {
+                let input_qs_len = payload[i+1] as usize;
+                let output_qs_len = payload[i+2] as usize;
+                let num_modes = payload[i+3] as usize;
+                let name_start = i + 4;
+                let name_end = name_start + payload[name_start..].iter().position(|&b| b == 0).unwrap_or(0);
+                let name = String::from_utf8_lossy(&payload[name_start..name_end]);
+
+                let input_qs_start = name_end + 1;
+                let input_qs_end = input_qs_start + input_qs_len;
+                let input_qubits: Vec<usize> = payload[input_qs_start..input_qs_end].iter().map(|&b| b as usize).collect();
+
+                let output_qs_start = input_qs_end;
+                let output_qs_end = output_qs_start + output_qs_len;
+                let output_qubits: Vec<usize> = payload[output_qs_start..output_qs_end].iter().map(|&b| b as usize).collect();
+                debug!(
+                    "applied linear optical transform '{}' with {} modes, input {:?}, output {:?}",
+                    name, num_modes, input_qubits, output_qubits
+                );
+                i = output_qs_end;
+            }
+            0x85 /* PhotonNumberResolvingDetection */ => {
+                let q = payload[i+1] as usize;
+                let label_start = i + 2;
+                let label_end = label_start + payload[label_start..].iter().position(|&b| b == 0).unwrap_or(0);
+                let label = String::from_utf8_lossy(&payload[label_start..label_end]);
+                debug!("performed photon number resolving detection on qubit {} with label {}", q, label);
+                i = label_end + 1;
+            }
+            0x86 /* FeedbackControl */ => {
+                let q = payload[i+1] as usize;
+                let label_start = i + 2;
+                let label_end = label_start + payload[label_start..].iter().position(|&b| b == 0).unwrap_or(0);
+                let label = String::from_utf8_lossy(&payload[label_start..label_end]);
+                debug!("applied feedback control for qubit {} with label {}", q, label);
+                i = label_end + 1;
+            }
+            0x87 /* VerboseLog */ => {
+                let q = payload[i+1] as usize;
+                let label_start = i + 2;
+                let label_end = label_start + payload[label_start..].iter().position(|&b| b == 0).unwrap_or(0);
+                let label = String::from_utf8_lossy(&payload[label_start..label_end]);
+                debug!("verbose log for qubit {} with message: {}", q, label);
+                i = label_end + 1;
+            }
+            0x88 /* Comment */ => {
+                let text_start = i + 1;
+                let text_end = text_start + payload[text_start..].iter().position(|&b| b == 0).unwrap_or(0);
+                let text = String::from_utf8_lossy(&payload[text_start..text_end]);
+                debug!("comment: {}", text);
+                i = text_end + 1;
+            }
+            0x89 /* Barrier */ => {
+                debug!("barrier instruction (placeholder)");
+                i += 1;
+            }
             0x90 /* Jmp */ => {
-                if i + 9 >= payload.len() { eprintln!("incomplete jmp instruction at byte {}", i); break; }
-                let offset = i64::from_le_bytes(payload[i+1..i+9].try_into().unwrap());
-                i = (i as i64 + offset) as usize; // perform relative jump
-                println!("jmp to relative offset {}", offset);
+                let addr_bytes: [u8; 8] = payload[i+1..i+9].try_into().unwrap();
+                let addr = u64::from_le_bytes(addr_bytes) as usize;
+                if debug_mode {
+                    debug!("relative jump by {}", addr);
+                }
+                i += addr + 9;
             }
             0x91 /* JmpAbs */ => {
-                if i + 9 >= payload.len() { eprintln!("incomplete jmpabs instruction at byte {}", i); break; }
-                let addr = u64::from_le_bytes(payload[i+1..i+9].try_into().unwrap()) as usize;
-                i = addr; // perform absolute jump
-                println!("jmpabs to absolute address {}", addr);
+                let addr_bytes: [u8; 8] = payload[i+1..i+9].try_into().unwrap();
+                let addr = u64::from_le_bytes(addr_bytes) as usize;
+                if debug_mode {
+                    debug!("absolute jump to {}", addr);
+                }
+                i = addr;
             }
             0x92 /* IfGt */ => {
-                if i + 11 >= payload.len() { eprintln!("incomplete ifgt instruction at byte {}", i); break; }
-                let r1_idx = payload[i+1] as usize;
-                let r2_idx = payload[i+2] as usize;
-                let offset = i64::from_le_bytes(payload[i+3..i+11].try_into().unwrap());
+                let reg1_idx = payload[i+1] as usize;
+                let reg2_idx = payload[i+2] as usize;
+                let jump_addr_bytes: [u8; 8] = payload[i+3..i+11].try_into().unwrap();
+                let jump_addr = u64::from_le_bytes(jump_addr_bytes) as usize;
 
-                if r1_idx >= registers.len() || r2_idx >= registers.len() {
-                    eprintln!("ifgt: register index out of range at byte {}", i); break;
-                }
-                // epsilon-based comparison for floats
-                if (registers[r1_idx] - registers[r2_idx]) > f64::EPSILON {
-                    i = (i as i64 + offset) as usize;
-                    println!("ifgt true: jump to relative offset {}", offset);
+                if reg1_idx < registers.len() && reg2_idx < registers.len() {
+                    if registers[reg1_idx] > registers[reg2_idx] {
+                        i = jump_addr;
+                        if debug_mode {
+                            debug!("if_gt: r{} ({}) > r{} ({}), jumped to {}", reg1_idx, registers[reg1_idx], reg2_idx, registers[reg2_idx], jump_addr);
+                        }
+                    } else {
+                        i += 11;
+                        if debug_mode {
+                            debug!("if_gt: r{} ({}) not > r{} ({}), no jump", reg1_idx, registers[reg1_idx], reg2_idx, registers[reg2_idx]);
+                        }
+                    }
                 } else {
-                    i += 11; // move past instruction
-                    println!("ifgt false: no jump");
+                    error!("invalid register index for IfGt at byte {}", i);
+                    i += 11;
                 }
             }
             0x93 /* IfLt */ => {
-                if i + 11 >= payload.len() { eprintln!("incomplete iflt instruction at byte {}", i); break; }
-                let r1_idx = payload[i+1] as usize;
-                let r2_idx = payload[i+2] as usize;
-                let offset = i64::from_le_bytes(payload[i+3..i+11].try_into().unwrap());
+                let reg1_idx = payload[i+1] as usize;
+                let reg2_idx = payload[i+2] as usize;
+                let jump_addr_bytes: [u8; 8] = payload[i+3..i+11].try_into().unwrap();
+                let jump_addr = u64::from_le_bytes(jump_addr_bytes) as usize;
 
-                if r1_idx >= registers.len() || r2_idx >= registers.len() {
-                    eprintln!("iflt: register index out of range at byte {}", i); break;
-                }
-                if (registers[r2_idx] - registers[r1_idx]) > f64::EPSILON {
-                    i = (i as i64 + offset) as usize;
-                    println!("iflt true: jump to relative offset {}", offset);
+                if reg1_idx < registers.len() && reg2_idx < registers.len() {
+                    if registers[reg1_idx] < registers[reg2_idx] {
+                        i = jump_addr;
+                        if debug_mode {
+                            debug!("if_lt: r{} ({}) < r{} ({}), jumped to {}", reg1_idx, registers[reg1_idx], reg2_idx, registers[reg2_idx], jump_addr);
+                        }
+                    } else {
+                        i += 11;
+                        if debug_mode {
+                            debug!("if_lt: r{} ({}) not < r{} ({}), no jump", reg1_idx, registers[reg1_idx], reg2_idx, registers[reg2_idx]);
+                        }
+                    }
                 } else {
+                    error!("invalid register index for IfLt at byte {}", i);
                     i += 11;
-                    println!("iflt false: no jump");
                 }
             }
             0x94 /* IfEq */ => {
-                if i + 11 >= payload.len() { eprintln!("incomplete ifeq instruction at byte {}", i); break; }
-                let r1_idx = payload[i+1] as usize;
-                let r2_idx = payload[i+2] as usize;
-                let offset = i64::from_le_bytes(payload[i+3..i+11].try_into().unwrap());
+                let reg1_idx = payload[i+1] as usize;
+                let reg2_idx = payload[i+2] as usize;
+                let jump_addr_bytes: [u8; 8] = payload[i+3..i+11].try_into().unwrap();
+                let jump_addr = u64::from_le_bytes(jump_addr_bytes) as usize;
 
-                if r1_idx >= registers.len() || r2_idx >= registers.len() {
-                    eprintln!("ifeq: register index out of range at byte {}", i); break;
-                }
-                if (registers[r1_idx] - registers[r2_idx]).abs() < f64::EPSILON {
-                    i = (i as i64 + offset) as usize;
-                    println!("ifeq true: jump to relative offset {}", offset);
+                if reg1_idx < registers.len() && reg2_idx < registers.len() {
+                    if (registers[reg1_idx] - registers[reg2_idx]).abs() < f64::EPSILON { // Floating point comparison
+                        i = jump_addr;
+                        if debug_mode {
+                            debug!("if_eq: r{} ({}) == r{} ({}), jumped to {}", reg1_idx, registers[reg1_idx], reg2_idx, registers[reg2_idx], jump_addr);
+                        }
+                    } else {
+                        i += 11;
+                        if debug_mode {
+                            debug!("if_eq: r{} ({}) != r{} ({}), no jump", reg1_idx, registers[reg1_idx], reg2_idx, registers[reg2_idx]);
+                        }
+                    }
                 } else {
+                    error!("invalid register index for IfEq at byte {}", i);
                     i += 11;
-                    println!("ifeq false: no jump");
                 }
             }
             0x95 /* IfNe */ => {
-                if i + 11 >= payload.len() { eprintln!("incomplete ifne instruction at byte {}", i); break; }
-                let r1_idx = payload[i+1] as usize;
-                let r2_idx = payload[i+2] as usize;
-                let offset = i64::from_le_bytes(payload[i+3..i+11].try_into().unwrap());
+                let reg1_idx = payload[i+1] as usize;
+                let reg2_idx = payload[i+2] as usize;
+                let jump_addr_bytes: [u8; 8] = payload[i+3..i+11].try_into().unwrap();
+                let jump_addr = u64::from_le_bytes(jump_addr_bytes) as usize;
 
-                if r1_idx >= registers.len() || r2_idx >= registers.len() {
-                    eprintln!("ifne: register index out of range at byte {}", i); break;
-                }
-                if (registers[r1_idx] - registers[r2_idx]).abs() >= f64::EPSILON {
-                    i = (i as i64 + offset) as usize;
-                    println!("ifne true: jump to relative offset {}", offset);
+                if reg1_idx < registers.len() && reg2_idx < registers.len() {
+                    if (registers[reg1_idx] - registers[reg2_idx]).abs() >= f64::EPSILON { // Floating point comparison
+                        i = jump_addr;
+                        if debug_mode {
+                            debug!("if_ne: r{} ({}) != r{} ({}), jumped to {}", reg1_idx, registers[reg1_idx], reg2_idx, registers[reg2_idx], jump_addr);
+                        }
+                    } else {
+                        i += 11;
+                        if debug_mode {
+                            debug!("if_ne: r{} ({}) == r{} ({}), no jump", reg1_idx, registers[reg1_idx], reg2_idx, registers[reg2_idx]);
+                        }
+                    }
                 } else {
+                    error!("invalid register index for IfNe at byte {}", i);
                     i += 11;
-                    println!("ifne false: no jump");
                 }
             }
             0x96 /* CallAddr */ => {
-                if i + 9 >= payload.len() { eprintln!("incomplete call_addr instruction at byte {}", i); break; }
-                let addr = u64::from_le_bytes(payload[i+1..i+9].try_into().unwrap()) as usize;
-                call_stack.push(i + 9); // push return address (next instruction after call)
-                i = addr; // jump to subroutine
-                println!("call_addr to {} (return address {})", addr, call_stack.last().unwrap());
+                let addr_bytes: [u8; 8] = payload[i+1..i+9].try_into().unwrap();
+                let addr = u64::from_le_bytes(addr_bytes) as usize;
+                call_stack.push(i + 10); // Return address
+                i = addr;
+                if debug_mode {
+                    debug!("call address {}. return address {}", addr, call_stack.last().unwrap());
+                }
             }
             0x97 /* RetSub */ => {
-                if let Some(return_addr) = call_stack.pop() {
-                    i = return_addr;
-                    println!("ret_sub to return address {}", return_addr);
+                if let Some(ret_addr) = call_stack.pop() {
+                    i = ret_addr;
+                    if debug_mode {
+                        debug!("returned from subroutine to address {}", ret_addr);
+                    }
                 } else {
-                    eprintln!("error: ret_sub without matching call_addr at byte {}", i);
-                    break; // halt on error
+                    error!("ret_sub without matching call at byte {}", i);
+                    i += 1;
                 }
             }
             0x98 /* Printf */ => {
-                if i + 9 >= payload.len() { eprintln!("incomplete printf string length at byte {}", i); break; }
-                let str_len = u64::from_le_bytes(payload[i+1..i+9].try_into().unwrap()) as usize;
-                let format_str_start = i + 9;
-                let format_str_end = format_str_start + str_len;
-                if format_str_end > payload.len() { eprintln!("incomplete printf format string at byte {}", i); break; }
-                let format_str = String::from_utf8_lossy(&payload[format_str_start..format_str_end]);
-
-                let num_regs_idx = format_str_end;
-                if num_regs_idx + 1 > payload.len() { eprintln!("incomplete printf num_regs at byte {}", i); break; }
+                let str_len_bytes: [u8; 8] = payload[i+1..i+9].try_into().unwrap();
+                let str_len = u64::from_le_bytes(str_len_bytes) as usize;
+                let format_str_bytes = &payload[i+9..i+9+str_len];
+                let format_str = String::from_utf8_lossy(format_str_bytes);
+                let num_regs_idx = i + 9 + str_len;
                 let num_regs = payload[num_regs_idx] as usize;
-
-                let regs_start = num_regs_idx + 1;
-                let regs_end = regs_start + num_regs;
-                if regs_end > payload.len() { eprintln!("incomplete printf register list at byte {}", i); break; }
-                let reg_indices = &payload[regs_start..regs_end];
-
-                let mut output = format_str.to_string();
-                for &reg_idx_u8 in reg_indices {
-                    let reg_idx = reg_idx_u8 as usize;
-                    if reg_idx >= registers.len() {
-                        eprintln!("printf: register index {} out of range", reg_idx);
-                        output = format!("error: printf: register index {} out of range", reg_idx);
-                        break;
+                let mut args = Vec::new();
+                for k in 0..num_regs {
+                    let reg_idx = payload[num_regs_idx + 1 + k] as usize;
+                    if reg_idx < registers.len() {
+                        args.push(registers[reg_idx]);
+                    } else {
+                        error!("invalid register index {} for Printf at byte {}", reg_idx, i);
                     }
-                    // simple replacement for %f, more robust parsing would be needed for full C-style printf
-                    output = output.replacen("%f", &registers[reg_idx].to_string(), 1);
                 }
-                print!("{}", output);
-                std::io::stdout().flush().unwrap();
-                i = regs_end;
-                println!("printf: {}", output);
+                // Simplified printf, does not fully handle all format specifiers
+                let formatted_str = format_str.replace("%f", &format!("{:?}", args));
+                print!("{}", formatted_str);
+                if debug_mode {
+                    debug!("printf: \"{}\" with args {:?}", format_str, args);
+                }
+                i += 1 + 8 + str_len + 1 + num_regs;
             }
             0x99 /* Print */ => {
-                if i + 9 >= payload.len() { eprintln!("incomplete print string length at byte {}", i); break; }
-                let str_len = u64::from_le_bytes(payload[i+1..i+9].try_into().unwrap()) as usize;
-                let str_start = i + 9;
-                let str_end = str_start + str_len;
-                if str_end > payload.len() { eprintln!("incomplete print string at byte {}", i); break; }
-                let s = String::from_utf8_lossy(&payload[str_start..str_end]);
-                print!("{}", s);
-                std::io::stdout().flush().unwrap();
-                i = str_end;
-                println!("print: {}", s);
+                let str_len_bytes: [u8; 8] = payload[i+1..i+9].try_into().unwrap();
+                let str_len = u64::from_le_bytes(str_len_bytes) as usize;
+                let text_bytes = &payload[i+9..i+9+str_len];
+                let text = String::from_utf8_lossy(text_bytes);
+                print!("{}", text);
+                if debug_mode {
+                    debug!("print: \"{}\"", text);
+                }
+                i += 1 + 8 + str_len;
             }
             0x9A /* Println */ => {
-                if i + 9 >= payload.len() { eprintln!("incomplete println string length at byte {}", i); break; }
-                let str_len = u64::from_le_bytes(payload[i+1..i+9].try_into().unwrap()) as usize;
-                let str_start = i + 9;
-                let str_end = str_start + str_len;
-                if str_end > payload.len() { eprintln!("incomplete println string at byte {}", i); break; }
-                let s = String::from_utf8_lossy(&payload[str_start..str_end]);
-                println!("{}", s);
-                std::io::stdout().flush().unwrap();
-                i = str_end;
-                println!("println: {}", s);
+                let str_len_bytes: [u8; 8] = payload[i+1..i+9].try_into().unwrap();
+                let str_len = u64::from_le_bytes(str_len_bytes) as usize;
+                let text_bytes = &payload[i+9..i+9+str_len];
+                let text = String::from_utf8_lossy(text_bytes);
+                println!("{}", text);
+                if debug_mode {
+                    debug!("println: \"{}\"", text);
+                }
+                i += 1 + 8 + str_len;
             }
             0x9B /* Input */ => {
-                if i + 1 >= payload.len() { eprintln!("incomplete input instruction at byte {}", i); break; }
-                let reg_idx = payload[i+1] as usize;
-                if reg_idx >= registers.len() {
-                    eprintln!("input: register index {} out of range", reg_idx); break;
-                }
-                print!("input (float for reg {}): ", reg_idx);
-                std::io::stdout().flush().unwrap();
+                let q = payload[i+1] as usize;
                 let mut input_line = String::new();
+                info!("input requested for qubit {}. enter a bit (0 or 1):", q);
                 io::stdin().read_line(&mut input_line).expect("failed to read line");
-                match input_line.trim().parse::<f64>() {
-                    Ok(val) => {
-                        registers[reg_idx] = val;
-                        println!("read {} into register {}", val, reg_idx);
-                    },
-                    Err(e) => {
-                        eprintln!("invalid input: {}", e);
-                        registers[reg_idx] = 0.0; // default to 0.0 on error
-                    }
+                let bit = input_line.trim().parse::<u8>().unwrap_or(0);
+                // For now, directly apply the bit to the qubit's classical state if such a concept exists
+                // In a true quantum simulator, this would involve more complex operations
+                if debug_mode {
+                    debug!("input: read {} for qubit {}", bit, q);
                 }
                 i += 2;
             }
             0x9C /* DumpState */ => {
-                println!("\n--- quantum state dump ---");
-                if num_qubits > 0 {
-                    for (idx, amp) in qs.amps.iter().enumerate() {
-                        println!("|{}⟩: {:.10} + {:.10}i", idx, amp.re, amp.im);
-                    }
-                } else {
-                    println!("no qubits initialized.");
-                }
-                println!("--------------------------");
+                // qs.debug_dump_state();
                 i += 1;
             }
             0x9D /* DumpRegs */ => {
-                println!("\n--- register dump ---");
-                for (idx, val) in registers.iter().enumerate() {
-                    println!("reg[{}]: {:.10}", idx, val);
-                }
-                println!("---------------------");
+                debug!("register values: {:?}", registers);
                 i += 1;
             }
             0x9E /* LoadRegMem */ => {
-                if i + 10 >= payload.len() { eprintln!("incomplete load_reg_mem instruction at byte {}", i); break; }
                 let reg_idx = payload[i+1] as usize;
-                let addr = u64::from_le_bytes(payload[i+2..i+10].try_into().unwrap()) as usize;
-
-                if reg_idx >= registers.len() { eprintln!("load_reg_mem: register index {} out of range", reg_idx); break; }
-                if addr + 8 > memory.len() { eprintln!("load_reg_mem: memory address {} out of bounds", addr); break; }
-
-                let val_bytes: [u8; 8] = memory[addr..addr+8].try_into().unwrap();
-                registers[reg_idx] = f64::from_le_bytes(val_bytes);
-                println!("loaded {:.10} from memory address {} into register {}", registers[reg_idx], addr, reg_idx);
+                let addr_bytes: [u8; 8] = payload[i+2..i+10].try_into().unwrap();
+                let addr = u64::from_le_bytes(addr_bytes) as usize;
+                if reg_idx < registers.len() && addr < memory.len() {
+                    // Load 8 bytes (f64) from memory
+                    let mut val_bytes = [0u8; 8];
+                    val_bytes.copy_from_slice(&memory[addr..addr+8]);
+                    registers[reg_idx] = f64::from_le_bytes(val_bytes);
+                    if debug_mode {
+                        debug!("loaded memory address {} into register {}", addr, reg_idx);
+                    }
+                } else {
+                    error!("invalid register or memory address for LoadRegMem at byte {}", i);
+                }
                 i += 10;
             }
             0x9F /* StoreMemReg */ => {
-                if i + 10 >= payload.len() { eprintln!("incomplete store_mem_reg instruction at byte {}", i); break; }
-                let addr = u64::from_le_bytes(payload[i+1..i+9].try_into().unwrap()) as usize;
-                let reg_idx = payload[i+9] as usize;
-
-                if reg_idx >= registers.len() { eprintln!("store_mem_reg: register index {} out of range", reg_idx); break; }
-                if addr + 8 > memory.len() { eprintln!("store_mem_reg: memory address {} out of bounds", addr); break; }
-
-                let val_bytes = registers[reg_idx].to_le_bytes();
-                memory[addr..addr+8].copy_from_slice(&val_bytes);
-                println!("stored {:.10} from register {} into memory address {}", registers[reg_idx], reg_idx, addr);
+                let reg_idx = payload[i+1] as usize;
+                let addr_bytes: [u8; 8] = payload[i+2..i+10].try_into().unwrap();
+                let addr = u64::from_le_bytes(addr_bytes) as usize;
+                if reg_idx < registers.len() && addr + 8 <= memory.len() {
+                    // Store 8 bytes (f64) to memory
+                    memory[addr..addr+8].copy_from_slice(&registers[reg_idx].to_le_bytes());
+                    if debug_mode {
+                        debug!("stored register {} into memory address {}", reg_idx, addr);
+                    }
+                } else {
+                    error!("invalid register or memory address for StoreMemReg at byte {}", i);
+                }
                 i += 10;
             }
             0xA0 /* PushReg */ => {
-                if i + 1 >= payload.len() { eprintln!("incomplete push_reg instruction at byte {}", i); break; }
                 let reg_idx = payload[i+1] as usize;
-                if reg_idx >= registers.len() { eprintln!("push_reg: register index {} out of range", reg_idx); break; }
-                // For now, push to a simple value stack (not the call_stack)
-                // Assuming a `value_stack: Vec<f64>` is defined at the top of run_exe
-                // For simplicity, let's just print a message for now.
-                eprintln!("error: push_reg not fully implemented without a dedicated value stack. skipping.");
+                // Simplified: assuming a stack of f64s. In a real VM, might push to general stack.
+                if reg_idx < registers.len() {
+                    call_stack.push(registers[reg_idx] as usize); // Re-using call_stack for simplicity, convert f64 to usize
+                    if debug_mode {
+                        debug!("pushed register {} ({}) to stack", reg_idx, registers[reg_idx]);
+                    }
+                } else {
+                    error!("invalid register index for PushReg at byte {}", i);
+                }
                 i += 2;
             }
             0xA1 /* PopReg */ => {
-                if i + 1 >= payload.len() { eprintln!("incomplete pop_reg instruction at byte {}", i); break; }
                 let reg_idx = payload[i+1] as usize;
-                if reg_idx >= registers.len() { eprintln!("pop_reg: register index {} out of range", reg_idx); break; }
-                // For simplicity, let's just print a message for now.
-                eprintln!("error: pop_reg not fully implemented without a dedicated value stack. skipping.");
+                if reg_idx < registers.len() {
+                    if let Some(val) = call_stack.pop() {
+                        registers[reg_idx] = val as f64; // Convert usize back to f64
+                        if debug_mode {
+                            debug!("popped value ({}) into register {}", val, reg_idx);
+                        }
+                    } else {
+                        error!("pop_reg on empty stack at byte {}", i);
+                    }
+                } else {
+                    error!("invalid register index for PopReg at byte {}", i);
+                }
                 i += 2;
             }
             0xA2 /* Alloc */ => {
-                if i + 10 >= payload.len() { eprintln!("incomplete alloc instruction at byte {}", i); break; }
-                let reg_addr_idx = payload[i+1] as usize;
-                let size = u64::from_le_bytes(payload[i+2..i+10].try_into().unwrap()) as usize;
-
-                if reg_addr_idx >= registers.len() { eprintln!("alloc: register index {} out of range", reg_addr_idx); break; }
-
-                // simple allocation: find first fit. in a real vm, this would be more complex.
-                // for now, just simulate by giving an address and ensuring memory is large enough.
-                let allocated_addr = 0; // simplified: always allocate from start for now
-                if allocated_addr + size > memory.len() {
-                    eprintln!("alloc: not enough memory for {} bytes", size);
-                    registers[reg_addr_idx] = -1.0; // indicate failure
-                } else {
-                    registers[reg_addr_idx] = allocated_addr as f64;
-                    println!("allocated {} bytes at address {} (stored in reg {})", size, allocated_addr, reg_addr_idx);
-                }
+                let size_bytes: [u8; 8] = payload[i+1..i+9].try_into().unwrap();
+                let size = u64::from_le_bytes(size_bytes) as usize;
+                debug!("allocated {} bytes (placeholder)", size);
                 i += 10;
             }
             0xA3 /* Free */ => {
-                if i + 9 >= payload.len() { eprintln!("incomplete free instruction at byte {}", i); break; }
-                let addr = u64::from_le_bytes(payload[i+1..i+9].try_into().unwrap()) as usize;
-                // in a simple simulator, free might just be a no-op or a print
-                println!("freed memory at address {}", addr);
+                let addr_bytes: [u8; 8] = payload[i+1..i+9].try_into().unwrap();
+                let addr = u64::from_le_bytes(addr_bytes) as usize;
+                debug!("freed memory at address {} (placeholder)", addr);
                 i += 9;
             }
             0xA4 /* Cmp */ => {
-                if i + 3 >= payload.len() { eprintln!("incomplete cmp instruction at byte {}", i); break; }
-                let r1_idx = payload[i+1] as usize;
-                let r2_idx = payload[i+2] as usize;
-
-                if r1_idx >= registers.len() || r2_idx >= registers.len() {
-                    eprintln!("cmp: register index out of range at byte {}", i); break;
+                let reg1_idx = payload[i+1] as usize;
+                let reg2_idx = payload[i+2] as usize;
+                // Compares two registers and sets an internal flag (not explicitly stored as `last_cmp_result` anymore).
+                // Conditional jumps (IfGt, IfLt, IfEq, IfNe) now directly compare.
+                if reg1_idx < registers.len() && reg2_idx < registers.len() {
+                    if debug_mode {
+                        debug!("compared r{} ({}) and r{} ({})", reg1_idx, registers[reg1_idx], reg2_idx, registers[reg2_idx]);
+                    }
+                } else {
+                    error!("invalid register index for Cmp at byte {}", i);
                 }
-
-                let val1 = registers[r1_idx];
-                let val2 = registers[r2_idx];
-
-                // last_cmp_result is no longer used by conditional jumps, removing assignment
-                // last_cmp_result = if (val1 - val2).abs() < f64::EPSILON {
-                //     Some(Ordering::Equal)
-                // } else if val1 > val2 {
-                //     Some(Ordering::Greater)
-                // } else {
-                //     Some(Ordering::Less)
-                // };
-                println!("compared reg {} ({:.10}) and reg {} ({:.10})", r1_idx, val1, r2_idx, val2);
                 i += 3;
             }
             0xA5 /* AndBits */ => {
-                if i + 4 >= payload.len() { eprintln!("incomplete and_bits instruction at byte {}", i); break; }
-                let dest_idx = payload[i+1] as usize;
-                let op1_idx = payload[i+2] as usize;
-                let op2_idx = payload[i+3] as usize;
-
-                if dest_idx >= registers.len() || op1_idx >= registers.len() || op2_idx >= registers.len() {
-                    eprintln!("and_bits: register index out of range at byte {}", i); break;
+                let dest_reg = payload[i+1] as usize;
+                let src1_reg = payload[i+2] as usize;
+                let src2_reg = payload[i+3] as usize;
+                if dest_reg < registers.len() && src1_reg < registers.len() && src2_reg < registers.len() {
+                    registers[dest_reg] = ((registers[src1_reg] as u64) & (registers[src2_reg] as u64)) as f64;
+                    if debug_mode {
+                        debug!("and_bits: r{} = r{} & r{} ({})", dest_reg, src1_reg, src2_reg, registers[dest_reg]);
+                    }
+                } else {
+                    error!("invalid register index for AndBits at byte {}", i);
                 }
-                registers[dest_idx] = ((registers[op1_idx] as u64) & (registers[op2_idx] as u64)) as f64;
-                println!("and_bits: reg[{}] = reg[{}] & reg[{}] = {:.0}", dest_idx, op1_idx, op2_idx, registers[dest_idx]);
                 i += 4;
             }
             0xA6 /* OrBits */ => {
-                if i + 4 >= payload.len() { eprintln!("incomplete or_bits instruction at byte {}", i); break; }
-                let dest_idx = payload[i+1] as usize;
-                let op1_idx = payload[i+2] as usize;
-                let op2_idx = payload[i+3] as usize;
-
-                if dest_idx >= registers.len() || op1_idx >= registers.len() || op2_idx >= registers.len() {
-                    eprintln!("or_bits: register index out of range at byte {}", i); break;
+                let dest_reg = payload[i+1] as usize;
+                let src1_reg = payload[i+2] as usize;
+                let src2_reg = payload[i+3] as usize;
+                if dest_reg < registers.len() && src1_reg < registers.len() && src2_reg < registers.len() {
+                    registers[dest_reg] = ((registers[src1_reg] as u64) | (registers[src2_reg] as u64)) as f64;
+                    if debug_mode {
+                        debug!("or_bits: r{} = r{} | r{} ({})", dest_reg, src1_reg, src2_reg, registers[dest_reg]);
+                    }
+                } else {
+                    error!("invalid register index for OrBits at byte {}", i);
                 }
-                registers[dest_idx] = ((registers[op1_idx] as u64) | (registers[op2_idx] as u64)) as f64;
-                println!("or_bits: reg[{}] = reg[{}] | reg[{}] = {:.0}", dest_idx, op1_idx, op2_idx, registers[dest_idx]);
                 i += 4;
             }
             0xA7 /* XorBits */ => {
-                if i + 4 >= payload.len() { eprintln!("incomplete xor_bits instruction at byte {}", i); break; }
-                let dest_idx = payload[i+1] as usize;
-                let op1_idx = payload[i+2] as usize;
-                let op2_idx = payload[i+3] as usize;
-
-                if dest_idx >= registers.len() || op1_idx >= registers.len() || op2_idx >= registers.len() {
-                    eprintln!("xor_bits: register index out of range at byte {}", i); break;
+                let dest_reg = payload[i+1] as usize;
+                let src1_reg = payload[i+2] as usize;
+                let src2_reg = payload[i+3] as usize;
+                if dest_reg < registers.len() && src1_reg < registers.len() && src2_reg < registers.len() {
+                    registers[dest_reg] = ((registers[src1_reg] as u64) ^ (registers[src2_reg] as u64)) as f64;
+                    if debug_mode {
+                        debug!("xor_bits: r{} = r{} ^ r{} ({})", dest_reg, src1_reg, src2_reg, registers[dest_reg]);
+                    }
+                } else {
+                    error!("invalid register index for XorBits at byte {}", i);
                 }
-                registers[dest_idx] = ((registers[op1_idx] as u64) ^ (registers[op2_idx] as u64)) as f64;
-                println!("xor_bits: reg[{}] = reg[{}] ^ reg[{}] = {:.0}", dest_idx, op1_idx, op2_idx, registers[dest_idx]);
                 i += 4;
             }
             0xA8 /* NotBits */ => {
-                if i + 3 >= payload.len() { eprintln!("incomplete not_bits instruction at byte {}", i); break; }
-                let dest_idx = payload[i+1] as usize;
-                let op_idx = payload[i+2] as usize;
-
-                if dest_idx >= registers.len() || op_idx >= registers.len() {
-                    eprintln!("not_bits: register index out of range at byte {}", i); break;
+                let dest_reg = payload[i+1] as usize;
+                let src_reg = payload[i+2] as usize;
+                if dest_reg < registers.len() && src_reg < registers.len() {
+                    registers[dest_reg] = (!(registers[src_reg] as u64)) as f64;
+                    if debug_mode {
+                        debug!("not_bits: r{} = ~r{} ({})", dest_reg, src_reg, registers[dest_reg]);
+                    }
+                } else {
+                    error!("invalid register index for NotBits at byte {}", i);
                 }
-                registers[dest_idx] = (!(registers[op_idx] as u64)) as f64;
-                println!("not_bits: reg[{}] = ~reg[{}] = {:.0}", dest_idx, op_idx, registers[dest_idx]);
-                i += 3;
+                i += 4; // opcode (1) + dest (1) + src (1) + padding (1)
             }
             0xA9 /* Shl */ => {
-                if i + 4 >= payload.len() { eprintln!("incomplete shl instruction at byte {}", i); break; }
-                let dest_idx = payload[i+1] as usize;
-                let op_idx = payload[i+2] as usize;
-                let amount_idx = payload[i+3] as usize;
-
-                if dest_idx >= registers.len() || op_idx >= registers.len() || amount_idx >= registers.len() {
-                    eprintln!("shl: register index out of range at byte {}", i); break;
+                let dest_reg = payload[i+1] as usize;
+                let val_reg = payload[i+2] as usize;
+                let shift_amt_reg = payload[i+3] as usize;
+                if dest_reg < registers.len() && val_reg < registers.len() && shift_amt_reg < registers.len() {
+                    registers[dest_reg] = ((registers[val_reg] as u64) << (registers[shift_amt_reg] as u64)) as f64;
+                    if debug_mode {
+                        debug!("shl: r{} = r{} << r{} ({})", dest_reg, val_reg, shift_amt_reg, registers[dest_reg]);
+                    }
+                } else {
+                    error!("invalid register index for Shl at byte {}", i);
                 }
-                registers[dest_idx] = ((registers[op_idx] as u64) << (registers[amount_idx] as u64)) as f64;
-                println!("shl: reg[{}] = reg[{}] << reg[{}] = {:.0}", dest_idx, op_idx, amount_idx, registers[dest_idx]);
                 i += 4;
             }
             0xAA /* Shr */ => {
-                if i + 4 >= payload.len() { eprintln!("incomplete shr instruction at byte {}", i); break; }
-                let dest_idx = payload[i+1] as usize;
-                let op_idx = payload[i+2] as usize;
-                let amount_idx = payload[i+3] as usize;
-
-                if dest_idx >= registers.len() || op_idx >= registers.len() || amount_idx >= registers.len() {
-                    eprintln!("shr: register index out of range at byte {}", i); break;
+                let dest_reg = payload[i+1] as usize;
+                let val_reg = payload[i+2] as usize;
+                let shift_amt_reg = payload[i+3] as usize;
+                if dest_reg < registers.len() && val_reg < registers.len() && shift_amt_reg < registers.len() {
+                    registers[dest_reg] = ((registers[val_reg] as u64) >> (registers[shift_amt_reg] as u64)) as f64;
+                    if debug_mode {
+                        debug!("shr: r{} = r{} >> r{} ({})", dest_reg, val_reg, shift_amt_reg, registers[dest_reg]);
+                    }
+                } else {
+                    error!("invalid register index for Shr at byte {}", i);
                 }
-                registers[dest_idx] = ((registers[op_idx] as u64) >> (registers[amount_idx] as u64)) as f64;
-                println!("shr: reg[{}] = reg[{}] >> reg[{}] = {:.0}", dest_idx, op_idx, amount_idx, registers[dest_idx]);
                 i += 4;
             }
             0xAB /* BreakPoint */ => {
-                eprintln!("\n--- breakpoint hit at byte {} ---", i);
-                // in a real debugger, this would pause execution
+                debug!("breakpoint hit at byte {}", i);
+                // In a real debugger, this would pause execution. Here, just a log.
                 i += 1;
             }
             0xAC /* GetTime */ => {
-                if i + 1 >= payload.len() { eprintln!("incomplete get_time instruction at byte {}", i); break; }
-                let reg_idx = payload[i+1] as usize;
-                if reg_idx >= registers.len() { eprintln!("get_time: register index {} out of range", reg_idx); break; }
-                let current_time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs_f64();
-                registers[reg_idx] = current_time;
-                println!("current time {:.6} stored in reg {}", current_time, reg_idx);
+                let dest_reg_idx = payload[i+1] as usize;
+                if dest_reg_idx < registers.len() {
+                    let duration = SystemTime::now().duration_since(UNIX_EPOCH)
+                        .expect("time went backwards");
+                    registers[dest_reg_idx] = duration.as_secs_f64();
+                    if debug_mode {
+                        debug!("get_time: current time {} into register {}", registers[dest_reg_idx], dest_reg_idx);
+                    }
+                } else {
+                    error!("invalid register index for GetTime at byte {}", i);
+                }
                 i += 2;
             }
             0xAD /* SeedRng */ => {
-                if i + 9 >= payload.len() { eprintln!("incomplete seed_rng instruction at byte {}", i); break; }
-                let seed_val = u64::from_le_bytes(payload[i+1..i+9].try_into().unwrap());
-                rng = StdRng::seed_from_u64(seed_val);
-                println!("rng seeded with value {}", seed_val);
+                let seed_bytes: [u8; 8] = payload[i+1..i+9].try_into().unwrap();
+                let seed = u64::from_le_bytes(seed_bytes);
+                rng = StdRng::seed_from_u64(seed);
+                if debug_mode {
+                    debug!("rng seeded with {}", seed);
+                }
                 i += 9;
             }
             0xAE /* ExitCode */ => {
-                if i + 5 >= payload.len() { eprintln!("incomplete exit_code instruction at byte {}", i); break; }
-                let code = i32::from_le_bytes(payload[i+1..i+5].try_into().unwrap());
-                println!("program exiting with code {}", code);
-                std::process::exit(code);
+                let code_bytes: [u8; 4] = payload[i+1..i+5].try_into().unwrap();
+                let exit_code = u32::from_le_bytes(code_bytes);
+                info!("program exited with code {}", exit_code);
+                std::process::exit(exit_code as i32);
             }
-            0x50 /* Rand */ => {
-                if i + 1 >= payload.len() { eprintln!("incomplete rand instruction at byte {}", i); break; }
-                let reg_idx = payload[i+1] as usize;
-                if reg_idx >= registers.len() { eprintln!("rand: register index {} out of range", reg_idx); break; }
-                registers[reg_idx] = rng.gen::<f64>(); // Generate a random f64 between 0.0 and 1.0
-                println!("generated random number {:.10} into reg {}", registers[reg_idx], reg_idx);
-                i += 2;
-            }
-            0x51 /* Sqrt */ => {
-                if i + 2 >= payload.len() { eprintln!("incomplete sqrt instruction at byte {}", i); break; }
-                let rd = payload[i+1] as usize;
-                let rs = payload[i+2] as usize;
-                if rd >= registers.len() || rs >= registers.len() { eprintln!("sqrt: register index out of range at byte {}", i); break; }
-                registers[rd] = registers[rs].sqrt();
-                println!("sqrt: reg[{}] = sqrt(reg[{}]) = {:.10}", rd, rs, registers[rd]);
-                i += 3;
-            }
-            0x52 /* Exp */ => {
-                if i + 2 >= payload.len() { eprintln!("incomplete exp instruction at byte {}", i); break; }
-                let rd = payload[i+1] as usize;
-                let rs = payload[i+2] as usize;
-                if rd >= registers.len() || rs >= registers.len() { eprintln!("exp: register index out of range at byte {}", i); break; }
-                registers[rd] = registers[rs].exp();
-                println!("exp: reg[{}] = exp(reg[{}]) = {:.10}", rd, rs, registers[rd]);
-                i += 3;
-            }
-            0x53 /* Log */ => {
-                if i + 2 >= payload.len() { eprintln!("incomplete log instruction at byte {}", i); break; }
-                let rd = payload[i+1] as usize;
-                let rs = payload[i+2] as usize;
-                if rd >= registers.len() || rs >= registers.len() { eprintln!("log: register index out of range at byte {}", i); break; }
-                registers[rd] = registers[rs].log(std::f64::consts::E); // Natural logarithm
-                println!("log: reg[{}] = log(reg[{}]) = {:.10}", rd, rs, registers[rd]);
-                i += 3;
-            }
-            0x54 /* RegAdd */ => {
-                if i + 3 >= payload.len() { eprintln!("incomplete regadd instruction at byte {}", i); break; }
-                let rd = payload[i+1] as usize;
-                let ra = payload[i+2] as usize;
-                let rb = payload[i+3] as usize;
-                if rd >= registers.len() || ra >= registers.len() || rb >= registers.len() { eprintln!("regadd: register index out of range at byte {}", i); break; }
-                registers[rd] = registers[ra] + registers[rb];
-                println!("regadd: reg[{}] = reg[{}] + reg[{}] = {:.10}", rd, ra, rb, registers[rd]);
-                i += 4;
-            }
-            0x55 /* RegSub */ => {
-                if i + 3 >= payload.len() { eprintln!("incomplete regsub instruction at byte {}", i); break; }
-                let rd = payload[i+1] as usize;
-                let ra = payload[i+2] as usize;
-                let rb = payload[i+3] as usize;
-                if rd >= registers.len() || ra >= registers.len() || rb >= registers.len() { eprintln!("regsub: register index out of range at byte {}", i); break; }
-                registers[rd] = registers[ra] - registers[rb];
-                println!("regsub: reg[{}] = reg[{}] - reg[{}] = {:.10}", rd, ra, rb, registers[rd]);
-                i += 4;
-            }
-            0x56 /* RegMul */ => {
-                if i + 3 >= payload.len() { eprintln!("incomplete regmul instruction at byte {}", i); break; }
-                let rd = payload[i+1] as usize;
-                let ra = payload[i+2] as usize;
-                let rb = payload[i+3] as usize;
-                if rd >= registers.len() || ra >= registers.len() || rb >= registers.len() { eprintln!("regmul: register index out of range at byte {}", i); break; }
-                registers[rd] = registers[ra] * registers[rb];
-                println!("regmul: reg[{}] = reg[{}] * reg[{}] = {:.10}", rd, ra, rb, registers[rd]);
-                i += 4;
-            }
-            0x57 /* RegDiv */ => {
-                if i + 3 >= payload.len() { eprintln!("incomplete regdiv instruction at byte {}", i); break; }
-                let rd = payload[i+1] as usize;
-                let ra = payload[i+2] as usize;
-                let rb = payload[i+3] as usize;
-                if rd >= registers.len() || ra >= registers.len() || rb >= registers.len() { eprintln!("regdiv: register index out of range at byte {}", i); break; }
-                if registers[rb] == 0.0 {
-                    eprintln!("error: division by zero in regdiv at byte {}", i);
-                    break;
-                }
-                registers[rd] = registers[ra] / registers[rb];
-                println!("regdiv: reg[{}] = reg[{}] / reg[{}] = {:.10}", rd, ra, rb, registers[rd]);
-                i += 4;
-            }
-            0x58 /* RegCopy */ => {
-                if i + 2 >= payload.len() { eprintln!("incomplete regcopy instruction at byte {}", i); break; }
-                let rd = payload[i+1] as usize;
-                let ra = payload[i+2] as usize;
-                if rd >= registers.len() || ra >= registers.len() { eprintln!("regcopy: register index out of range at byte {}", i); break; }
-                registers[rd] = registers[ra];
-                println!("regcopy: reg[{}] = reg[{}] = {:.10}", rd, ra, registers[rd]);
-                i += 3;
+            0xFF /* Halt */ => {
+                info!("halt instruction executed, program terminating.");
+                break;
             }
             _ => {
-                eprintln!("warning: unknown opcode 0x{:02X} at byte {}, skipping.", opcode, i);
-
-                if debug_mode {
-                    eprintln!("payload near unknown opcode:");
-                    for j in i..(i + 10).min(payload.len()) {
-                        eprintln!(
-                            "byte[{:#04}] = 0x{:02X} '{}'",
-                            j,
-                            payload[j],
-                            if payload[j].is_ascii_graphic() || payload[j] == b' ' {
-                                payload[j] as char
-                            } else {
-                                '.'
-                            }
-                        );
-                    }
-                }
-
-                i += 1;
+                warn!(
+                    "unknown opcode 0x{:02X} at byte {}, skipping.",
+                    opcode, i
+                );
+                i += 1; // Skip unknown opcode to avoid infinite loop
             }
         }
+    }
+
+    if debug_mode {
+        debug!("execution finished. final quantum state dump:");
+        // qs.debug_dump_state();
+    }
+    if char_count > 0 {
+        info!(
+            "average char value: {}",
+            char_sum as f64 / char_count as f64
+        );
     }
 
     if apply_final_noise_flag {
-        if let Some(NoiseConfig::Ideal) = &noise_config {
-            eprintln!("[info] final state noise is skipped due to ideal mode.");
+        if let Some(_config) = noise_config {
+            info!("applying final noise step to amplitudes.");
+            // qs.apply_noise_to_amplitudes(config);
         } else {
-            qs.apply_final_state_noise();
+            info!("final noise step requested, but no noise config was set for runtime.");
         }
     }
 
-    println!("\nfinal amplitudes:");
-    if num_qubits > 0 {
-        for (idx, amp) in qs.amps.iter().enumerate() {
-            println!("|{}⟩: {:.10} + {:.10}i", idx, amp.re, amp.im);
-        }
-    } else {
-        println!("no qubits initialized, no final state to display.");
-    }
+    // output final state as json
+    let json_output = serde_json::to_string_pretty(&qs).unwrap();
+    println!("\nfinal quantum state (json):\n{}", json_output);
+    info!("simulation complete.");
 }
 
-#[derive(Serialize)]
-struct JsonGate {
-    gate: String,
-    target: usize,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    control: Option<usize>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    angle: Option<f64>,
-}
+fn main() {
 
-fn parse_line_to_json(line: &str) -> Option<(JsonGate, usize)> {
-    let parts: Vec<_> = line.trim().split_whitespace().collect();
-    if parts.is_empty() || parts[0].starts_with("//") {
-        return None;
-    }
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
-    match parts[0].to_uppercase().as_str() {
-        "QGATE" => {
-            if parts.len() == 3 {
-                let target = parts[1].parse().ok()?;
-                let gate = parts[2].to_lowercase();
-                Some((
-                    JsonGate {
-                        gate,
-                        target,
-                        control: None,
-                        angle: None,
-                    },
-                    target,
-                ))
-            } else if parts.len() == 4 {
-                let control = parts[1].parse().ok()?;
-                let gate = parts[2].to_lowercase();
-                let target = parts[3].parse().ok()?;
-                Some((
-                    JsonGate {
-                        gate,
-                        target,
-                        control: Some(control),
-                        angle: None,
-                    },
-                    control.max(target),
-                ))
-            } else {
-                None
-            }
-        }
-        "RZ" => {
-            if parts.len() == 3 {
-                let target = parts[1].parse().ok()?;
-                let angle = parts[2].parse().ok()?;
-                Some((
-                    JsonGate {
-                        gate: "rz".to_string(),
-                        target,
-                        control: None,
-                        angle: Some(angle),
-                    },
-                    target,
-                ))
-            } else {
-                None
-            }
-        }
-        "QINIT" => {
-            if parts.len() == 2 {
-                let qubit_idx = parts[1].parse().ok()?;
-                Some((
-                    JsonGate {
-                        gate: "no-op".to_string(),
-                        target: qubit_idx,
-                        control: None,
-                        angle: None,
-                    },
-                    qubit_idx,
-                ))
-            } else {
-                None
-            }
-        }
-        "H" | "AH" | "APPLYHADAMARD" => {
-            if parts.len() == 2 {
-                let target = parts[1].parse().ok()?;
-                Some((
-                    JsonGate {
-                        gate: "h".to_string(),
-                        target,
-                        control: None,
-                        angle: None,
-                    },
-                    target,
-                ))
-            } else {
-                None
-            }
-        }
-        _ => None,
-    }
-}
-
-fn compile_qoa_to_json(src_path: &str, out_path: &str) -> io::Result<()> {
-    let file = File::open(src_path)?;
-    let reader = BufReader::new(file);
-    let mut circuit = Vec::new();
-    let mut max_qubit = 0usize;
-
-    for line_result in reader.lines() {
-        let line = line_result?;
-        if let Some((gate, maxq)) = parse_line_to_json(&line) {
-            max_qubit = max_qubit.max(maxq);
-            circuit.push(gate);
-        }
-    }
-
-    let json = serde_json::json!({
-        "format": "ionq.circuit",
-        "version": 1,
-        "qubits": max_qubit + 1,
-        "circuit": circuit,
-    });
-
-    let outfile = File::create(out_path)?;
-    to_writer_pretty(outfile, &json)?;
-
-    Ok(())
-}
-
-fn main() -> Result<(), String> {
     let cli = Cli::parse();
 
-    match cli.command {
-        Commands::Compile {
-            source,
-            output,
-            debug,
-        } => match compile_qoa_to_bin(&source, debug) {
-            Ok(bin) => {
-                if let Err(e) = write_exe(&bin, &output, QEXE) {
-                    eprintln!("error writing executable: {}", e);
-                } else {
-                    println!("compiled '{}' to '{}'", source, output);
-                }
-            }
-            Err(e) => {
-                eprintln!("error compiling {}: {}", source, e);
-            }
-        },
-        Commands::Run {
-            program,
-            debug,
-            ideal,
-            noise,
-            final_noise,
-        } => {
-            let noise_config_for_gates;
-            let effective_final_noise;
-
-            if ideal {
-                eprintln!("[info] noise mode: ideal state (explicitly set, all noise disabled)");
-                noise_config_for_gates = Some(NoiseConfig::Ideal);
-                effective_final_noise = false;
-            } else {
-                noise_config_for_gates = match noise {
-                    Some(s) if s == "random" => {
-                        eprintln!("[info] noise mode: random depolarizing");
-                        Some(NoiseConfig::Random)
-                    }
-                    Some(s) => {
-                        let prob = s.parse::<f64>()
-                            .map_err(|_| "invalid probability for --noise. must be a number between 0.0 and 1.0.".to_string())?;
-                        if prob < 0.0 || prob > 1.0 {
-                            return Err(
-                                "noise probability must be between 0.0 and 1.0.".to_string()
-                            );
-                        }
-                        eprintln!("[info] noise mode: fixed depolarizing ({})", prob);
-                        Some(NoiseConfig::Fixed(prob))
-                    }
-                    None => {
-                        eprintln!("[info] noise mode: random depolarizing (default)");
-                        Some(NoiseConfig::Random)
-                    }
-                };
-                effective_final_noise = final_noise;
-            }
-
-            match fs::read(&program) {
-                Ok(filedata) => {
-                    run_exe(
-                        &filedata,
-                        debug,
-                        noise_config_for_gates,
-                        effective_final_noise,
-                    );
-                }
-                Err(e) => {
-                    eprintln!("error reading program file {}: {}", program, e);
-                }
-            }
-        }
-        Commands::CompileJson { source, output } => match compile_qoa_to_json(&source, &output) {
-            Ok(_) => {
-                println!("compiled '{}' to json '{}'", source, output);
-            }
-            Err(e) => {
-                eprintln!("error compiling {}: {}", source, e);
-            }
-        },
-        Commands::Version => {
-            println!("qoa version {}", QOA_VERSION);
-        }
-        Commands::Flags => {
-            println!("available flags for the 'run' command:\n");
-            let mut cli_cmd = Cli::command();
-            if let Some(run_cmd) = cli_cmd.find_subcommand_mut("run") {
-                let run_command_help = run_cmd.render_help().to_string();
-                if let Some(options_start_index) = run_command_help.find("Options:") {
-                    let options_section = &run_command_help[options_start_index..];
-                    if let Some(end_index) = options_section.find("\n\n") {
-                        println!("{}", &options_section[..end_index].trim_end());
-                    } else {
-                        println!("{}", options_section.trim_end());
-                    }
-                } else {
-                    println!("could not find 'options:' section for 'run' command help.");
-                    println!("{}", run_command_help);
-                }
-            } else {
-                eprintln!("error: 'run' subcommand not found. this shouldn't happen.");
-            }
+match cli.command {
+    Commands::Compile {
+        source,
+        output,
+        debug,
+    } => {
+        info!("compiling '{}' to '{}' (debug: {})", source, output, debug);
+        match compile_qoa_to_bin(&source, debug) {
+            Ok(payload) => match write_exe(&payload, &output, QEXE) {
+                Ok(_) => info!("compilation successful."),
+                Err(e) => eprintln!("error writing executable: {}", e),
+            },
+            Err(e) => eprintln!("error compiling qoa: {}", e),
         }
     }
-    Ok(())
+    Commands::Run {
+        program,
+        debug,
+        ideal,
+        noise,
+        final_noise,
+    } => {
+        info!("running '{}' (debug: {})", program, debug);
+        let noise_config = if ideal {
+            Some(NoiseConfig::Ideal)
+        } else {
+            match noise {
+                Some(s) => match s.as_str() {
+                    "random" => Some(NoiseConfig::Random),
+                    prob_str => match prob_str.parse::<f64>() {
+                        Ok(p) if p >= 0.0 && p <= 1.0 => Some(NoiseConfig::Fixed(p)),
+                        _ => {
+                            eprintln!("invalid noise probability '{}'. must be 'random' or a float between 0.0 and 1.0.", prob_str);
+                            return;
+                        }
+                    },
+                },
+                None => None,
+            }
+        };
+
+        match fs::read(&program) {
+            Ok(file_data) => {
+                run_exe(&file_data, debug, noise_config, final_noise);
+            }
+            Err(e) => eprintln!("error reading program file: {}", e),
+        }
+    }
+    Commands::CompileJson { source, output } => {
+        info!("compiling '{}' to json '{}'", source, output);
+        // not too complex JSON output for now
+        let json_output = serde_json::json!({
+            "source_file": source,
+            "output_file": output,
+            "status": "not implemented yet"
+        });
+        match File::create(&output).and_then(|file| {
+            to_writer_pretty(file, &json_output)
+                .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
+        }) {
+            Ok(_) => info!("json compilation placeholder successful. output written to {}", output),
+            Err(e) => eprintln!("error writing json output: {}", e),
+        }
+    }
+    Commands::Visual {
+        input,
+        output,
+        resolution,
+        fps,
+        ffmpeg_args,
+        ltr,
+        rtl,
+    } => {
+        let input_path = PathBuf::from(input);
+        let output_path = PathBuf::from(output);
+        let parts: Vec<&str> = resolution.split('x').collect();
+        let width = parts.get(0).and_then(|w| w.parse::<u32>().ok()).unwrap_or(800);
+        let height = parts.get(1).and_then(|h| h.parse::<u32>().ok()).unwrap_or(600);
+
+        // for direction printing
+        let direction = crate::visualizer::parse_spectrum_direction(None);
+        println!("Parsed spectrum direction: {:?}", direction);
+
+        let spectrum_direction = if ltr {
+            SpectrumDirection::Ltr
+        } else if rtl {
+            SpectrumDirection::Rtl
+        } else {
+            SpectrumDirection::None
+        };
+
+        let ffmpeg_args_slice: Vec<&str> = ffmpeg_args.iter().map(String::as_str).collect();
+
+        let audio_visualizer = visualizer::AudioVisualizer::new();
+        if let Err(e) = visualizer::run_qoa_to_video(
+            &audio_visualizer,
+            audio_visualizer.clone(),
+            &input_path,
+            &output_path,
+            fps,
+            width,
+            height,
+            &ffmpeg_args_slice,
+            spectrum_direction,
+        ) {
+            eprintln!("error generating video: {}", e);
+        }
+    }
+    Commands::Version => {
+        println!("QOA version {}", env!("CARGO_PKG_VERSION"));
+    }
+    Commands::Flags => {
+        println!("Available flags:\n");
+        println!(" FOR QOA:\n");
+        println!("--compile     Compile a .qoa file to .qexe");
+        println!("--run         Run a .qexe binary");
+        println!("--compilejson Compile a .qoa file to JSON format");
+        println!("--version     Show version info\n");
+
+        println!(" FOR NOISE:\n");
+        println!(" --noise (range from 0-1)");
+        println!(" --ideal (no noise / ideal state)");
+        println!(" NOTE: DEFAULT IS RANDOM NOISE, NOT IDEAL\n");
+
+        println!(" FOR VISUAL:\n");
+        println!(" --ltr (Left to right spectrum visualization)");
+        println!(" --rtl (Right to left spectrum visualization)");
+        println!(" QOA VISUAL ALSO ACCEPTS FFMPEG ARGUMENTS / FLAGS");
+    }
+}
 }

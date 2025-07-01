@@ -5,24 +5,28 @@ use rand::Rng;
 use rand::SeedableRng;
 use rand_distr::{Distribution, StandardNormal};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, serde::Serialize, Clone)]
 pub enum NoiseConfig {
     Random,
     Fixed(f64),
     Ideal,
 }
 
+#[derive(Debug, serde::Serialize)]
 pub struct Status {
     pub nan: bool,
     pub div_by_zero: bool,
     pub overflow: bool,
 }
 
+#[derive(Debug, serde::Serialize)]
 pub struct QuantumState {
     pub n: usize,
     pub amps: Vec<Complex64>,
     pub status: Status,
     pub noise_config: Option<NoiseConfig>,
+    // Ensure #[serde(skip_serializing)] is directly above this field
+    #[serde(skip_serializing)]
     rng: Option<StdRng>,
 }
 
@@ -68,6 +72,11 @@ impl QuantumState {
         }
         self.amps[index] = val;
         Ok(())
+    }
+
+    // new method to get all probabilities without measuring
+    pub fn get_probabilities(&self) -> Vec<f64> {
+        self.amps.iter().map(|a| a.norm_sqr()).collect()
     }
 
     pub fn execute_arithmetic(instr: &Instruction, state: &mut QuantumState) -> Result<(), String> {
