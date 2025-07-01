@@ -18,8 +18,21 @@ image = "0.25.1"
 duct = "0.13.6"
 hound = "3.5.1"
 ndarray = "0.15.6"
-realfft = "3.5.0" # updated to a compatible 3.x.x version
+realfft = "3.5.0"
 rustfft = "6.4.0"
 rayon = "1.10"
 indicatif = { version = "0.17", features = ["rayon"] }
 rand_chacha = "0.3.1"
+
+# OPTIMIZATIONS: ONLY USE FOR RELEASE!!!
+
+# [profile.release]
+# opt-level = 3
+# lto = "fat"
+# codegen-units = 1
+# panic = "abort"
+# strip = "debuginfo"
+# debug = false # DISABLE IF DEBUGGING!
+
+# [build]
+# rustflags = ["-C", "target-cpu=native"]
