@@ -14,10 +14,10 @@ use clap::Parser;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 
-// --- perlin noise implementation ---
+// --- quantum noise implementation ---
 #[derive(Clone)]
 struct PerlinNoise {
-    #[allow(dead_code)] // seed is used to initialize RNG but not read directly afterwards
+    #[allow(dead_code)]
     seed: u32,
     p: Vec<usize>,
 }
