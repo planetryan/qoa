@@ -26,7 +26,7 @@ const QOX: &[u8; 4] = b"QOX ";
 const XEXE: &[u8; 4] = b"XEXE";
 const QX: &[u8; 4] = b"QX\0\0";
 
-const QOA_VERSION: &str = "0.2.6";
+const QOA_VERSION: &str = "0.2.7";
 const QOA_AUTHOR: &str = "Rayan (@planetryan on GitHub)";
 
 #[derive(Parser, Debug)]
