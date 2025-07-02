@@ -1,43 +1,19 @@
-; Hello World in QOA - Updated for 0.2.4
+; Hello World in QOA - Updated for 0.2.6
 
-; 'H'
+; Each CHARLOAD writes a character to output at register 0.
+; CHARLOAD now auto-increments output pointer in v0.2.6
+
 CHARLOAD 0 'H'
-
-; 'e'
 CHARLOAD 0 'e'
-
-; 'l'
 CHARLOAD 0 'l'
-
-; 'l'
 CHARLOAD 0 'l'
-
-; 'o'
 CHARLOAD 0 'o'
-
-; ','
 CHARLOAD 0 ','
-
-; ' '
 CHARLOAD 0 ' '
-
-; 'W'
 CHARLOAD 0 'W'
-
-; 'o'
 CHARLOAD 0 'o'
-
-; 'r'
 CHARLOAD 0 'r'
-
-; 'l'
 CHARLOAD 0 'l'
-
-; 'd'
 CHARLOAD 0 'd'
-
-; '!'
 CHARLOAD 0 '!'
-
-; Halt program
 HALT

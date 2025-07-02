@@ -649,6 +649,25 @@ impl QuantumState {
         outcome
     }
 
+    pub fn sample_measurement(&self) -> Vec<u8> {
+        use rand::Rng;
+        let mut rng = rand::thread_rng();
+        let mut cumulative = 0.0;
+        let r: f64 = rng.gen();
+        for (i, amp) in self.amps.iter().enumerate() {
+            let p = amp.re * amp.re + amp.im * amp.im;
+            cumulative += p;
+            if r < cumulative {
+                let mut bits = vec![0; self.n];
+                for j in 0..self.n {
+                    bits[self.n - 1 - j] = ((i >> j) & 1) as u8;
+                }
+                return bits;
+            }
+        }
+        vec![0; self.n]
+    }
+
     pub fn apply_final_state_noise(&mut self) {
         if let Some(NoiseConfig::Ideal) = &self.noise_config {
             eprintln!("[info] final state noise is skipped in ideal mode.");

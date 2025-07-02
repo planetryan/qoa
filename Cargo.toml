@@ -1,9 +1,11 @@
+# CARGO USES THE NIGHTLY BUILD AS OF 1/7/2025, PLEASE USE NIGHTY BUILD FOR AVX 512 AND FAST SPEED IN PROGRAMME
+
 [package]
 name = "qoa"
 version = "0.2.6"
 edition = "2021"
-
-# see more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+authors = ["GitHub: @planetryan"]
+description = "The Quantum Optical Assembly Language"
 
 [dependencies]
 clap = { version = "4.5.4", features = ["derive"] }
@@ -17,22 +19,72 @@ env_logger = "0.11.3"
 image = "0.25.1"
 duct = "0.13.6"
 hound = "3.5.1"
-ndarray = "0.15.6"
+ndarray = { version = "0.15.6", features = ["rayon"] }
 realfft = "3.5.0"
 rustfft = "6.4.0"
 rayon = "1.10"
 indicatif = { version = "0.17", features = ["rayon"] }
 rand_chacha = "0.3.1"
+itertools = "0.10"
 
-# OPTIMIZATIONS: ONLY USE FOR RELEASE!!!
+# COMMENT OUT ALL OPTIMIZATIONS IF DEBUGGING!!!
 
-# [profile.release]
-# opt-level = 3
-# lto = "fat"
-# codegen-units = 1
-# panic = "abort"
-# strip = "debuginfo"
-# debug = false # DISABLE IF DEBUGGING!
+# packed_simd = "0.3.9"
+crossbeam-channel = "0.5"
+crossbeam-utils = "0.8"
+num_cpus = "1.16"
+parking_lot = "0.12"  
+memmap2 = "0.9"      
+dashmap = "5.5"      
+criterion = "0.5"    # For benchmarking
+
+[profile.dev]
+opt-level = 1         
+debug = true
+debug-assertions = true
+overflow-checks = true
+lto = false
+panic = "unwind"
+incremental = true
+codegen-units = 256
+rpath = false
+
+[profile.release]
+opt-level = 3         
+lto = "fat"           
+codegen-units = 1     
+panic = "abort"       
+strip = "symbols"          
+debug = false         
+debug-assertions = false
+overflow-checks = false
+incremental = false
+rpath = false
+
+[profile.bench]
+opt-level = 3
+debug = false
+debug-assertions = false
+overflow-checks = false
+lto = "fat"
+codegen-units = 1
+rpath = false
+
+[profile.release.package."*"]
+opt-level = 3
+codegen-units = 1
+debug = false
+
+# NOT NEEDED FOR NOW
 
 # [build]
-# rustflags = ["-C", "target-cpu=native"]
+# rustflags = [
+#    "-C", "target-cpu=native", # TARGETS NATIVE CPU ISA
+#    "-C", "target-feature=+avx2,+fma,+sse4.1", # FOR NEWER X86_64 CPUS, DISABLE IF DOES NOT WORK, CHECK CPU INFO FIRST TO MAKE SURE ISA EXTENSIONS ARE SUPPORTED
+#    "-C", "link-arg=-fuse-ld=lld",
+#    "-C", "force-frame-pointers=yes"
+# ]
+
+[dev-dependencies]
+criterion = "0.5"    # For benchmarking
+proptest = "1.4"     

@@ -1,15 +1,18 @@
-use clap::Parser;
-use log::{debug, error, info, warn}; // import logging macros
+use crate::visualizer::SpectrumDirection;
+use clap::{Parser, Subcommand};
+use log::{debug, error, info, warn};
 use qoa::runtime::quantum_state::NoiseConfig;
 use qoa::runtime::quantum_state::QuantumState;
 use rand::rngs::StdRng;
-use rand::{Rng, SeedableRng}; // keep Rng for rng.gen()
+use rand::{Rng, SeedableRng};
 use serde_json::to_writer_pretty;
 use std::fs::{self, File};
 use std::io::{self, BufRead, BufReader, Write};
+// use std::path::Path;
+use rand::thread_rng;
+use rand_distr::StandardNormal;
 use std::path::PathBuf;
-use std::time::{Instant, SystemTime, UNIX_EPOCH}; // added for PathBuf
-use crate::visualizer::SpectrumDirection;
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 mod instructions;
 #[cfg(test)] // for testing
@@ -38,7 +41,7 @@ struct Cli {
     command: Commands,
 }
 
-#[derive(Parser, Debug)]
+#[derive(Subcommand, Debug)]
 enum Commands {
     /// Compiles a .qoa source file into a .qexe binary executable.
     Compile {
@@ -75,41 +78,42 @@ enum Commands {
         output: String,
     },
     /// Visualizes quantum state or circuit based on input data.
+    Visual {
+        /// Input file path (e.g., .qexe or raw data for visualization)
+        input: String,
 
-Visual {
-    /// Input file path (e.g., .qexe or raw data for visualization)
-    input: String,
+        /// Output file path for the visualization (e.g., .png, .gif, .mp4)
+        output: String,
 
-    /// Output file path for the visualization (e.g., .png, .gif, .mp4)
-    output: String,
+        /// Resolution of the output visualization (e.g., "1920x1080")
+        #[arg(long, default_value = "1920x1080")]
+        resolution: String,
 
-    /// Resolution of the output visualization (e.g., "1920x1080")
-    #[arg(long, default_value = "1920x1080")]
-    resolution: String,
+        /// Frames per second for animation (if applicable)
+        #[arg(long, default_value_t = 60)]
+        fps: u32,
 
-    /// Frames per second for animation (if applicable)
-    #[arg(long, default_value_t = 60)] // default 60fps
-    fps: u32,
+        /// Spectrum direction Left-to-Right
+        #[arg(long, conflicts_with = "rtl", default_value_t = false)]
+        ltr: bool,
 
-    /// Spectrum direction Left-to-Right
-    #[arg(long, conflicts_with = "rtl", default_value_t = false)]
-    ltr: bool,
+        /// Spectrum direction Right-to-Left
+        #[arg(long, conflicts_with = "ltr", default_value_t = false)]
+        rtl: bool,
 
-    /// Spectrum direction Right-to-Left
-    #[arg(long, conflicts_with = "ltr", default_value_t = false)]
-    rtl: bool,
+        /// Extra ffmpeg flags (e.g., -s, -r, -b:v, -pix_fmt, etc.)
+        #[arg(long = "ffmpeg-flag", value_name = "FFMPEG_FLAG", num_args = 0.., action = clap::ArgAction::Append)]
+        ffmpeg_flags: Vec<String>,
 
-    /// Additional ffmpeg arguments passed directly to ffmpeg (e.g., "-c:v libx264 -crf 23")
-    #[arg(last = true, allow_hyphen_values = true)]
-    ffmpeg_args: Vec<String>,
-},
+        /// Additional ffmpeg arguments passed directly to ffmpeg (e.g., "-c:v libx264 -crf 23") as trailing args after "--"
+        #[arg(last = true, allow_hyphen_values = true)]
+        ffmpeg_args: Vec<String>,
+    },
 
-Version,
+    Version,
 
-Flags,
-
+    Flags,
 }
-
 
 // Helper function to parse resolution string
 #[allow(dead_code)]
@@ -153,7 +157,7 @@ fn compile_qoa_to_bin(src_path: &str, debug_mode: bool) -> io::Result<Vec<u8>> {
 fn write_exe(payload: &[u8], out_path: &str, magic: &[u8; 4]) -> io::Result<()> {
     let mut f = File::create(out_path)?;
     f.write_all(magic)?;
-    f.write_all(&[1])?; 
+    f.write_all(&[1])?;
     f.write_all(&(payload.len() as u32).to_le_bytes())?;
     f.write_all(payload)?;
     Ok(())
@@ -195,17 +199,41 @@ fn parse_exe_file(filedata: &[u8]) -> Option<(&'static str, u8, &[u8])> {
     Some((name, version, &filedata[9..9 + payload_len]))
 }
 
-fn run_exe(
+fn print_amplitudes(qs: &QuantumState, noise_strength: f64) {
+    println!("\nFinal amplitudes:");
+    let mut rng = thread_rng();
+    for (i, amp) in qs.amps.iter().enumerate() {
+        let noise_re =
+            <StandardNormal as rand_distr::Distribution<f64>>::sample(&StandardNormal, &mut rng)
+                * noise_strength;
+        let noise_im =
+            <StandardNormal as rand_distr::Distribution<f64>>::sample(&StandardNormal, &mut rng)
+                * noise_strength;
+        let noisy_re = amp.re + noise_re;
+        let noisy_im = amp.im + noise_im;
+        let prob = noisy_re * noisy_re + noisy_im * noisy_im;
+        println!(
+            "|{:0width$b}>: {:.6} + {:.6}i   (prob={:.6})",
+            i,
+            noisy_re,
+            noisy_im,
+            prob,
+            width = qs.n
+        );
+    }
+}
+
+pub fn run_exe(
     filedata: &[u8],
     debug_mode: bool,
     noise_config: Option<NoiseConfig>,
     apply_final_noise_flag: bool,
-) {
+) -> QuantumState {
     let (header, version, payload) = match parse_exe_file(filedata) {
         Some(x) => x,
         None => {
             error!("invalid or unsupported exe file, please check its header.");
-            return;
+            return QuantumState::new(0, None);
         }
     };
 
@@ -619,11 +647,10 @@ fn run_exe(
     let mut call_stack: Vec<usize> = Vec::new(); // for call/ret instructions
     let mut memory: Vec<u8> = vec![0; 1024 * 1024]; // 1mb linear byte-addressable memory
     let mut rng = StdRng::from_entropy(); // default seeded rng
-                                          // removed `last_cmp_result` as it's not used by current conditional jumps
-                                          // let mut last_cmp_result: Option<Ordering> = None; // for cmp instruction
 
     let mut i = 0; // reset 'i' for the second pass
-                   // second pass: execute instructions and interact with quantumstate
+
+    // second pass: execute instructions and interact with quantumstate
     while i < payload.len() {
         if debug_mode {
             debug!("executing opcode 0x{:02X} at byte {}", payload[i], i);
@@ -2200,7 +2227,7 @@ fn run_exe(
     }
 
     if apply_final_noise_flag {
-        if let Some(_config) = noise_config {
+        if let Some(_config) = noise_config.clone() {
             info!("applying final noise step to amplitudes.");
             // qs.apply_noise_to_amplitudes(config);
         } else {
@@ -2208,146 +2235,196 @@ fn run_exe(
         }
     }
 
-    // output final state as json
-    let json_output = serde_json::to_string_pretty(&qs).unwrap();
-    println!("\nfinal quantum state (json):\n{}", json_output);
-    info!("simulation complete.");
+    if debug_mode {
+        debug!("execution finished. final quantum state dump:");
+        // qs.debug_dump_state();
+    }
+    if char_count > 0 {
+        info!(
+            "average char value: {}",
+            char_sum as f64 / char_count as f64
+        );
+    }
+    qs
 }
 
 fn main() {
-
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
     let cli = Cli::parse();
 
-match cli.command {
-    Commands::Compile {
-        source,
-        output,
-        debug,
-    } => {
-        info!("compiling '{}' to '{}' (debug: {})", source, output, debug);
-        match compile_qoa_to_bin(&source, debug) {
-            Ok(payload) => match write_exe(&payload, &output, QEXE) {
-                Ok(_) => info!("compilation successful."),
-                Err(e) => eprintln!("error writing executable: {}", e),
-            },
-            Err(e) => eprintln!("error compiling qoa: {}", e),
-        }
-    }
-    Commands::Run {
-        program,
-        debug,
-        ideal,
-        noise,
-        final_noise,
-    } => {
-        info!("running '{}' (debug: {})", program, debug);
-        let noise_config = if ideal {
-            Some(NoiseConfig::Ideal)
-        } else {
-            match noise {
-                Some(s) => match s.as_str() {
-                    "random" => Some(NoiseConfig::Random),
-                    prob_str => match prob_str.parse::<f64>() {
-                        Ok(p) if p >= 0.0 && p <= 1.0 => Some(NoiseConfig::Fixed(p)),
-                        _ => {
-                            eprintln!("invalid noise probability '{}'. must be 'random' or a float between 0.0 and 1.0.", prob_str);
-                            return;
-                        }
-                    },
+    match cli.command {
+        Commands::Compile {
+            source,
+            output,
+            debug,
+        } => {
+            info!("compiling '{}' to '{}' (debug: {})", source, output, debug);
+            match compile_qoa_to_bin(&source, debug) {
+                Ok(payload) => match write_exe(&payload, &output, QEXE) {
+                    Ok(_) => info!("compilation successful."),
+                    Err(e) => eprintln!("error writing executable: {}", e),
                 },
-                None => None,
+                Err(e) => eprintln!("error compiling qoa: {}", e),
             }
-        };
+        }
+        Commands::Run {
+            program,
+            debug,
+            ideal,
+            noise,
+            final_noise,
+        } => {
+            info!("running '{}' (debug: {})", program, debug);
+            let noise_config = if ideal {
+                Some(NoiseConfig::Ideal)
+            } else {
+                match noise {
+                    Some(ref s) => match s.as_str() {
+                        "random" => Some(NoiseConfig::Random),
+                        prob_str => match prob_str.parse::<f64>() {
+                            Ok(p) if p >= 0.0 && p <= 1.0 => Some(NoiseConfig::Fixed(p)),
+                            _ => {
+                                eprintln!("invalid noise probability '{}'. must be 'random' or a float between 0.0 and 1.0.", prob_str);
+                                return;
+                            }
+                        },
+                    },
+                    None => None,
+                }
+            };
+            match fs::read(&program) {
+                Ok(file_data) => {
+                    // Use the --noise flag value for display noise strength
+                    let noise_strength = match &noise {
+                        Some(s) => match s.as_str() {
+                            "random" => 0.05,
+                            n => n
+                                .parse::<f64>()
+                                .ok()
+                                .filter(|x| *x >= 0.0 && *x <= 1.0)
+                                .unwrap_or(0.05),
+                        },
+                        None => 0.05,
+                    };
 
-        match fs::read(&program) {
-            Ok(file_data) => {
-                run_exe(&file_data, debug, noise_config, final_noise);
+                    let qs = run_exe(&file_data, debug, noise_config, final_noise);
+
+                    print_amplitudes(&qs, noise_strength);
+
+                    if qs.n > 0 {
+                        println!();
+                        let sample = qs.sample_measurement();
+                        print!("Measurement result: ");
+                        for bit in &sample {
+                            print!("{}", bit);
+                        }
+                        println!();
+                    }
+                    println!("Qubit count: {}", qs.n);
+                    println!(
+                        "Status: nan={}, div_by_zero={}, overflow={}",
+                        qs.status.nan, qs.status.div_by_zero, qs.status.overflow
+                    );
+                    println!(
+                        "Noise: {}",
+                        match &qs.noise_config {
+                        Some(cfg) => format!("{:?}", cfg),
+                        None => "Random".to_string(),
+                    }
+                    );
+                    info!("simulation complete.");
+                }
+                Err(e) => eprintln!("error reading program file: {}", e),
             }
-            Err(e) => eprintln!("error reading program file: {}", e),
         }
-    }
-    Commands::CompileJson { source, output } => {
-        info!("compiling '{}' to json '{}'", source, output);
-        // not too complex JSON output for now
-        let json_output = serde_json::json!({
-            "source_file": source,
-            "output_file": output,
-            "status": "not implemented yet"
-        });
-        match File::create(&output).and_then(|file| {
-            to_writer_pretty(file, &json_output)
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
-        }) {
-            Ok(_) => info!("json compilation placeholder successful. output written to {}", output),
-            Err(e) => eprintln!("error writing json output: {}", e),
+        Commands::CompileJson { source, output } => {
+            info!("compiling '{}' to json '{}'", source, output);
+            let json_output = serde_json::json!({
+                "source_file": source,
+                "output_file": output,
+                "status": "not implemented yet"
+            });
+            match File::create(&output).and_then(|file| {
+                to_writer_pretty(file, &json_output)
+                    .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
+            }) {
+                Ok(_) => info!("json compilation successful. output written to {}", output),
+                Err(e) => eprintln!("error writing json output: {}", e),
+            }
         }
-    }
-    Commands::Visual {
-        input,
-        output,
-        resolution,
-        fps,
-        ffmpeg_args,
-        ltr,
-        rtl,
-    } => {
-        let input_path = PathBuf::from(input);
-        let output_path = PathBuf::from(output);
-        let parts: Vec<&str> = resolution.split('x').collect();
-        let width = parts.get(0).and_then(|w| w.parse::<u32>().ok()).unwrap_or(800);
-        let height = parts.get(1).and_then(|h| h.parse::<u32>().ok()).unwrap_or(600);
-
-        // for direction printing
-        let direction = crate::visualizer::parse_spectrum_direction(None);
-        println!("Parsed spectrum direction: {:?}", direction);
-
-        let spectrum_direction = if ltr {
-            SpectrumDirection::Ltr
-        } else if rtl {
-            SpectrumDirection::Rtl
-        } else {
-            SpectrumDirection::None
-        };
-
-        let ffmpeg_args_slice: Vec<&str> = ffmpeg_args.iter().map(String::as_str).collect();
-
-        let audio_visualizer = visualizer::AudioVisualizer::new();
-        if let Err(e) = visualizer::run_qoa_to_video(
-            &audio_visualizer,
-            audio_visualizer.clone(),
-            &input_path,
-            &output_path,
+        Commands::Visual {
+            input,
+            output,
+            resolution,
             fps,
-            width,
-            height,
-            &ffmpeg_args_slice,
-            spectrum_direction,
-        ) {
-            eprintln!("error generating video: {}", e);
+            ffmpeg_args,
+            ltr,
+            rtl,
+            ffmpeg_flags,
+        } => {
+            let input_path = PathBuf::from(input);
+            let output_path = PathBuf::from(output);
+            let parts: Vec<&str> = resolution.split('x').collect();
+            let width = parts
+                .get(0)
+                .and_then(|w| w.parse::<u32>().ok())
+                .unwrap_or(800);
+            let height = parts
+                .get(1)
+                .and_then(|h| h.parse::<u32>().ok())
+                .unwrap_or(600);
+
+            // for direction printing
+            let direction = crate::visualizer::parse_spectrum_direction(None);
+            println!("Parsed spectrum direction: {:?}", direction);
+
+            let spectrum_direction = if ltr {
+                SpectrumDirection::Ltr
+            } else if rtl {
+                SpectrumDirection::Rtl
+            } else {
+                SpectrumDirection::None
+            };
+
+            let ffmpeg_args_slice: Vec<&str> = ffmpeg_args.iter().map(String::as_str).collect();
+            let audio_visualizer = visualizer::AudioVisualizer::new();
+
+            if let Err(e) = visualizer::run_qoa_to_video(
+                &audio_visualizer,
+                audio_visualizer.clone(),
+                &input_path,
+                &output_path,
+                fps,
+                width,
+                height,
+                &ffmpeg_args_slice, // extra_ffmpeg_args: &[&str]
+                spectrum_direction, // SpectrumDirection
+                &ffmpeg_flags,      // ffmpeg_flags: &[String]
+            ) {
+                eprintln!("error generating video: {}", e);
+            }
+        }
+        Commands::Version => {
+            println!("QOA version {}", env!("CARGO_PKG_VERSION"));
+        }
+        Commands::Flags => {
+            println!("Available flags:\n");
+            println!(" FOR QOA:\n");
+            println!("--compile     Compile a .qoa file to .qexe");
+            println!("--run         Run a .qexe binary");
+            println!("--compilejson Compile a .qoa file to JSON format");
+            println!("--version     Show version info\n");
+
+            println!(" FOR NOISE:\n");
+            println!(" --noise (range from 0-1)");
+            println!(" --ideal (no noise / ideal state)");
+            println!(" NOTE: DEFAULT IS RANDOM NOISE, NOT IDEAL\n");
+
+            println!(" FOR VISUAL:\n");
+            println!(" --ltr (Left to right spectrum visualization)");
+            println!(" --rtl (Right to left spectrum visualization)");
+            println!(" QOA VISUAL ALSO ACCEPTS FFMPEG ARGUMENTS / FLAGS");
         }
     }
-    Commands::Version => {
-        println!("QOA version {}", env!("CARGO_PKG_VERSION"));
-    }
-    Commands::Flags => {
-        println!("Available flags:\n");
-        println!(" FOR QOA:\n");
-        println!("--compile     Compile a .qoa file to .qexe");
-        println!("--run         Run a .qexe binary");
-        println!("--compilejson Compile a .qoa file to JSON format");
-        println!("--version     Show version info\n");
-
-        println!(" FOR NOISE:\n");
-        println!(" --noise (range from 0-1)");
-        println!(" --ideal (no noise / ideal state)");
-        println!(" NOTE: DEFAULT IS RANDOM NOISE, NOT IDEAL\n");
-
-        println!(" FOR VISUAL:\n");
-        println!(" --ltr (Left to right spectrum visualization)");
-        println!(" --rtl (Right to left spectrum visualization)");
-        println!(" QOA VISUAL ALSO ACCEPTS FFMPEG ARGUMENTS / FLAGS");
-    }
-}
 }

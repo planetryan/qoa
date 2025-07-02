@@ -1,0 +1,27 @@
+; Fusion simulation using Hadamard and entangling gates - Compatible with QOA v0.2.6+
+
+; Initialize 4 qubits (indices 0,1,2,3)
+QINIT 0
+QINIT 1
+QINIT 2
+QINIT 3
+
+; (Optional) Clear classical registers 0, 1, 2
+REGSET 0 0
+REGSET 1 0
+REGSET 2 0
+
+; Apply Hadamard gates to qubits 0 and 1
+H 0
+H 1
+
+; Apply RZ to qubit 2 by angle pi (3.141592)
+RZ 2 3.141592
+
+; Entangle qubits 2 and 3 with a CZ
+CZ 2 3
+
+; Measure qubit 3 (QOA v0.2.6 expects only the qubit index)
+QMEAS 3
+
+HALT
