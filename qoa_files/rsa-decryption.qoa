@@ -1,0 +1,146 @@
+; This QOA code implements the Quantum Fourier Transform (QFT)
+; and Inverse QFT (IQFT) subroutines of Shor's algorithm.
+; It does NOT include a practical modular exponentiation circuit for
+; cryptographically relevant numbers, which is the most complex part.
+
+; This code cannot factor large numbers or decrypt real-world RSA due to technical limitations yet.
+
+; --- Parameters for Factoring N=15 ---
+; L=4: Number of bits in N (15 = 1111_2).
+; Period register: 2L = 8 qubits (Q0-Q7).
+; Function register: L = 4 qubits (Q8-Q11).
+; Total qubits: 12.
+
+; --- Qubit Allocation ---
+; Qubits 0-7: Period-finding register
+; Qubits 8-11: Function register
+QInit 12 ; initialize 12 qubits
+
+; --- Step 1: Initialize Period-Finding Register to Superposition ---
+; apply hadamard to all qubits in the period-finding register (Q0-Q7)
+ApplyHadamard 0
+ApplyHadamard 1
+ApplyHadamard 2
+ApplyHadamard 3
+ApplyHadamard 4
+ApplyHadamard 5
+ApplyHadamard 6
+ApplyHadamard 7
+
+; function register (Q8-Q11) is already |0000> by default QInit
+
+; --- Step 2: Modular Exponentiation (U_a^x mod N) ---
+; this is the most complex and resource-intensive part of shor's algorithm.
+; it computes f(x) = a^x mod N in superposition, where 'a' is a randomly chosen base
+; (e.g., a=7 for N=15).
+; this involves applying controlled-u operations (u_a^k) to the function register,
+; controlled by each qubit in the period register.
+; each u_a^k operation is a reversible circuit for modular multiplication.
+; implementing this for even n=15 requires decomposing complex arithmetic into
+; thousands or millions of elementary qoa gates (cnots, toffolis, adders, multipliers).
+; this is impractical to generate or simulate in this format.
+
+VerboseLog 0 "Conceptual Modular Exponentiation (a^x mod N) would be here."
+VerboseLog 0 "  Base 'a' = 7, Modulo 'N' = 15."
+VerboseLog 0 "  This involves controlled-U_a^k operations for k = 2^0, 2^1, ..., 2^7."
+VerboseLog 0 "  Each U_a^k is a complex reversible modular arithmetic circuit."
+VerboseLog 0 "  (This block represents immense complexity, not directly representable in QOA)"
+VerboseLog 0 "  Example: Controlled-U_a^1 (controlled by Q0) on Function Register (Q8-Q11)"
+VerboseLog 0 "  Example: Controlled-U_a^2 (controlled by Q1) on Function Register (Q8-Q11)"
+; ... and so on for Q2 to Q7.
+
+; --- Step 3: Inverse Quantum Fourier Transform (IQFT) on Period-Finding Register ---
+; the iqft extracts the period 'r' from the superposed state in the period register.
+; this is the reverse sequence of gates from the qft.
+
+VerboseLog 0 "Applying Inverse Quantum Fourier Transform (IQFT) on Period Register (Q0-Q7)"
+
+; first, swap qubits to reverse the order from the qft output.
+; this is crucial for the standard iqft implementation.
+Swap 0 7 ; swap Q0 and Q7
+Swap 1 6 ; swap Q1 and Q6
+Swap 2 5 ; swap Q2 and Q5
+Swap 3 4 ; swap Q3 and Q4
+
+; now apply the iqft gates. angles are negative of qft angles.
+; qoa's phaseshift and controlledphaserotation use radians.
+; pi = 3.141592653589793
+; pi/2 = 1.5707963267948966
+; pi/4 = 0.7853981633974483
+; pi/8 = 0.39269908169872414
+; pi/16 = 0.19634954084936207
+; pi/32 = 0.09817477042468103
+; pi/64 = 0.04908738521234051
+; pi/128 = 0.02454369260617025
+
+; qubit 0 (now the most significant after swaps, originally Q7)
+ApplyHadamard 0
+ControlledPhaseRotation 1 0 -1.5707963267948966 ; cp(-pi/2) q1-q0
+ControlledPhaseRotation 2 0 -0.7853981633974483 ; cp(-pi/4) q2-q0
+ControlledPhaseRotation 3 0 -0.39269908169872414 ; cp(-pi/8) q3-q0
+ControlledPhaseRotation 4 0 -0.19634954084936207 ; cp(-pi/16) q4-q0
+ControlledPhaseRotation 5 0 -0.09817477042468103 ; cp(-pi/32) q5-q0
+ControlledPhaseRotation 6 0 -0.04908738521234051 ; cp(-pi/64) q6-q0
+ControlledPhaseRotation 7 0 -0.02454369260617025 ; cp(-pi/128) q7-q0
+
+; qubit 1 (originally Q6)
+ApplyHadamard 1
+ControlledPhaseRotation 2 1 -1.5707963267948966 ; cp(-pi/2) q2-q1
+ControlledPhaseRotation 3 1 -0.7853981633974483 ; cp(-pi/4) q3-q1
+ControlledPhaseRotation 4 1 -0.39269908169872414 ; cp(-pi/8) q4-q1
+ControlledPhaseRotation 5 1 -0.19634954084936207 ; cp(-pi/16) q5-q1
+ControlledPhaseRotation 6 1 -0.09817477042468103 ; cp(-pi/32) q6-q1
+ControlledPhaseRotation 7 1 -0.04908738521234051 ; cp(-pi/64) q7-q1
+
+; qubit 2 (originally Q5)
+ApplyHadamard 2
+ControlledPhaseRotation 3 2 -1.5707963267948966 ; cp(-pi/2) q3-q2
+ControlledPhaseRotation 4 2 -0.7853981633974483 ; cp(-pi/4) q4-q2
+ControlledPhaseRotation 5 2 -0.39269908169872414 ; cp(-pi/8) q5-q2
+ControlledPhaseRotation 6 2 -0.19634954084936207 ; cp(-pi/16) q6-q2
+ControlledPhaseRotation 7 2 -0.09817477042468103 ; cp(-pi/32) q7-q2
+
+; qubit 3 (originally Q4)
+ApplyHadamard 3
+ControlledPhaseRotation 4 3 -1.5707963267948966 ; cp(-pi/2) q4-q3
+ControlledPhaseRotation 5 3 -0.7853981633974483 ; cp(-pi/4) q5-q3
+ControlledPhaseRotation 6 3 -0.39269908169872414 ; cp(-pi/8) q6-q3
+ControlledPhaseRotation 7 3 -0.19634954084936207 ; cp(-pi/16) q7-q3
+
+; qubit 4 (originally Q3)
+ApplyHadamard 4
+ControlledPhaseRotation 5 4 -1.5707963267948966 ; cp(-pi/2) q5-q4
+ControlledPhaseRotation 6 4 -0.7853981633974483 ; cp(-pi/4) q6-q4
+ControlledPhaseRotation 7 4 -0.39269908169872414 ; cp(-pi/8) q7-q4
+
+; qubit 5 (originally Q2)
+ApplyHadamard 5
+ControlledPhaseRotation 6 5 -1.5707963267948966 ; cp(-pi/2) q6-q5
+ControlledPhaseRotation 7 5 -0.7853981633974483 ; cp(-pi/4) q7-q5
+
+; qubit 6 (originally Q1)
+ApplyHadamard 6
+ControlledPhaseRotation 7 6 -1.5707963267948966 ; cp(-pi/2) q7-q6
+
+; qubit 7 (originally Q0)
+ApplyHadamard 7
+
+; --- Step 4: Measurement of Period-Finding Register ---
+; measure the period-finding register (Q0-Q7)
+Measure 0
+Measure 1
+Measure 2
+Measure 3
+Measure 4
+Measure 5
+Measure 6
+Measure 7
+
+; --- Step 5: Classical Post-Processing (Conceptual) ---
+; after measurement, a classical computer takes the measured value 'c'
+; and uses the continued fractions algorithm to find the period 'r'.
+; then, it calculates gcd(a^(r/2) +/- 1, n) to find factors of n.
+VerboseLog 0 "Classical Post-Processing: Use continued fractions to find period 'r'."
+VerboseLog 0 "Then calculate gcd(a^(r/2) +/- 1, N) to find factors of N."
+
+HALT

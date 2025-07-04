@@ -4,6 +4,7 @@ use rand::rngs::StdRng;
 use rand::Rng;
 use rand::SeedableRng;
 use rand_distr::{Distribution, StandardNormal};
+use rayon::prelude::*; // import rayon for parallel iterators
 
 #[derive(Debug, serde::Serialize, Clone)]
 pub enum NoiseConfig {
@@ -25,16 +26,13 @@ pub struct QuantumState {
     pub amps: Vec<Complex64>,
     pub status: Status,
     pub noise_config: Option<NoiseConfig>,
-    // Ensure #[serde(skip_serializing)] is directly above this field
+    // ensure #[serde(skip_serializing)] is directly above this field
     #[serde(skip_serializing)]
     rng: Option<StdRng>,
 }
 
 impl QuantumState {
     pub fn new(n: usize, noise_config: Option<NoiseConfig>) -> Self {
-        if n > 16 {
-            eprintln!("warning: simulating more than 16 qubits can be very memory intensive.");
-        }
         let mut amps = vec![Complex64::new(0.0, 0.0); 1 << n];
         amps[0] = Complex64::new(1.0, 0.0);
 
@@ -76,7 +74,7 @@ impl QuantumState {
 
     // new method to get all probabilities without measuring
     pub fn get_probabilities(&self) -> Vec<f64> {
-        self.amps.iter().map(|a| a.norm_sqr()).collect()
+        self.amps.par_iter().map(|a| a.norm_sqr()).collect() // parallel map and collect
     }
 
     pub fn execute_arithmetic(instr: &Instruction, state: &mut QuantumState) -> Result<(), String> {
@@ -92,11 +90,12 @@ impl QuantumState {
                     return Err(format!("reset qubit {} out of range", q));
                 }
                 let mask = 1 << q;
-                for i in 0..state.amps.len() {
+                // parallelize reset
+                state.amps.par_iter_mut().enumerate().for_each(|(i, amp)| {
                     if i & mask != 0 {
-                        state.amps[i] = Complex64::new(0.0, 0.0);
+                        *amp = Complex64::new(0.0, 0.0);
                     }
-                }
+                });
                 state.normalize();
                 Ok(())
             }
@@ -250,12 +249,20 @@ impl QuantumState {
             return;
         }
         let mask = 1 << q;
-        let len = self.amps.len();
-        for i in 0..len {
-            if (i & mask) == 0 {
-                self.amps.swap(i, i | mask);
+        let size = self.amps.len();
+        let old_amps = &self.amps; // immutable reference for parallel reads
+
+        // create a new vector to store results, then fill it in parallel
+        let new_amps: Vec<Complex64> = (0..size).into_par_iter().map(|i| {
+            if i & mask == 0 { // process only if the q-th bit is 0
+                let b_idx = i | mask; // the corresponding index where q-th bit is 1
+                old_amps[b_idx] // new value for current index `i` is old value at `b_idx`
+            } else { // process if the q-th bit is 1
+                let a_idx = i ^ mask; // the corresponding index where q-th bit is 0
+                old_amps[a_idx] // new value for current index `i` is old value at `a_idx`
             }
-        }
+        }).collect();
+        self.amps = new_amps;
     }
 
     fn _apply_y_pure(&mut self, q: usize) {
@@ -270,18 +277,18 @@ impl QuantumState {
         let i_comp = Complex64::new(0.0, 1.0);
         let neg_i_comp = Complex64::new(0.0, -1.0);
 
-        let len = self.amps.len();
-        let mut new_amps = self.amps.clone();
+        let size = self.amps.len();
+        let old_amps = &self.amps; // immutable reference for parallel reads
 
-        for i in 0..len {
-            if (i & mask) == 0 {
+        let new_amps: Vec<Complex64> = (0..size).into_par_iter().map(|i| {
+            if (i & mask) == 0 { // process if the q-th bit is 0
                 let flipped = i | mask;
-                let a0 = self.amps[i];
-                let a1 = self.amps[flipped];
-                new_amps[i] = neg_i_comp * a1;
-                new_amps[flipped] = i_comp * a0;
+                neg_i_comp * old_amps[flipped] // new value for current index `i`
+            } else { // process if the q-th bit is 1
+                let original = i ^ mask;
+                i_comp * old_amps[original] // new value for current index `i`
             }
-        }
+        }).collect();
         self.amps = new_amps;
     }
 
@@ -291,11 +298,12 @@ impl QuantumState {
             return;
         }
         let mask = 1 << q;
-        for i in 0..self.amps.len() {
+        // parallelize the z gate operation
+        self.amps.par_iter_mut().enumerate().for_each(|(i, amp)| {
             if (i & mask) != 0 {
-                self.amps[i] = -self.amps[i];
+                *amp = -*amp;
             }
-        }
+        });
     }
 
     fn apply_noise(&mut self) {
@@ -303,7 +311,7 @@ impl QuantumState {
             // temporarily take ownership of the rng from self.
             // this ensures `self` is not mutably borrowed by `rng` during the loop
             // when `_apply_*_pure` methods (which also borrow `self` mutably) are called.
-            let mut temp_rng = self
+            let mut temp_rng = self // This needs to be mutable because its methods are called mutably
                 .rng
                 .take()
                 .expect("rng should be initialized for noise application in apply_noise");
@@ -347,16 +355,16 @@ impl QuantumState {
     }
 
     fn normalize(&mut self) {
-        let norm_sqr: f64 = self.amps.iter().map(|a| a.norm_sqr()).sum();
+        let norm_sqr: f64 = self.amps.par_iter().map(|a| a.norm_sqr()).sum(); // parallel sum
         if norm_sqr > 1e-12 {
             let norm = norm_sqr.sqrt();
-            for amp in &mut self.amps {
+            self.amps.par_iter_mut().for_each(|amp| { // parallel division
                 *amp /= norm;
-            }
+            });
         } else {
             eprintln!("warning: state became zero due to noise or numerical instability, resetting to |0...0>.");
             self.amps
-                .iter_mut()
+                .par_iter_mut() // parallel reset
                 .for_each(|amp| *amp = Complex64::new(0.0, 0.0));
             self.amps[0] = Complex64::new(1.0, 0.0);
         }
@@ -373,19 +381,23 @@ impl QuantumState {
         let mask = 1 << q;
         let norm_factor = Complex64::new(1.0 / 2f64.sqrt(), 0.0);
         let size = self.amps.len();
+        let old_amps = &self.amps; // immutable reference for parallel reads
 
-        let mut new_amps = vec![Complex64::new(0.0, 0.0); size];
-
-        for i in 0..size {
-            if i & mask == 0 {
-                let flipped = i | mask;
-                let a = self.amps[i];
-                let b = self.amps[flipped];
-                new_amps[i] = norm_factor * (a + b);
-                new_amps[flipped] = norm_factor * (a - b);
+        // use into_par_iter().map().collect() to create the new_amps vector in parallel
+        let new_amps: Vec<Complex64> = (0..size).into_par_iter().map(|i| {
+            if i & mask == 0 { // process if the q-th bit is 0
+                let flipped_idx = i | mask; // the corresponding index where q-th bit is 1
+                let a_val = old_amps[i];
+                let b_val = old_amps[flipped_idx];
+                norm_factor * (a_val + b_val) // new value for current index `i`
+            } else { // process if the q-th bit is 1
+                let original_idx = i ^ mask; // the corresponding index where q-th bit is 0
+                let a_val = old_amps[original_idx];
+                let b_val = old_amps[i];
+                norm_factor * (a_val - b_val) // new value for current index `i`
             }
-        }
-        self.amps = new_amps;
+        }).collect();
+        self.amps = new_amps; // replace the original amplitudes with the new ones
         self.apply_noise();
     }
 
@@ -418,11 +430,12 @@ impl QuantumState {
         }
         let cm = 1 << c;
         let tm = 1 << t;
-        for i in 0..self.amps.len() {
+        // parallelize cz gate
+        self.amps.par_iter_mut().enumerate().for_each(|(i, amp)| {
             if (i & cm != 0) && (i & tm != 0) {
-                self.amps[i] = -self.amps[i];
+                *amp = -*amp;
             }
-        }
+        });
         self.apply_noise();
     }
 
@@ -438,20 +451,19 @@ impl QuantumState {
             eprintln!("error: control and target qubits cannot be the same for cnot gate");
             return;
         }
-        let cm = 1 << c;
-        let tm = 1 << t;
-        let len = self.amps.len();
+        let cm = 1 << c; // control mask
+        let tm = 1 << t; // target mask
+        let size = self.amps.len();
+        let old_amps = &self.amps; // immutable reference for parallel reads
 
-        let mut new_amps = self.amps.clone();
-
-        for i in 0..len {
-            if (i & cm) != 0 {
-                let flipped = i ^ tm;
-                new_amps[flipped] = self.amps[i];
+        let new_amps: Vec<Complex64> = (0..size).into_par_iter().map(|i| {
+            if (i & cm) != 0 { // if control qubit is 1
+                let flipped_idx = i ^ tm; // calculate the index with target qubit flipped
+                old_amps[flipped_idx] // new value for current index `i` is old value at `flipped_idx`
             } else {
-                new_amps[i] = self.amps[i];
+                old_amps[i] // if control qubit is 0, the amplitude remains unchanged
             }
-        }
+        }).collect();
         self.amps = new_amps;
         self.apply_noise();
     }
@@ -463,11 +475,12 @@ impl QuantumState {
         }
         let mask = 1 << q;
         let phase = Complex64::from_polar(1.0, std::f64::consts::FRAC_PI_4);
-        for i in 0..self.amps.len() {
+        // parallelize t gate
+        self.amps.par_iter_mut().enumerate().for_each(|(i, amp)| {
             if (i & mask) != 0 {
-                self.amps[i] *= phase;
+                *amp *= phase;
             }
-        }
+        });
         self.apply_noise();
     }
 
@@ -478,11 +491,12 @@ impl QuantumState {
         }
         let mask = 1 << q;
         let phase = Complex64::from_polar(1.0, std::f64::consts::FRAC_PI_2);
-        for i in 0..self.amps.len() {
+        // parallelize s gate
+        self.amps.par_iter_mut().enumerate().for_each(|(i, amp)| {
             if (i & mask) != 0 {
-                self.amps[i] *= phase;
+                *amp *= phase;
             }
-        }
+        });
         self.apply_noise();
     }
 
@@ -493,11 +507,12 @@ impl QuantumState {
         }
         let mask = 1 << q;
         let phase = Complex64::from_polar(1.0, angle);
-        for i in 0..self.amps.len() {
+        // parallelize phase shift
+        self.amps.par_iter_mut().enumerate().for_each(|(i, amp)| {
             if (i & mask) != 0 {
-                self.amps[i] *= phase;
+                *amp *= phase;
             }
-        }
+        });
         self.apply_noise();
     }
 
@@ -513,11 +528,12 @@ impl QuantumState {
         let cm = 1 << c;
         let tm = 1 << t;
         let phase = Complex64::from_polar(1.0, angle);
-        for i in 0..self.amps.len() {
+        // parallelize controlled phase
+        self.amps.par_iter_mut().enumerate().for_each(|(i, amp)| {
             if (i & cm != 0) && (i & tm != 0) {
-                self.amps[i] *= phase;
+                *amp *= phase;
             }
-        }
+        });
         self.apply_noise();
     }
 
@@ -531,17 +547,21 @@ impl QuantumState {
 
         let mask = 1 << q;
         let size = self.amps.len();
-        let mut new_amps = self.amps.clone();
+        let old_amps = &self.amps; // immutable reference for parallel reads
 
-        for i in 0..size {
-            if (i & mask) == 0 {
+        let new_amps: Vec<Complex64> = (0..size).into_par_iter().map(|i| {
+            if (i & mask) == 0 { // process if the q-th bit is 0
                 let j = i | mask;
-                let a0 = self.amps[i];
-                let a1 = self.amps[j];
-                new_amps[i] = cos * a0 + isin * a1;
-                new_amps[j] = cos * a1 + isin * a0;
+                let a0 = old_amps[i];
+                let a1 = old_amps[j];
+                cos * a0 + isin * a1 // new value for current index `i`
+            } else { // process if the q-th bit is 1
+                let j = i ^ mask;
+                let a0 = old_amps[j];
+                let a1 = old_amps[i];
+                cos * a1 + isin * a0 // new value for current index `i`
             }
-        }
+        }).collect();
         self.amps = new_amps;
         self.apply_noise();
     }
@@ -556,17 +576,21 @@ impl QuantumState {
 
         let mask = 1 << q;
         let size = self.amps.len();
-        let mut new_amps = self.amps.clone();
+        let old_amps = &self.amps; // immutable reference for parallel reads
 
-        for i in 0..size {
-            if (i & mask) == 0 {
+        let new_amps: Vec<Complex64> = (0..size).into_par_iter().map(|i| {
+            if (i & mask) == 0 { // process if the q-th bit is 0
                 let j = i | mask;
-                let a0 = self.amps[i];
-                let a1 = self.amps[j];
-                new_amps[i] = cos * a0 - Complex64::new(0.0, 1.0) * sin * a1;
-                new_amps[j] = cos * a1 + Complex64::new(0.0, 1.0) * sin * a0;
+                let a0 = old_amps[i];
+                let a1 = old_amps[j];
+                cos * a0 - Complex64::new(0.0, 1.0) * sin * a1 // new value for current index `i`
+            } else { // process if the q-th bit is 1
+                let j = i ^ mask;
+                let a0 = old_amps[j];
+                let a1 = old_amps[i];
+                cos * a1 + Complex64::new(0.0, 1.0) * sin * a0 // new value for current index `i`
             }
-        }
+        }).collect();
         self.amps = new_amps;
         self.apply_noise();
     }
@@ -580,13 +604,14 @@ impl QuantumState {
         let phase0 = Complex64::from_polar(1.0, -angle / 2.0);
         let phase1 = Complex64::from_polar(1.0, angle / 2.0);
 
-        for i in 0..self.amps.len() {
+        // parallelize rz gate
+        self.amps.par_iter_mut().enumerate().for_each(|(i, amp)| {
             if (i & mask) == 0 {
-                self.amps[i] *= phase0;
+                *amp *= phase0;
             } else {
-                self.amps[i] *= phase1;
+                *amp *= phase1;
             }
-        }
+        });
         self.apply_noise();
     }
 
@@ -598,7 +623,7 @@ impl QuantumState {
         let mask = 1 << q;
         let prob1: f64 = self
             .amps
-            .iter()
+            .par_iter() // parallel sum for probability calculation
             .enumerate()
             .filter(|(i, _)| (*i & mask) != 0)
             .map(|(_, a)| a.norm_sqr())
@@ -627,25 +652,25 @@ impl QuantumState {
         if norm_sqr < 1e-12 {
             eprintln!("warning: normalizing by very small number during measurement; state may be invalid. outcome: {}", outcome);
             self.amps
-                .iter_mut()
+                .par_iter_mut() // parallel reset
                 .for_each(|amp| *amp = Complex64::new(0.0, 0.0));
             if outcome == 1 {
                 self.amps[mask] = Complex64::new(1.0, 0.0);
             } else {
-                self.amps[0] = Complex64::new(1.0, 0.0);
+                self.amps[0] = Complex64::new(1.0, 0.0); // Corrected typo here
             }
             return outcome;
         }
 
         let norm = norm_sqr.sqrt();
 
-        for (i, amp) in self.amps.iter_mut().enumerate() {
+        self.amps.par_iter_mut().enumerate().for_each(|(i, amp)| {
             if ((i & mask != 0) as usize) != outcome {
                 *amp = Complex64::new(0.0, 0.0);
             } else {
                 *amp /= norm;
             }
-        }
+        });
         outcome
     }
 
@@ -676,24 +701,28 @@ impl QuantumState {
 
         eprintln!("[info] applying final state amplitude randomization.");
 
-        // temporarily take the rng for use
-        let mut temp_rng = self
+        // temporarily take the rng for use. It doesn't need to be mutable here
+        // because its methods are not called directly after `take()`.
+        let temp_rng = self // Removed 'mut' here, as it's not needed
             .rng
             .take()
             .expect("rng should be initialized for final state noise.");
 
         let noise_strength = 0.1; // noise strength
 
-        for amp in self.amps.iter_mut() {
+        // parallelize final state noise application
+        self.amps.par_iter_mut().for_each(|amp| {
+            // each thread gets its own local rng for thread-safe random number generation
+            let mut local_rng = rand::thread_rng();
             // add small random gaussian noise to real and imaginary parts
             let random_re: f64 =
-                <StandardNormal as Distribution<f64>>::sample(&StandardNormal, &mut temp_rng)
+                <StandardNormal as Distribution<f64>>::sample(&StandardNormal, &mut local_rng)
                     * noise_strength;
             let random_im: f64 =
-                <StandardNormal as Distribution<f64>>::sample(&StandardNormal, &mut temp_rng)
+                <StandardNormal as Distribution<f64>>::sample(&StandardNormal, &mut local_rng)
                     * noise_strength;
             *amp += Complex64::new(random_re, random_im);
-        }
+        });
 
         // put the rng back
         self.rng = Some(temp_rng);

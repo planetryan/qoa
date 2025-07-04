@@ -8,7 +8,6 @@
 - Add serialization/deserialization of quantum state and registers for checkpoints
 - Add validation to detect corrupted quantum states
 - Optimize memory usage for large qubit simulations (sparse representations)
-- Optionally add quantum decoherence simulation
 
 ### Testing & Validation
 - Write unit tests for all instructions and quantum operations
@@ -22,6 +21,5 @@
 - Provide guides for troubleshooting, debugging, and performance optimization
 - Document physics constants and math formulas
 
-## This is pretty hard, so Im holding it off for now.
 ### Control Flow & Program Structure
 - Implement `LABEL` instruction for named jump targets

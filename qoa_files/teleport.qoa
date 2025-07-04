@@ -1,8 +1,7 @@
-;	This does the same thing as the IonQ version, but we arent limited to Instructions, so we do whatever the fuck we want here
+;	This does the same thing as the IonQ version, but we arent limited to Instructions, so we do whatever
 ;	This QOA codee prepares qubit 0 in state |1>, creates entanglement between qubits 1 and 2, applies additional gates to qubits 0, 1, and 2, and applies no-op rotations to qubits 3 through 24.
 ;	
-;	This wont work with IonQ, thats why we have the IonQ version
-;	written by rayan on 19/6/2025	
+;	This wont work with IonQ, thats why we have the IonQ version	
 ;
 ; initialize 25 qubits to |0⟩
 QINIT 0
@@ -43,7 +42,7 @@ CZ 0 1
 H 0
 QMEAS 0
 QMEAS 1
-X 2
+APPLYBITFLIP 2
 RZ 2 4
 
 ; teleport next qubit pairs
@@ -53,7 +52,7 @@ CZ 2 3
 H 2
 QMEAS 2
 QMEAS 3
-X 4
+APPLYBITFLIP 4
 RZ 4 4
 
 H 5
@@ -62,7 +61,7 @@ CZ 4 5
 H 4
 QMEAS 4
 QMEAS 5
-X 6
+APPLYBITFLIP 6
 RZ 6 4
 
 H 7
@@ -71,7 +70,7 @@ CZ 6 7
 H 6
 QMEAS 6
 QMEAS 7
-X 8
+APPLYBITFLIP 8
 RZ 8 4
 
 H 9
@@ -80,7 +79,7 @@ CZ 8 9
 H 8
 QMEAS 8
 QMEAS 9
-X 10
+APPLYBITFLIP 10
 RZ 10 4
 
 H 11
@@ -89,7 +88,7 @@ CZ 10 11
 H 10
 QMEAS 10
 QMEAS 11
-X 12
+APPLYBITFLIP 12
 RZ 12 4
 
 H 13
@@ -98,7 +97,7 @@ CZ 12 13
 H 12
 QMEAS 12
 QMEAS 13
-X 14
+APPLYBITFLIP 14
 RZ 14 4
 
 H 15
@@ -107,7 +106,7 @@ CZ 14 15
 H 14
 QMEAS 14
 QMEAS 15
-X 16
+APPLYBITFLIP 16
 RZ 16 4
 
 H 17
@@ -116,7 +115,7 @@ CZ 16 17
 H 16
 QMEAS 16
 QMEAS 17
-X 18
+APPLYBITFLIP 18
 RZ 18 4
 
 H 19
@@ -125,7 +124,7 @@ CZ 18 19
 H 18
 QMEAS 18
 QMEAS 19
-X 20
+APPLYBITFLIP 20
 RZ 20 4
 
 H 21
@@ -134,7 +133,7 @@ CZ 20 21
 H 20
 QMEAS 20
 QMEAS 21
-X 22
+APPLYBITFLIP 22
 RZ 22 4
 
 H 23
@@ -143,7 +142,7 @@ CZ 22 23
 H 22
 QMEAS 22
 QMEAS 23
-X 24
+APPLYBITFLIP 24
 RZ 24 4
 
 ; final measurement after chain

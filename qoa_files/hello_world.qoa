@@ -1,4 +1,4 @@
-; Hello World in QOA - Updated for 0.2.6
+; Hello World in QOA - Updated for 0.2.7+
 
 ; Each CHARLOAD writes a character to output at register 0.
 ; CHARLOAD now auto-increments output pointer in v0.2.6

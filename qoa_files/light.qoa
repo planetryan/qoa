@@ -1,53 +1,29 @@
-; QOA Simulation: Dynamic Wavelength Shift and High-Resolution Position Measurement
-; Photon starts at (100, 200), undergoes wavelength changes and phase shifts,
-; moves through space, and is finally measured with detailed state logging.
-; Will be compiled into .oexe for clarity
+; QOA Simulation: Dynamic Wavelength Shift and High Resolution Position Measurement
+; Uses only 16 qubits at runtime (configure runtime accordingly)
 
-; Initialize photon register 0
+QINIT        0                    ; allocate quantum-optical register 0 (max qubits set by runtime)
+SETPOS       0 100 200            ; set initial cartesian coordinates (x=100, y=200)
+SETWL        0 500                ; set initial wavelength to 500nm (green)
+SETPHASE     0 0.0                ; start with zero phase
 
-QINIT       0                          ; Allocate a quantum-optical register (qubit + photon object)
-SETPOS      0 100 200                  ; Set initial Cartesian coordinates (x=100, y=200)
-SETWL       0 500                      ; Set initial wavelength to 500nm (green)
-SETPHASE    0 0.0                      ; Start with zero phase
+WLSHIFT      0 200                ; 500 + 200 = 700nm (red-shift)
+SETPHASE     0 1.047              ; phase shift due to stretching
+MOVE         0 40 0               ; move right 40 units: x = 140, y = 200
+CHAROUT      0                    ; print photon state (0 or 1) after red-shift and move
 
-; Apply a wavelength shift (simulate redshift effect)
+WLSHIFT      0 -100               ; 700 - 100 = 600nm (blue-shift)
+SETPHASE     0 2.094              ; further phase evolution
+MOVE         0 60 0               ; move right again: x = 200, y = 200
+CHAROUT      0                    ; print photon state (0 or 1) just before measurement
 
-COMMENT     "Simulating red-shift: increasing wavelength to simulate stretching"
-WLSHIFT     0 200                      ; λ = 500 + 200 = 700nm
-SETPHASE    0 1.047                    ; Introduce phase shift due to propagation with longer λ
+; the following CHAROUT will print the state of qubit 0 again before the explicit MEASURE
+CHAROUT      0                    ; print state of qubit 0 before explicit measurement
 
-; Move the photon in the +x direction (simulate forward movement)
+MEASURE      0                    ; collapse photon wavefunction, localize position
 
-MOVE        0 40 0                     ; Move right 40 units: x = 140, y = 200
-QMEAS       0                          ; Print photon state after red-shift and move
+CHAROUT      0                    ; print state of qubit 0 after measurement
 
-
-; Apply a second wavelength shift (simulate environmental compression)
-
-COMMENT     "Simulating blue-shift: reducing wavelength due to optical compression"
-WLSHIFT     0 -100                     ; λ = 700 - 100 = 600nm
-SETPHASE    0 2.094                    ; Further phase evolution
-
-; Final photon displacement before measurement
-
-MOVE        0 60 0                     ; Move right again: x = 200, y = 200
-QMEAS       0                          ; Print photon state just before measurement
-
-; Print comment
-COMMENT     "Begin detailed measurement of photon state"
-
-; Dump full optical state before measurement
-QMEAS       0                          ; Print full state before measurement
-
-; Perform measurement collapse (position)
-MEASURE     0 POS                      ; Collapse photon wavefunction, localize position
-
-; Dump photon state after measurement (collapsed)
-COMMENT     "Log measurement result and final state"
-QMEAS       0                          ; Print photon state after measurement
-
-; Optional: mark photon as observed and release resources
 MARKOBSERVED 0
-RELEASE      0                         ; (Resource management)
+RELEASE      0
 
 HALT

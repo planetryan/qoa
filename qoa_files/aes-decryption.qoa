@@ -1,0 +1,87 @@
+; This QOA code implements a 2-qubit Grover's algorithm,
+; a practical example for understanding the principles of quantum search.
+
+; It cannot decrypt real-world AES encryption due to fundamental limitations
+; and the immense scale required for such tasks.
+
+; --- Parameters ---
+; N=2: Number of data qubits (representing a 2-bit key).
+; Secret key: We will hardcode the oracle to mark the state |10> (qubit1=1, qubit0=0).
+
+; --- Qubit Allocation ---
+; Qubit 0: Data qubit 0 (least significant bit of key)
+; Qubit 1: Data qubit 1 (most significant bit of key)
+; Qubit 2: Ancilla qubit for the oracle (initialized to |-> state)
+QInit 3 ; initialize 3 qubits (2 data + 1 ancilla)
+
+; --- Step 1: Create Uniform Superposition of all possible keys ---
+; apply hadamard to all data qubits
+ApplyHadamard 0
+ApplyHadamard 1
+
+; initialize ancilla qubit (Q2) to |-> state
+ApplyHadamard 2
+ApplyPhaseFlip 2 ; apply z gate to get |-> = (|0> - |1>)/sqrt(2)
+
+; --- Grover Iteration (for N=2, one iteration is optimal) ---
+; the number of iterations for grover's is approximately (pi/4) * sqrt(2^N).
+; for n=2 (4 states), sqrt(4) = 2. (pi/4)*2 = pi/2 ~ 1.57 iterations.
+; so, one iteration gives the highest probability of success.
+
+; --- Step 2: Oracle (Phase Oracle for the "secret key" |10>) ---
+; The oracle applies a -1 phase to the amplitude of the target state |10>.
+; This is done by applying a Z gate to the ancilla qubit (Q2)
+; if and only if the data qubits (Q1Q0) are in the state |10>.
+
+; To achieve this for target |10> (Q1=1, Q0=0) using ancilla Q2:
+; First, invert Q0 so that it's 1 when its original value is 0.
+ApplyBitFlip 0 ; Q0 becomes 1 if original Q0 was 0. Now we seek |11> on Q1Q0.
+
+; Now, apply CCZ(control1=Q1, control2=Q0, target=Q2)
+; This is a standard decomposition of CCZ(c1, c2, t) using CNOT and RZ gates.
+; c1=Q1, c2=Q0, t=Q2
+; pi/4 = 0.7853981633974483
+
+ControlledNot 0 2 ; CNOT(Q0, Q2)
+RZ 2 -0.7853981633974483 ; RZ(Q2, -pi/4)
+ControlledNot 1 2 ; CNOT(Q1, Q2)
+RZ 2 0.7853981633974483 ; RZ(Q2, pi/4)
+ControlledNot 0 2 ; CNOT(Q0, Q2)
+RZ 2 -0.7853981633974483 ; RZ(Q2, -pi/4)
+ControlledNot 1 2 ; CNOT(Q1, Q2)
+RZ 2 0.7853981633974483 ; RZ(Q2, pi/4)
+RZ 1 0.7853981633974483 ; RZ(Q1, pi/4)
+RZ 0 0.7853981633974483 ; RZ(Q0, pi/4)
+ControlledNot 1 0 ; CNOT(Q1, Q0)
+RZ 0 -0.7853981633974483 ; RZ(Q0, -pi/4)
+ControlledNot 1 0 ; CNOT(Q1, Q0)
+
+; Finally, revert Q0 to its original state.
+ApplyBitFlip 0 ; Q0 reverts to original state
+
+; --- Step 3: Diffusion Operator ---
+; the diffusion operator amplifies the target state's amplitude.
+; for N=2, the diffusion operator is D = H^2 X^2 CZ X^2 H^2 (where CZ is between the two data qubits)
+; we already have H^2 from step 1 (initial Hadamards).
+
+; apply X gate to all data qubits
+ApplyBitFlip 0
+ApplyBitFlip 1
+
+; apply CZ between Q0 and Q1
+CZ 0 1
+
+; apply X gate to all data qubits again
+ApplyBitFlip 0
+ApplyBitFlip 1
+
+; apply Hadamard to all data qubits again
+ApplyHadamard 0
+ApplyHadamard 1
+
+; --- Step 4: Measurement ---
+; measure the data qubits (Q0 and Q1) to find the "key"
+Measure 0
+Measure 1
+
+HALT
