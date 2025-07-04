@@ -13,7 +13,7 @@ use rand_distr::StandardNormal;
 use std::path::PathBuf;
 use std::time::{Instant, SystemTime, UNIX_EPOCH}; // Removed unused Duration
 
-// Import rayon prelude for parallel iterators
+// rayon prelude for parallel iterators
 use rayon::prelude::*;
 
 mod instructions;
