@@ -5,7 +5,7 @@ The Quantum Optical Assembly Programming Language
 
 # Changelog
 
-see changelog.md for detailed version history and isa updates.
+see changelog folder for detailed version history and isa updates.
 
 I have created this guide for researchers, developers and students who will use qoa in practical applications. I have designed it to interact with quantum and/or optical systems in the same way classical Risc syntax based assembly could manipulate electrons in transistors. I hope whoever reads this guide finds it useful.
 
