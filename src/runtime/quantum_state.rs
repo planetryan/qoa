@@ -5,29 +5,30 @@ use rand::Rng;
 use rand::SeedableRng;
 use rand_distr::{Distribution, StandardNormal};
 use rayon::prelude::*; // import rayon for parallel iterators
+use serde::{Deserialize, Serialize}; // import serialize and deserialize
 
-#[derive(Debug, serde::Serialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)] // derive serialize and deserialize
 pub enum NoiseConfig {
     Random,
     Fixed(f64),
     Ideal,
 }
 
-#[derive(Debug, serde::Serialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)] // derive serialize and deserialize
 pub struct Status {
     pub nan: bool,
     pub div_by_zero: bool,
     pub overflow: bool,
 }
 
-#[derive(Debug, serde::Serialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)] // added Clone derive here
 pub struct QuantumState {
     pub n: usize,
     pub amps: Vec<Complex64>,
     pub status: Status,
     pub noise_config: Option<NoiseConfig>,
     // ensure #[serde(skip_serializing)] is directly above this field
-    #[serde(skip_serializing)]
+    #[serde(skip_serializing, skip_deserializing)] // skip both serializing and deserializing
     rng: Option<StdRng>,
 }
 
@@ -77,15 +78,44 @@ impl QuantumState {
         self.amps.par_iter().map(|a| a.norm_sqr()).collect() // parallel map and collect
     }
 
+    // adds a method to validate the quantum state
+    pub fn validate_state(&self) -> Result<(), String> {
+        if self.amps.is_empty() {
+            return Err("quantum state amplitudes vector is empty.".to_string());
+        }
+
+        // use parallel iterators with `any` and `sum` for efficient checks
+        let has_nan = self.amps.par_iter().any(|amp| amp.re.is_nan() || amp.im.is_nan());
+        let has_inf = self.amps.par_iter().any(|amp| amp.re.is_infinite() || amp.im.is_infinite());
+        let norm_sqr_sum: f64 = self.amps.par_iter().map(|amp| amp.norm_sqr()).sum();
+
+        if has_nan {
+            return Err("quantum state contains NaN values.".to_string());
+        }
+        if has_inf {
+            return Err("quantum state contains infinite values.".to_string());
+        }
+
+        // check for normalization within a small epsilon
+        if (norm_sqr_sum - 1.0).abs() > 1e-9 {
+            return Err(format!(
+                "quantum state is not normalized. norm squared: {}",
+                norm_sqr_sum
+            ));
+        }
+
+        Ok(())
+    }
+
     pub fn execute_arithmetic(instr: &Instruction, state: &mut QuantumState) -> Result<(), String> {
         use Instruction::*;
         match instr {
-            QInit(n) => {
+            QINIT(n) => { // Corrected from QInit
                 let current_noise_config = state.noise_config.clone();
                 *state = QuantumState::new(*n as usize, current_noise_config);
                 Ok(())
             }
-            Reset(q) => {
+            RESET(q) => { // Corrected from Reset
                 if (*q as usize) >= state.n {
                     return Err(format!("reset qubit {} out of range", q));
                 }
@@ -99,33 +129,33 @@ impl QuantumState {
                 state.normalize();
                 Ok(())
             }
-            ResetAll => {
+            RESETALL => {
                 let current_noise_config = state.noise_config.clone();
                 *state = QuantumState::new(state.n, current_noise_config);
                 Ok(())
             }
 
-            ApplyHadamard(q) => {
+            H(q) => { // Corrected from ApplyHadamard
                 state.apply_h(*q as usize);
                 Ok(())
             }
-            ApplyBitFlip(q) => {
+            APPLYBITFLIP(q) => { // Corrected from ApplyBitFlip
                 state.apply_x(*q as usize);
                 Ok(())
             }
-            ApplyPhaseFlip(q) => {
+            APPLYPHASEFLIP(q) => { // Corrected from ApplyPhaseFlip
                 state.apply_phase_flip(*q as usize);
                 Ok(())
             }
-            ApplyTGate(q) => {
+            APPLYTGATE(q) => { // Corrected from ApplyTGate
                 state.apply_t_gate(*q as usize);
                 Ok(())
             }
-            ApplySGate(q) => {
+            APPLYSGATE(q) => { // Corrected from ApplySGate
                 state.apply_s_gate(*q as usize);
                 Ok(())
             }
-            PhaseShift(q, angle) | SetPhase(q, angle) => {
+            PHASESHIFT(q, angle) | SETPHASE(q, angle) => { // Corrected from PhaseShift, SetPhase
                 state.apply_phase_shift(*q as usize, *angle);
                 Ok(())
             }
@@ -143,7 +173,7 @@ impl QuantumState {
                 Ok(())
             }
 
-            ControlledNot(c, t) | CNOT(c, t) => {
+            CONTROLLEDNOT(c, t) | CNOT(c, t) => { // Corrected from ControlledNot
                 state.apply_cnot(*c as usize, *t as usize);
                 Ok(())
             }
@@ -151,21 +181,21 @@ impl QuantumState {
                 state.apply_cz(*c as usize, *t as usize);
                 Ok(())
             }
-            ControlledPhaseRotation(c, t, angle) | ApplyCPhase(c, t, angle) => {
+            CONTROLLEDPHASEROTATION(c, t, angle) | APPLYCPHASE(c, t, angle) => { // Corrected from ControlledPhaseRotation, ApplyCPhase
                 state.apply_controlled_phase(*c as usize, *t as usize, *angle);
                 Ok(())
             }
 
-            Entangle(c, t) => {
+            ENTANGLE(c, t) => { // Corrected from Entangle
                 state.apply_cnot(*c as usize, *t as usize);
                 Ok(())
             }
-            EntangleBell(q1, q2) => {
+            ENTANGLEBELL(q1, q2) => { // Corrected from EntangleBell
                 state.apply_h(*q1 as usize);
                 state.apply_cnot(*q1 as usize, *q2 as usize);
                 Ok(())
             }
-            EntangleMulti(qubits) => {
+            ENTANGLEMULTI(qubits) => { // Corrected from EntangleMulti
                 if qubits.is_empty() {
                     return Err("empty qubit list for entanglemulti".to_string());
                 }
@@ -176,7 +206,7 @@ impl QuantumState {
                 }
                 Ok(())
             }
-            EntangleCluster(qubits) => {
+            ENTANGLECLUSTER(qubits) => { // Corrected from EntangleCluster
                 for &q in qubits {
                     state.apply_h(q as usize);
                 }
@@ -186,7 +216,7 @@ impl QuantumState {
                 Ok(())
             }
 
-            RegAdd(dst, lhs, rhs) => {
+            REGADD(dst, lhs, rhs) => { // Corrected from RegAdd
                 let a = state.get(*lhs as usize).ok_or("invalid lhs register")?;
                 let b = state.get(*rhs as usize).ok_or("invalid rhs register")?;
                 let sum = *a + *b;
@@ -196,7 +226,7 @@ impl QuantumState {
                 state.set(*dst as usize, sum)?;
                 Ok(())
             }
-            RegSub(dst, lhs, rhs) => {
+            REGSUB(dst, lhs, rhs) => { // Corrected from RegSub
                 let a = state.get(*lhs as usize).ok_or("invalid lhs register")?;
                 let b = state.get(*rhs as usize).ok_or("invalid rhs register")?;
                 let diff = *a - *b;
@@ -206,7 +236,7 @@ impl QuantumState {
                 state.set(*dst as usize, diff)?;
                 Ok(())
             }
-            RegMul(dst, lhs, rhs) => {
+            REGMUL(dst, lhs, rhs) => { // Corrected from RegMul
                 let a = state.get(*lhs as usize).ok_or("invalid lhs register")?;
                 let b = state.get(*rhs as usize).ok_or("invalid rhs register")?;
                 let prod = *a * *b;
@@ -216,7 +246,7 @@ impl QuantumState {
                 state.set(*dst as usize, prod)?;
                 Ok(())
             }
-            RegDiv(dst, lhs, rhs) => {
+            REGDIV(dst, lhs, rhs) => { // Corrected from RegDiv
                 let a = state.get(*lhs as usize).ok_or("invalid lhs register")?;
                 let b = state.get(*rhs as usize).ok_or("invalid rhs register")?;
                 if b.re == 0.0 && b.im == 0.0 {
@@ -227,12 +257,11 @@ impl QuantumState {
                 }
                 Ok(())
             }
-            RegCopy(dst, src) => {
+            REGCOPY(dst, src) => { // Corrected from RegCopy
                 let val = state.get(*src as usize).ok_or("invalid src register")?;
                 state.set(*dst as usize, *val)?;
                 Ok(())
             }
-
             _ => Err(format!(
                 "instruction {:?} not implemented in execute_arithmetic",
                 instr
@@ -249,11 +278,11 @@ impl QuantumState {
             return;
         }
         let mask = 1 << q;
-        let size = self.amps.len();
+        let _size = self.amps.len(); // renamed to _size to suppress warning
         let old_amps = &self.amps; // immutable reference for parallel reads
 
         // create a new vector to store results, then fill it in parallel
-        let new_amps: Vec<Complex64> = (0..size).into_par_iter().map(|i| {
+        let new_amps: Vec<Complex64> = (0..self.amps.len()).into_par_iter().map(|i| { // use self.amps.len() directly
             if i & mask == 0 { // process only if the q-th bit is 0
                 let b_idx = i | mask; // the corresponding index where q-th bit is 1
                 old_amps[b_idx] // new value for current index `i` is old value at `b_idx`
@@ -277,10 +306,10 @@ impl QuantumState {
         let i_comp = Complex64::new(0.0, 1.0);
         let neg_i_comp = Complex64::new(0.0, -1.0);
 
-        let size = self.amps.len();
+        let _size = self.amps.len(); // renamed to _size to suppress warning
         let old_amps = &self.amps; // immutable reference for parallel reads
 
-        let new_amps: Vec<Complex64> = (0..size).into_par_iter().map(|i| {
+        let new_amps: Vec<Complex64> = (0..self.amps.len()).into_par_iter().map(|i| { // use self.amps.len() directly
             if (i & mask) == 0 { // process if the q-th bit is 0
                 let flipped = i | mask;
                 neg_i_comp * old_amps[flipped] // new value for current index `i`
@@ -311,7 +340,7 @@ impl QuantumState {
             // temporarily take ownership of the rng from self.
             // this ensures `self` is not mutably borrowed by `rng` during the loop
             // when `_apply_*_pure` methods (which also borrow `self` mutably) are called.
-            let mut temp_rng = self // This needs to be mutable because its methods are called mutably
+            let mut temp_rng = self // this needs to be mutable because its methods are called mutably
                 .rng
                 .take()
                 .expect("rng should be initialized for noise application in apply_noise");
@@ -380,11 +409,10 @@ impl QuantumState {
         }
         let mask = 1 << q;
         let norm_factor = Complex64::new(1.0 / 2f64.sqrt(), 0.0);
-        let size = self.amps.len();
+        let _size = self.amps.len(); // renamed to _size to suppress warning
         let old_amps = &self.amps; // immutable reference for parallel reads
-
         // use into_par_iter().map().collect() to create the new_amps vector in parallel
-        let new_amps: Vec<Complex64> = (0..size).into_par_iter().map(|i| {
+        let new_amps: Vec<Complex64> = (0..self.amps.len()).into_par_iter().map(|i| { // use self.amps.len() directly
             if i & mask == 0 { // process if the q-th bit is 0
                 let flipped_idx = i | mask; // the corresponding index where q-th bit is 1
                 let a_val = old_amps[i];
@@ -425,14 +453,17 @@ impl QuantumState {
             return;
         }
         if c == t {
-            eprintln!("error: control and target qubits cannot be the same for cz gate");
+            eprintln!("error: control and target qubits cannot be the same for cz gate.");
             return;
         }
-        let cm = 1 << c;
-        let tm = 1 << t;
-        // parallelize cz gate
+
+        let c_mask = 1 << c;
+        let t_mask = 1 << t;
+
+        // parallelize the cz gate operation
         self.amps.par_iter_mut().enumerate().for_each(|(i, amp)| {
-            if (i & cm != 0) && (i & tm != 0) {
+            // apply a phase flip if both control and target qubits are in the |1> state
+            if (i & c_mask != 0) && (i & t_mask != 0) {
                 *amp = -*amp;
             }
         });
@@ -442,59 +473,36 @@ impl QuantumState {
     pub fn apply_cnot(&mut self, c: usize, t: usize) {
         if c >= self.n || t >= self.n {
             eprintln!(
-                "error: control ({}) or target ({}) qubit index out of bounds for cnot",
-                c, t
+                "error: control ({}) or target ({}) qubit index out of bounds for {}-qubit state",
+                c, t, self.n
             );
             return;
         }
         if c == t {
-            eprintln!("error: control and target qubits cannot be the same for cnot gate");
+            eprintln!("error: control and target qubits cannot be the same for cnot gate.");
             return;
         }
-        let cm = 1 << c; // control mask
-        let tm = 1 << t; // target mask
-        let size = self.amps.len();
-        let old_amps = &self.amps; // immutable reference for parallel reads
 
-        let new_amps: Vec<Complex64> = (0..size).into_par_iter().map(|i| {
-            if (i & cm) != 0 { // if control qubit is 1
-                let flipped_idx = i ^ tm; // calculate the index with target qubit flipped
-                old_amps[flipped_idx] // new value for current index `i` is old value at `flipped_idx`
+        let c_mask = 1 << c;
+        let t_mask = 1 << t;
+        let _size = self.amps.len(); // renamed to _size to suppress warning
+        let old_amps = self.amps.clone(); // clone for safe parallel reads
+
+        self.amps.par_iter_mut().enumerate().for_each(|(i, amp)| {
+            if (i & c_mask) != 0 {
+                // if control qubit is 1
+                if (i & t_mask) == 0 {
+                    // if target qubit is 0, flip it to 1
+                    let flipped_idx = i | t_mask;
+                    *amp = old_amps[flipped_idx];
+                } else {
+                    // if target qubit is 1, flip it to 0
+                    let flipped_idx = i ^ t_mask;
+                    *amp = old_amps[flipped_idx];
+                }
             } else {
-                old_amps[i] // if control qubit is 0, the amplitude remains unchanged
-            }
-        }).collect();
-        self.amps = new_amps;
-        self.apply_noise();
-    }
-
-    pub fn apply_t_gate(&mut self, q: usize) {
-        if q >= self.n {
-            eprintln!("error: qubit index {} out of bounds for t gate", q);
-            return;
-        }
-        let mask = 1 << q;
-        let phase = Complex64::from_polar(1.0, std::f64::consts::FRAC_PI_4);
-        // parallelize t gate
-        self.amps.par_iter_mut().enumerate().for_each(|(i, amp)| {
-            if (i & mask) != 0 {
-                *amp *= phase;
-            }
-        });
-        self.apply_noise();
-    }
-
-    pub fn apply_s_gate(&mut self, q: usize) {
-        if q >= self.n {
-            eprintln!("error: qubit index {} out of bounds for s gate", q);
-            return;
-        }
-        let mask = 1 << q;
-        let phase = Complex64::from_polar(1.0, std::f64::consts::FRAC_PI_2);
-        // parallelize s gate
-        self.amps.par_iter_mut().enumerate().for_each(|(i, amp)| {
-            if (i & mask) != 0 {
-                *amp *= phase;
+                // if control qubit is 0, do nothing to target
+                *amp = old_amps[i];
             }
         });
         self.apply_noise();
@@ -502,15 +510,113 @@ impl QuantumState {
 
     pub fn apply_phase_shift(&mut self, q: usize, angle: f64) {
         if q >= self.n {
-            eprintln!("error: qubit index {} out of bounds for phase shift", q);
+            eprintln!(
+                "error: qubit index {} out of bounds for {}-qubit state",
+                q, self.n
+            );
             return;
         }
         let mask = 1 << q;
-        let phase = Complex64::from_polar(1.0, angle);
-        // parallelize phase shift
+        let phase_factor = Complex64::new(0.0, angle).exp(); // e^(i * angle)
+
+        // parallelize the phase shift operation
         self.amps.par_iter_mut().enumerate().for_each(|(i, amp)| {
             if (i & mask) != 0 {
-                *amp *= phase;
+                // apply phase factor if the qubit is in the |1> state
+                *amp *= phase_factor;
+            }
+        });
+        self.apply_noise();
+    }
+
+    pub fn apply_t_gate(&mut self, q: usize) {
+        self.apply_phase_shift(q, std::f64::consts::FRAC_PI_4);
+    }
+
+    pub fn apply_s_gate(&mut self, q: usize) {
+        self.apply_phase_shift(q, std::f64::consts::FRAC_PI_2);
+    }
+
+    pub fn apply_rx(&mut self, q: usize, angle: f64) {
+        if q >= self.n {
+            eprintln!(
+                "error: qubit index {} out of bounds for {}-qubit state",
+                q, self.n
+            );
+            return;
+        }
+        let mask = 1 << q;
+        let cos_half = (angle / 2.0).cos();
+        let sin_half = (angle / 2.0).sin();
+        let i_sin_half = Complex64::new(0.0, -sin_half);
+
+        let _size = self.amps.len(); // renamed to _size to suppress warning
+        let old_amps = self.amps.clone(); // clone for safe parallel reads
+
+        self.amps.par_iter_mut().enumerate().for_each(|(i, amp)| {
+            if (i & mask) == 0 {
+                // if q-th bit is 0
+                let flipped_idx = i | mask;
+                *amp = cos_half * old_amps[i] + i_sin_half * old_amps[flipped_idx];
+            } else {
+                // if q-th bit is 1
+                let original_idx = i ^ mask;
+                *amp = i_sin_half * old_amps[original_idx] + cos_half * old_amps[i];
+            }
+        });
+        self.apply_noise();
+    }
+
+    pub fn apply_ry(&mut self, q: usize, angle: f64) {
+        if q >= self.n {
+            eprintln!(
+                "error: qubit index {} out of bounds for {}-qubit state",
+                q, self.n
+            );
+            return;
+        }
+        let mask = 1 << q;
+        let cos_half = (angle / 2.0).cos();
+        let sin_half = (angle / 2.0).sin();
+        let neg_sin_half = -sin_half;
+
+        let _size = self.amps.len(); // renamed to _size to suppress warning
+        let old_amps = self.amps.clone(); // clone for safe parallel reads
+
+        self.amps.par_iter_mut().enumerate().for_each(|(i, amp)| {
+            if (i & mask) == 0 {
+                // if q-th bit is 0
+                let flipped_idx = i | mask;
+                *amp = cos_half * old_amps[i] + neg_sin_half * old_amps[flipped_idx];
+            } else {
+                // if q-th bit is 1
+                let original_idx = i ^ mask;
+                *amp = sin_half * old_amps[original_idx] + cos_half * old_amps[i];
+            }
+        });
+        self.apply_noise();
+    }
+
+    pub fn apply_rz(&mut self, q: usize, angle: f64) {
+        if q >= self.n {
+            eprintln!(
+                "error: qubit index {} out of bounds for {}-qubit state",
+                q, self.n
+            );
+            return;
+        }
+        let mask = 1 << q;
+        let phase_factor_0 = Complex64::new(0.0, -angle / 2.0).exp();
+        let phase_factor_1 = Complex64::new(0.0, angle / 2.0).exp();
+
+        // parallelize the rz gate operation
+        self.amps.par_iter_mut().enumerate().for_each(|(i, amp)| {
+            if (i & mask) == 0 {
+                // if q-th bit is 0
+                *amp *= phase_factor_0;
+            } else {
+                // if q-th bit is 1
+                *amp *= phase_factor_1;
             }
         });
         self.apply_noise();
@@ -518,182 +624,91 @@ impl QuantumState {
 
     pub fn apply_controlled_phase(&mut self, c: usize, t: usize, angle: f64) {
         if c >= self.n || t >= self.n {
-            eprintln!("error: qubit indices out of bounds for controlled phase rotation");
+            eprintln!(
+                "error: control ({}) or target ({}) qubit index out of bounds for {}-qubit state",
+                c, t, self.n
+            );
             return;
         }
         if c == t {
-            eprintln!("error: control and target qubits cannot be the same");
+            eprintln!("error: control and target qubits cannot be the same for controlled phase gate.");
             return;
         }
-        let cm = 1 << c;
-        let tm = 1 << t;
-        let phase = Complex64::from_polar(1.0, angle);
-        // parallelize controlled phase
+
+        let c_mask = 1 << c;
+        let t_mask = 1 << t;
+        let phase_factor = Complex64::new(0.0, angle).exp(); // e^(i * angle)
+
+        // parallelize the controlled phase operation
         self.amps.par_iter_mut().enumerate().for_each(|(i, amp)| {
-            if (i & cm != 0) && (i & tm != 0) {
-                *amp *= phase;
+            // apply phase factor if both control and target qubits are in the |1> state
+            if (i & c_mask != 0) && (i & t_mask != 0) {
+                *amp *= phase_factor;
             }
         });
         self.apply_noise();
     }
 
-    pub fn apply_rx(&mut self, q: usize, angle: f64) {
+    pub fn measure(&mut self, q: usize) -> u8 {
         if q >= self.n {
-            eprintln!("error: rx qubit index out of bounds");
-            return;
+            eprintln!(
+                "error: qubit index {} out of bounds for {}-qubit state (measure)",
+                q, self.n
+            );
+            return 0; // return 0 on error
         }
-        let cos = (angle / 2.0).cos();
-        let isin = Complex64::new(0.0, -(angle / 2.0).sin());
 
         let mask = 1 << q;
-        let size = self.amps.len();
-        let old_amps = &self.amps; // immutable reference for parallel reads
-
-        let new_amps: Vec<Complex64> = (0..size).into_par_iter().map(|i| {
-            if (i & mask) == 0 { // process if the q-th bit is 0
-                let j = i | mask;
-                let a0 = old_amps[i];
-                let a1 = old_amps[j];
-                cos * a0 + isin * a1 // new value for current index `i`
-            } else { // process if the q-th bit is 1
-                let j = i ^ mask;
-                let a0 = old_amps[j];
-                let a1 = old_amps[i];
-                cos * a1 + isin * a0 // new value for current index `i`
-            }
-        }).collect();
-        self.amps = new_amps;
-        self.apply_noise();
-    }
-
-    pub fn apply_ry(&mut self, q: usize, angle: f64) {
-        if q >= self.n {
-            eprintln!("error: ry qubit index out of bounds");
-            return;
-        }
-        let cos = (angle / 2.0).cos();
-        let sin = (angle / 2.0).sin();
-
-        let mask = 1 << q;
-        let size = self.amps.len();
-        let old_amps = &self.amps; // immutable reference for parallel reads
-
-        let new_amps: Vec<Complex64> = (0..size).into_par_iter().map(|i| {
-            if (i & mask) == 0 { // process if the q-th bit is 0
-                let j = i | mask;
-                let a0 = old_amps[i];
-                let a1 = old_amps[j];
-                cos * a0 - Complex64::new(0.0, 1.0) * sin * a1 // new value for current index `i`
-            } else { // process if the q-th bit is 1
-                let j = i ^ mask;
-                let a0 = old_amps[j];
-                let a1 = old_amps[i];
-                cos * a1 + Complex64::new(0.0, 1.0) * sin * a0 // new value for current index `i`
-            }
-        }).collect();
-        self.amps = new_amps;
-        self.apply_noise();
-    }
-
-    pub fn apply_rz(&mut self, q: usize, angle: f64) {
-        if q >= self.n {
-            eprintln!("error: rz qubit index out of bounds");
-            return;
-        }
-        let mask = 1 << q;
-        let phase0 = Complex64::from_polar(1.0, -angle / 2.0);
-        let phase1 = Complex64::from_polar(1.0, angle / 2.0);
-
-        // parallelize rz gate
-        self.amps.par_iter_mut().enumerate().for_each(|(i, amp)| {
-            if (i & mask) == 0 {
-                *amp *= phase0;
-            } else {
-                *amp *= phase1;
-            }
-        });
-        self.apply_noise();
-    }
-
-    pub fn measure(&mut self, q: usize) -> usize {
-        if q >= self.n {
-            eprintln!("error: qubit index {} out of bounds for measurement", q);
-            return 0;
-        }
-        let mask = 1 << q;
-        let prob1: f64 = self
+        let prob_zero_sq: f64 = self
             .amps
-            .par_iter() // parallel sum for probability calculation
+            .par_iter()
             .enumerate()
-            .filter(|(i, _)| (*i & mask) != 0)
-            .map(|(_, a)| a.norm_sqr())
+            .filter(|(i, _)| (i & mask) == 0) // filter states where q-th bit is 0
+            .map(|(_, amp)| amp.norm_sqr())
             .sum();
 
-        // temporarily take the rng for use in this function
         let mut temp_rng = self
             .rng
             .take()
-            .expect("rng should be initialized for measurement in current context.");
+            .expect("rng should be initialized for measurement.");
+        let random_val: f64 = temp_rng.gen();
+        self.rng = Some(temp_rng); // put rng back
 
-        let outcome = {
-            let r: f64 = temp_rng.gen(); // use the temporary rng
-            if r < prob1 {
-                1
-            } else {
-                0
-            }
+        let result = if random_val < prob_zero_sq {
+            // collapse to |0> state for the measured qubit
+            self.amps.par_iter_mut().enumerate().for_each(|(i, amp)| {
+                if (i & mask) != 0 {
+                    *amp = Complex64::new(0.0, 0.0);
+                }
+            });
+            0
+        } else {
+            // collapse to |1> state for the measured qubit
+            self.amps.par_iter_mut().enumerate().for_each(|(i, amp)| {
+                if (i & mask) == 0 {
+                    *amp = Complex64::new(0.0, 0.0);
+                }
+            });
+            1
         };
-
-        // put the rng back before any subsequent `self` mutable operations that might conflict
-        self.rng = Some(temp_rng);
-
-        let norm_sqr = if outcome == 1 { prob1 } else { 1.0 - prob1 };
-
-        if norm_sqr < 1e-12 {
-            eprintln!("warning: normalizing by very small number during measurement; state may be invalid. outcome: {}", outcome);
-            self.amps
-                .par_iter_mut() // parallel reset
-                .for_each(|amp| *amp = Complex64::new(0.0, 0.0));
-            if outcome == 1 {
-                self.amps[mask] = Complex64::new(1.0, 0.0);
-            } else {
-                self.amps[0] = Complex64::new(1.0, 0.0); // Corrected typo here
-            }
-            return outcome;
-        }
-
-        let norm = norm_sqr.sqrt();
-
-        self.amps.par_iter_mut().enumerate().for_each(|(i, amp)| {
-            if ((i & mask != 0) as usize) != outcome {
-                *amp = Complex64::new(0.0, 0.0);
-            } else {
-                *amp /= norm;
-            }
-        });
-        outcome
+        self.normalize(); // re-normalize after collapse
+        self.apply_noise(); // apply noise after measurement
+        result
     }
 
     pub fn sample_measurement(&self) -> Vec<u8> {
-        use rand::Rng;
-        let mut rng = rand::thread_rng();
-        let mut cumulative = 0.0;
-        let r: f64 = rng.gen();
-        for (i, amp) in self.amps.iter().enumerate() {
-            let p = amp.re * amp.re + amp.im * amp.im;
-            cumulative += p;
-            if r < cumulative {
-                let mut bits = vec![0; self.n];
-                for j in 0..self.n {
-                    bits[self.n - 1 - j] = ((i >> j) & 1) as u8;
-                }
-                return bits;
-            }
+        let mut result_bits = vec![0u8; self.n];
+        // self.clone() now correctly creates a new, independent QuantumState instance
+        let mut temp_state = self.clone(); 
+
+        for q_idx in 0..self.n {
+            result_bits[q_idx] = temp_state.measure(q_idx);
         }
-        vec![0; self.n]
+        result_bits
     }
 
     pub fn apply_final_state_noise(&mut self) {
+        // only apply final noise if not in ideal mode
         if let Some(NoiseConfig::Ideal) = &self.noise_config {
             eprintln!("[info] final state noise is skipped in ideal mode.");
             return;
@@ -701,9 +716,9 @@ impl QuantumState {
 
         eprintln!("[info] applying final state amplitude randomization.");
 
-        // temporarily take the rng for use. It doesn't need to be mutable here
+        // temporarily take the rng for use. it doesn't need to be mutable here
         // because its methods are not called directly after `take()`.
-        let temp_rng = self // Removed 'mut' here, as it's not needed
+        let temp_rng = self // removed 'mut' here, as it's not needed
             .rng
             .take()
             .expect("rng should be initialized for final state noise.");

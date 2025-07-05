@@ -5,7 +5,6 @@
 ## Lower Priority: Advanced Features, Robustness & Developer Experience
 
 ### Quantum State Management
-- Add serialization/deserialization of quantum state and registers for checkpoints
 - Add validation to detect corrupted quantum states
 - Optimize memory usage for large qubit simulations
 
@@ -18,6 +17,3 @@
 ### Documentation & Examples
 - Develop tutorials for fusion simulation and quantum programming
 - Provide guides for troubleshooting, debugging, and performance optimization
-
-### Control Flow & Program Structure
-- Implement `LABEL` instruction for named jump targets
