@@ -263,4 +263,4 @@ programs to analyze thoroughly their system's cache and memory architecture to d
 of qubits that can be supported before hitting these limitations. 
 
 ### Thanks for reading
-#### --rayan
+#### --Rayan
