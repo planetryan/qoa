@@ -1,4 +1,5 @@
-# The challenges of simulating greater than roughly 25 qubits in QOA
+# QOA system requirements
+## And the challenges of simulating greater than roughly 25 qubits in QOA on consumer hardware 
 
 One of the major issues faced in current computing revolves around emulating quantum systems using
 classical computers. This is due to the inherent architectural differences between quantum and
