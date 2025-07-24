@@ -1,0 +1,9 @@
+## cargo test native cpu:
+
+`RUSTFLAGS="-C target-cpu=native" cargo test --release` (remove release for debug)
+
+## only x86_64 test:
+
+`cargo test x86_64_simd_tests --release -- --nocapture`
+
+## debug/unoptimized is the same but with no `--release` flag.

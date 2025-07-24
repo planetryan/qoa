@@ -1,19 +1,5 @@
-; Hello World in QOA - Updated for 0.2.7+
+; hello world in qoa - updated for v0.3.0
+; this program uses the println instruction to output a string to the console.
 
-; Each CHARLOAD writes a character to output at register 0.
-; CHARLOAD now auto-increments output pointer in v0.2.6
-
-CHARLOAD 0 'H'
-CHARLOAD 0 'e'
-CHARLOAD 0 'l'
-CHARLOAD 0 'l'
-CHARLOAD 0 'o'
-CHARLOAD 0 ','
-CHARLOAD 0 ' '
-CHARLOAD 0 'W'
-CHARLOAD 0 'o'
-CHARLOAD 0 'r'
-CHARLOAD 0 'l'
-CHARLOAD 0 'd'
-CHARLOAD 0 '!'
+PRINTLN "Hello, World!"
 HALT

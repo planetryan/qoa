@@ -1,13 +1,9 @@
-/*
-    QPU MAIN RUNTIME, WRITTEN ON 20/6/2025 BY RAYAN
-*/
-
 use rand::thread_rng;
 use rand::Rng;
 mod quantum_state;
 pub use quantum_state::QuantumState;
 
-/// QPU exception flags (NaN, overflow, divide by zero)
+// qpu exception flags (nan, overflow, divide by zero)
 #[derive(Default, Debug)]
 pub struct QStatus {
     pub nan: bool,
@@ -25,11 +21,11 @@ impl QStatus {
     }
 }
 
-/// Represents the classical register bank and status flags of the QPU.
+// represents the classical register bank and status flags of the qpu.
 pub struct RegisterBank {
     pub regs: [f64; 16],
     pub status: QStatus,
-    // (program counter of LoopStart, remaining iterations)
+    // (program counter of loopstart, remaining iterations)
     pub loop_stack: Vec<(usize, u8)>,
 }
 
@@ -46,7 +42,7 @@ impl RegisterBank {
         if idx < 16 {
             Ok(())
         } else {
-            Err(format!("Register index out of bounds: {}", idx))
+            Err(format!("register index out of bounds: {}", idx))
         }
     }
 
@@ -58,13 +54,13 @@ impl RegisterBank {
     pub fn set(&mut self, idx: usize, val: f64) -> Result<(), String> {
         Self::check_reg_idx(idx)?;
         self.regs[idx] = val;
-        // When a register is successfully set, clear the status flags as a new, valid operation has occurred.
+        // when a register is successfully set, clear the status flags as a new, valid operation has occurred.
         self.status.clear();
         Ok(())
     }
 
     pub fn reg_add(&mut self, rd: usize, ra: usize, rb: usize) -> Result<(), String> {
-        self.status.clear(); // Clear flags before operation
+        self.status.clear(); // clear flags before operation
         let a = self.get(ra)?;
         let b = self.get(rb)?;
 
@@ -77,7 +73,7 @@ impl RegisterBank {
         if sum.is_infinite() {
             self.status.overflow = true;
         } else if sum.is_nan() {
-            // Catches cases like Inf - Inf
+            // catches cases like inf - inf
             self.status.nan = true;
         }
         self.set(rd, sum)
@@ -97,7 +93,7 @@ impl RegisterBank {
         if diff.is_infinite() {
             self.status.overflow = true;
         } else if diff.is_nan() {
-            // Catches cases like Inf - Inf
+            // catches cases like inf - inf
             self.status.nan = true;
         }
         self.set(rd, diff)
@@ -117,7 +113,7 @@ impl RegisterBank {
         if prod.is_infinite() {
             self.status.overflow = true;
         } else if prod.is_nan() {
-            // Catches cases like 0 * Inf
+            // catches cases like 0 * inf
             self.status.nan = true;
         }
         self.set(rd, prod)
@@ -141,7 +137,7 @@ impl RegisterBank {
         if quot.is_infinite() {
             self.status.overflow = true;
         } else if quot.is_nan() {
-            // Catches 0/0
+            // catches 0/0
             self.status.nan = true;
         }
         self.set(rd, quot)
@@ -202,27 +198,27 @@ impl RegisterBank {
         self.set(rd, val.ln())
     }
 
-    /// Push a new loop frame onto the stack.
+    // push a new loop frame onto the stack.
     pub fn push_loop_frame(&mut self, pc: usize, times: u8) {
         self.loop_stack.push((pc, times));
         self.status.clear();
     }
 
-    /// Pop a loop frame from the stack, decrementing count if necessary.
-    /// Returns (start_pc, remaining_times) if the loop continues, or None if finished.
+    // pop a loop frame from the stack, decrementing count if necessary.
+    // returns (start_pc, remaining_times) if the loop continues, or none if finished.
     pub fn pop_loop_frame(&mut self) -> Option<(usize, u8)> {
         self.status.clear();
         if let Some((pc, mut times)) = self.loop_stack.pop() {
             if times > 1 {
                 times -= 1;
-                self.loop_stack.push((pc, times)); // Push back with decremented count
+                self.loop_stack.push((pc, times)); // push back with decremented count
                 Some((pc, times))
             } else {
-                None // Loop finished
+                None // loop finished
             }
         } else {
-            self.status.nan = true; // Indicate an error state
-            None // No loop frame to pop
+            self.status.nan = true; // indicate an error state
+            None // no loop frame to pop
         }
     }
 
@@ -232,25 +228,74 @@ impl RegisterBank {
     ) -> Result<(), String> {
         use crate::instructions::Instruction;
         match instr {
-            Instruction::RegAdd(rd, ra, rb) => {
+            Instruction::REGADD(rd, ra, rb) | Instruction::RADD(rd, ra, rb) => {
                 self.reg_add(*rd as usize, *ra as usize, *rb as usize)
             }
-            Instruction::RegSub(rd, ra, rb) => {
+            Instruction::REGSUB(rd, ra, rb) | Instruction::RSUB(rd, ra, rb) => {
                 self.reg_sub(*rd as usize, *ra as usize, *rb as usize)
             }
-            Instruction::RegMul(rd, ra, rb) => {
+            Instruction::REGMUL(rd, ra, rb) | Instruction::RMUL(rd, ra, rb) => {
                 self.reg_mul(*rd as usize, *ra as usize, *rb as usize)
             }
-            Instruction::RegDiv(rd, ra, rb) => {
+            Instruction::REGDIV(rd, ra, rb) | Instruction::RDIV(rd, ra, rb) => {
                 self.reg_div(*rd as usize, *ra as usize, *rb as usize)
             }
-            Instruction::RegCopy(rd, ra) => self.reg_copy(*rd as usize, *ra as usize),
-            Instruction::Rand(rd) => self.rand(*rd as usize),
-            Instruction::Sqrt(rd, ra) => self.sqrt(*rd as usize, *ra as usize),
-            Instruction::Exp(rd, ra) => self.exp(*rd as usize, *ra as usize),
-            Instruction::Log(rd, ra) => self.ln(*rd as usize, *ra as usize),
+            Instruction::REGCOPY(rd, ra) | Instruction::RCOPY(rd, ra) => self.reg_copy(*rd as usize, *ra as usize),
+            Instruction::RAND(rd) => self.rand(*rd as usize),
+            Instruction::SQRT(rd, ra) => self.sqrt(*rd as usize, *ra as usize),
+            Instruction::EXP(rd, ra) => self.exp(*rd as usize, *ra as usize),
+            Instruction::LOG(rd, ra) => self.ln(*rd as usize, *ra as usize),
+            // bitwise operations
+            Instruction::ANDBITS(rd, ra, rb) | Instruction::ANDB(rd, ra, rb) => {
+                self.status.clear();
+                let a = self.get(ra)? as u64; // convert f64 to u64 for bitwise ops
+                let b = self.get(rb)? as u64;
+                self.set(*rd as usize, (a & b) as f64)
+            }
+            Instruction::ORBITS(rd, ra, rb) | Instruction::ORB(rd, ra, rb) => {
+                self.status.clear();
+                let a = self.get(ra)? as u64;
+                let b = self.get(rb)? as u64;
+                self.set(*rd as usize, (a | b) as f64)
+            }
+            Instruction::XORBITS(rd, ra, rb) | Instruction::XORB(rd, ra, rb) => {
+                self.status.clear();
+                let a = self.get(ra)? as u64;
+                let b = self.get(rb)? as u64;
+                self.set(*rd as usize, (a ^ b) as f64)
+            }
+            Instruction::NOTBITS(rd, ra) | Instruction::NOTB(rd, ra) => {
+                self.status.clear();
+                let a = self.get(ra)? as u64;
+                self.set(*rd as usize, (!a) as f64) // bitwise not
+            }
+            Instruction::SHL(rd, ra, rb) => {
+                self.status.clear();
+                let a = self.get(ra)? as u64;
+                let b = self.get(rb)? as u32; // shift amount is u32
+                self.set(*rd as usize, (a << b) as f64)
+            }
+            Instruction::SHR(rd, ra, rb) => {
+                self.status.clear();
+                let a = self.get(ra)? as u64;
+                let b = self.get(rb)? as u32; // shift amount is u32
+                self.set(*rd as usize, (a >> b) as f64)
+            }
+            // stub implementations for control flow instructions
+            Instruction::IFGT(_, _, _) | Instruction::IGT(_, _, _) => {
+                Err("control flow instruction ifgt/igt not handled by registerbank".into())
+            }
+            Instruction::IFLT(_, _, _) | Instruction::ILT(_, _, _) => {
+                Err("control flow instruction iflt/ilt not handled by registerbank".into())
+            }
+            Instruction::IFEQ(_, _, _) | Instruction::IEQ(_, _, _) => {
+                Err("control flow instruction ifeq/ieq not handled by registerbank".into())
+            }
+            Instruction::IFNE(_, _, _) | Instruction::INE(_, _, _) => {
+                Err("control flow instruction ifne/ine not handled by registerbank".into())
+            }
             _ => Err(format!(
-                "Unsupported arithmetic/runtime instruction for RegisterBank: {:?}",
+                "unsupported arithmetic/runtime instruction for registerbank: {:?}",
                 instr
             )),
         }

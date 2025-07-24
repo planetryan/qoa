@@ -1,11 +1,9 @@
-#![allow(dead_code)] // silence useless warns
+#[allow(unused_imports)]
 
 use clap::Parser;
-// use duct::cmd;
 use image::{ImageBuffer, ImageFormat, Rgb};
 use indicatif::{ProgressBar, ProgressStyle};
 use log::info;
-#[allow(unused_imports)]
 use memmap2::MmapOptions;
 use num_complex::Complex;
 use parking_lot::{Mutex, RwLock};
@@ -15,15 +13,16 @@ use rand_chacha::ChaCha8Rng;
 use rayon::prelude::*;
 use realfft::RealFftPlanner;
 use std::fs;
-// use std::io::BufRead;
-// use std::io::BufReader;
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-#[allow(unused_imports)]
-use std::time::Instant;
-// use std::process::{Command, Stdio};
-// use std::thread;
+
+// use std::time::Instant; // i havent removed this import because i might use it later.
+
+#[allow(unused_imports)] // allow unused imports for simd types, as they are conditionally compiled
+use std::simd::{f32x8, f32x16};
+use rand::rngs::ThreadRng; // import ThreadRng directly
+
 
 // --- quantum noise implementation ---
 
@@ -41,7 +40,7 @@ impl PerlinNoise {
         let mut p: Vec<usize> = (0..256).collect();
         // shuffle p
         for i in (0..256).rev() {
-            let j = rng.gen_range(0..=i);
+            let j = rng.random_range(0..=i); // Changed: use random_range()
             p.swap(i, j);
         }
         let mut extended_p = p.clone();
@@ -63,8 +62,9 @@ impl PerlinNoise {
     // simd-accelerated perlin noise calculations - conceptual, actual implementation is complex
     // this would require converting f64 to f32 or using f64x2/f64x4 if available and redesigning `grad`
     // to operate on packed vectors.
-    // example for AVX2 (f32x8) if `packed_simd` offered an easier way to abstract gradient
+    // example for avx2 (f32x8) if `packed_simd` offered an easier way to abstract gradient
     #[cfg(target_feature = "avx2")]
+    #[allow(dead_code)] // this function is intentionally unused as it's a conceptual example
     fn grad_simd(hash: f32x8, x: f32x8, y: f32x8) -> f32x8 {
         let mut result = f32x8::splat(0.0);
         for i in 0..8 {
@@ -139,7 +139,7 @@ pub struct VisualArgs {
     #[arg(long)]
     pub bench: bool,
 
-    /// Extra ffmpeg flags (e.g., -s, -r, -b:v, -pix_fmt, etc.)
+    /// extra ffmpeg flags (e.g., -s, -r, -b:v, -pix_fmt, etc.)
     #[arg(long = "ffmpeg-flag", value_name = "FFMPEG_FLAG", num_args = 0.., action = clap::ArgAction::Append)]
     pub ffmpeg_flags: Vec<String>,
 
@@ -193,7 +193,7 @@ pub enum SpectrumDirection {
 // --- quantum noise generation ---
 
 pub struct QuantumNoiseGenerator {
-    pub quantum_state: Arc<Mutex<QuantumState>>, // using parking_lot::Mutex
+    pub quantum_state: Arc<Mutex<QuantumState>>, // using parking_lot::mutex
     pub coherence_time: usize,
     pub current_time: AtomicU64, // use atomic for counter
 }
@@ -221,7 +221,17 @@ impl QuantumNoiseGenerator {
         let mut measurements = Vec::with_capacity(quantum_state.n); // pre-allocate vector, now mutable
         let n_qubits = quantum_state.n;
         for q in 0..n_qubits {
-            measurements.push(quantum_state.measure(q) == 1);
+            // fix: correctly handle the result of quantum_state.measure(q)
+            // it returns a result<usize, string>, so we need to unwrap it or handle the error
+            // assuming a successful measurement returns 0 or 1
+            match quantum_state.measure(q) {
+                Ok(val) => measurements.push(val == 1),
+                Err(e) => {
+                    // handle the error case, e.g., log it and push a default value
+                    eprintln!("error measuring qubit {}: {}", q, e);
+                    measurements.push(false); // default to false on error
+                }
+            }
         }
         let quantum_bits = measurements
             .iter()
@@ -302,13 +312,13 @@ impl AudioVisualizer {
             let end_idx = (start_idx + window_samples).min(audio_samples.len());
             let samples_slice = &audio_samples[start_idx..end_idx];
 
-            // using f32x16 for AVX512F if available, f32x8 for AVX2, f32x4 for SSE4.1, otherwise scalar
+            // using f32x16 for avx512f if available, f32x8 for avx2, f32x4 for sse4.1, otherwise scalar
             #[cfg(target_feature = "avx512f")]
             let sum_sq = samples_slice
                 .chunks_exact(16)
                 .map(|chunk| {
                     let p = f32x16::from_slice(chunk);
-                    (p * p).sum() as f64
+                    p.as_array().iter().map(|&val| val as f64 * val as f64).sum::<f64>()
                 })
                 .sum::<f64>()
                 + samples_slice
@@ -322,7 +332,7 @@ impl AudioVisualizer {
                 .chunks_exact(8)
                 .map(|chunk| {
                     let p = f32x8::from_slice(chunk);
-                    (p * p).sum() as f64
+                    p.as_array().iter().map(|&val| val as f64 * val as f64).sum::<f64>()
                 })
                 .sum::<f64>()
                 + samples_slice
@@ -340,7 +350,7 @@ impl AudioVisualizer {
                 .chunks_exact(4)
                 .map(|chunk| {
                     let p = f32x4::from_slice(chunk);
-                    (p * p).sum() as f64
+                    p.as_array().iter().map(|&val| val as f64 * val as f64).sum::<f64>()
                 })
                 .sum::<f64>()
                 + samples_slice
@@ -416,18 +426,18 @@ impl AudioVisualizer {
     }
 }
 
-// Manually implement Clone for AudioVisualizer
+// manually implement clone for audiovisualizer
 impl Clone for AudioVisualizer {
     fn clone(&self) -> Self {
         Self {
-            // Create a new QuantumNoiseGenerator instance when cloning AudioVisualizer
+            // create a new quantumnoisegenerator instance when cloning audiovisualizer
             quantum_noise_gen: QuantumNoiseGenerator::new(
-                self.quantum_noise_gen.quantum_state.lock().n, // Use current n_qubits
+                self.quantum_noise_gen.quantum_state.lock().n, // use current n_qubits
                 0,
             ),
-            // Clone the content of prev_rms_loudness using a read lock
+            // clone the content of prev_rms_loudness using a read lock
             prev_rms_loudness: Arc::new(RwLock::new(*self.prev_rms_loudness.read())),
-            //Hue Speed
+            //hue speed
             prev_hue: 0.0,
         }
     }
@@ -447,93 +457,113 @@ impl QoaAudioDecoder for AudioVisualizer {
                 let num_channels = spec.channels as usize;
 
                 info!(
-                    "WAV file has {} channels at {} Hz",
+                    "wav file has {} channels at {} hz",
                     num_channels, spec.sample_rate
                 );
 
                 if num_channels > 2 {
                     info!(
-                        "audio has {} channels, only using first two channels.",
+                        "audio has {} channels, only using first two channels. (averaging them)",
                         num_channels
                     );
                 }
 
-                // Read all raw i16 samples first
+                // read all raw i16 samples first
                 let all_raw_samples: Vec<i16> =
                     reader.samples().collect::<Result<_, hound::Error>>()?;
-                let mut samples = Vec::with_capacity(all_raw_samples.len());
+                let mut samples = Vec::with_capacity(all_raw_samples.len() / num_channels); // adjusted capacity
 
                 // optimize channel mixing operations (conceptual)
-                // if we were reading raw samples, we could interleave and then process with SIMD
+                // if we were reading raw samples, we could interleave and then process with simd
                 #[cfg(any(
                     target_feature = "sse4.1",
                     target_feature = "avx2",
                     target_feature = "avx512f"
                 ))]
                 {
-                    // Using the widest available SIMD for channel mixing if possible
-                    if num_channels == 2 {
-                        let mut temp_stereo_samples: Vec<f32> =
-                            Vec::with_capacity(all_raw_samples.len());
-                        for &sample in &all_raw_samples {
-                            temp_stereo_samples.push(sample as f32 / i16::MAX as f32);
-                        }
+                    // convert all raw i16 samples to f32 once
+                    let temp_f32_samples: Vec<f32> = all_raw_samples.clone() // clone here
+                        .into_iter()
+                        .map(|s| s as f32 / i16::MAX as f32)
+                        .collect();
 
+                    if num_channels == 2 {
+                        // process stereo pairs with simd
                         #[cfg(target_feature = "avx512f")]
-                        for chunk in temp_stereo_samples.chunks_exact(16) {
-                            // Process 8 stereo pairs at once
-                            let packed_samples = f32x16::from_slice(chunk);
-                            let left_channel = packed_samples.extract_even();
-                            let right_channel = packed_samples.extract_odd();
-                            let mixed = (left_channel + right_channel) * f32x8::splat(0.5); // AVX2 operation
-                            samples.extend_from_slice(mixed.as_array());
+                        {
+                            for chunk in temp_f32_samples.chunks_exact(16) {
+                                let packed_samples = f32x16::from_slice(chunk);
+                                // sum pairs: [l0, r0, l1, r1, ...] -> [(l0+r0), (l1+l1), ...]
+                                let mixed_pairs = f32x8::from_array([
+                                    (packed_samples[0] + packed_samples[1]) * 0.5,
+                                    (packed_samples[2] + packed_samples[3]) * 0.5,
+                                    (packed_samples[4] + packed_samples[5]) * 0.5,
+                                    (packed_samples[6] + packed_samples[7]) * 0.5,
+                                    (packed_samples[8] + packed_samples[9]) * 0.5,
+                                    (packed_samples[10] + packed_samples[11]) * 0.5,
+                                    (packed_samples[12] + packed_samples[13]) * 0.5,
+                                    (packed_samples[14] + packed_samples[15]) * 0.5,
+                                ]);
+                                samples.extend_from_slice(mixed_pairs.as_array());
+                            }
+                            // handle remainder
+                            for pair in temp_f32_samples.chunks_exact(16).remainder().chunks(2) {
+                                if let (Some(&l), Some(&r)) = (pair.get(0), pair.get(1)) {
+                                    samples.push((l + r) * 0.5);
+                                } else if let Some(&l) = pair.get(0) {
+                                    samples.push(l);
+                                }
+                            }
                         }
                         #[cfg(all(not(target_feature = "avx512f"), target_feature = "avx2"))]
-                        for chunk in temp_stereo_samples.chunks_exact(8) {
-                            // Process 4 stereo pairs at once
-                            let packed_samples = f32x8::from_slice(chunk);
-                            let left_channel = packed_samples.extract_even();
-                            let right_channel = packed_samples.extract_odd();
-                            let mixed = (left_channel + right_channel) * f32x4::splat(0.5); // SSE4.1 operation
-                            samples.extend_from_slice(mixed.as_array());
+                        {
+                            for chunk in temp_f32_samples.chunks_exact(8) {
+                                let packed_samples = f32x8::from_slice(chunk);
+                                // sum pairs: [l0, r0, l1, r1, ...] -> [(l0+r0), (l1+r1), ...]
+                                let mixed_pairs = f32x4::from_array([
+                                    (packed_samples[0] + packed_samples[1]) * 0.5,
+                                    (packed_samples[2] + packed_samples[3]) * 0.5,
+                                    (packed_samples[4] + packed_samples[5]) * 0.5,
+                                    (packed_samples[6] + packed_samples[7]) * 0.5,
+                                ]);
+                                samples.extend_from_slice(mixed_pairs.as_array());
+                            }
+                            // handle remainder
+                            for pair in temp_f32_samples.chunks_exact(8).remainder().chunks(2) {
+                                if let (Some(&l), Some(&&r)) = (pair.get(0), pair.get(1)) {
+                                    samples.push((l + r) * 0.5);
+                                } else if let Some(&l) = pair.get(0) {
+                                    samples.push(l);
+                                }
+                            }
                         }
                         #[cfg(all(
                             not(target_feature = "avx512f"),
                             not(target_feature = "avx2"),
                             target_feature = "sse4.1"
                         ))]
-                        for chunk in temp_stereo_samples.chunks_exact(4) {
-                            // Process 2 stereo pairs at once
-                            let packed_samples = f32x4::from_slice(chunk);
-                            let left_channel = packed_samples.extract_even();
-                            let right_channel = packed_samples.extract_odd();
-                            let mixed = (left_channel + right_channel) * f32x4::splat(0.5);
-                            samples.extend_from_slice(mixed.as_array());
-                        }
-                        // Handle remainder (samples that don't fit into a full SIMD vector)
-                        let processed_len = if cfg!(target_feature = "avx512f") {
-                            (temp_stereo_samples.len() / 16) * 16
-                        } else if cfg!(target_feature = "avx2") {
-                            (temp_stereo_samples.len() / 8) * 8
-                        } else if cfg!(target_feature = "sse4.1") {
-                            (temp_stereo_samples.len() / 4) * 4
-                        } else {
-                            0
-                        };
-                        for i in processed_len..temp_stereo_samples.len() {
-                            if i + 1 < temp_stereo_samples.len() {
-                                samples.push(
-                                    (temp_stereo_samples[i] + temp_stereo_samples[i + 1]) * 0.5,
-                                );
-                            } else {
-                                samples.push(temp_stereo_samples[i]); // handle last mono sample if odd
+                        {
+                            for chunk in temp_f32_samples.chunks_exact(4) {
+                                let packed_samples = f32x4::from_slice(chunk);
+                                // sum pairs: [l0, r0, l1, r1, ...] -> [(l0+r0), (l1+r1), ...]
+                                let mixed_pairs = f32x2::from_array([
+                                    (packed_samples[0] + packed_samples[1]) * 0.5,
+                                    (packed_samples[2] + packed_samples[3]) * 0.5,
+                                ]);
+                                samples.extend_from_slice(mixed_pairs.as_array());
+                            }
+                            // handle remainder
+                            for pair in temp_f32_samples.chunks_exact(4).remainder().chunks(2) {
+                                if let (Some(&l), Some(&r)) = (pair.get(0), pair.get(1)) {
+                                    samples.push((l + r) * 0.5);
+                                } else if let Some(&l) = pair.get(0) {
+                                    samples.push(l);
+                                }
                             }
                         }
                     } else if num_channels == 1 {
                         info!("processing mono audio");
-                        for &sample in &all_raw_samples {
-                            samples.push(sample as f32 / i16::MAX as f32);
-                        }
+                        samples = temp_f32_samples; // directly use if mono
                     } else {
                         info!("processing stereo/multi-channel audio (averaging channels)");
                         let mut temp_all_samples: Vec<f32> =
@@ -542,7 +572,7 @@ impl QoaAudioDecoder for AudioVisualizer {
                             temp_all_samples.push(sample as f32 / i16::MAX as f32);
                         }
 
-                        // Average all channels for each sample
+                        // average all channels for each sample
                         for chunk in temp_all_samples.chunks(num_channels) {
                             samples.push(chunk.iter().sum::<f32>() / num_channels as f32);
                         }
@@ -554,7 +584,7 @@ impl QoaAudioDecoder for AudioVisualizer {
                     target_feature = "avx512f"
                 )))]
                 {
-                    // Scalar fallback for channel mixing
+                    // scalar fallback for channel mixing
                     if num_channels == 2 {
                         info!("processing stereo audio (scalar)");
                         for sample_pair in all_raw_samples.chunks(2) {
@@ -590,11 +620,11 @@ impl QoaAudioDecoder for AudioVisualizer {
                 Ok((samples, spec.sample_rate))
             }
             Some("qoa") => {
-                info!("decoding QOA audio");
+                info!("decoding qoa audio");
                 let file_path = Path::new(audio_path);
                 let file = fs::File::open(file_path)?;
                 let _mmap = unsafe { MmapOptions::new().map(&file)? };
-                Err(format!("QOA decoding is unavailable due to missing function `decode_to_vec_f32` in the `qoa` crate. Please check your `qoa` dependency version and features.").into())
+                Err(format!("qoa decoding is unavailable due to missing function `decode_to_vec_f32` in the `qoa` crate. please check your `qoa` dependency version and features.").into())
             }
             _ => Err(format!("unsupported audio format: {:?}", audio_path).into()),
         }
@@ -637,14 +667,18 @@ impl QuantumProcessor for AudioVisualizer {
             + audio_features.mid_freq_energy
             + audio_features.high_freq_energy
             + 1e-6;
-        let normalized_bass = (audio_features.low_freq_energy / total_energy).min(1.0).max(0.0);
-        let _normalized_mid = (audio_features.mid_freq_energy / total_energy).min(1.0).max(0.0);
-        let _normalized_high = (audio_features.high_freq_energy / total_energy).min(1.0).max(0.0);
+        let normalized_bass = (audio_features.low_freq_energy / total_energy)
+            .min(1.0)
+            .max(0.0);
+        let _normalized_mid = (audio_features.mid_freq_energy / total_energy)
+            .min(1.0).max(0.0);
+        let _normalized_high = (audio_features.high_freq_energy / total_energy)
+            .min(1.0).max(0.0);
 
         let base_brightness = 1.0 + normalized_bass * 1.0 + normalized_rms * 0.3;
 
-        // --- COLOUR SHIFT, AND CYCLE ---
-        let increment_per_frame = 0.01; // this is a good value, 1 is seizure inducing 
+        // --- colour shift, and cycle ---
+        let increment_per_frame = 0.01; // this is a good value, 1 is seizure inducing
         let color_hue = (self.prev_hue + increment_per_frame) % 360.0; // colour hue %
         self.prev_hue = color_hue;
 
@@ -684,7 +718,7 @@ impl QuantumProcessor for AudioVisualizer {
 
 // --- main visualization logic ---
 pub fn render_frame(
-    _frame_index: usize, // Added _
+    _frame_index: usize,
     width: u32,
     height: u32,
     quantum_data: &QuantumVisualData,
@@ -696,25 +730,33 @@ pub fn render_frame(
     let center_x = width as f64 / 2.0;
     let center_y = height as f64 / 2.0;
 
-    let _total_pixels = width * height; // Added _
+    let _total_pixels = width * height;
     let _quantum_bits_to_pixel_ratio =
-        (quantum_data.quantum_measurements.len() as f64 / _total_pixels as f64).sqrt(); // Added _
+        (quantum_data.quantum_measurements.len() as f64 / _total_pixels as f64).sqrt();
 
     for y in 0..height {
         for x in 0..width {
-            let norm_x = (x as f64 - center_x) / width as f64;
-            let norm_y = (y as f64 - center_y) / height as f64;
+            // base coordinates
+            let mut norm_x = (x as f64 - center_x) / width as f64;
+            let mut norm_y = (y as f64 - center_y) / height as f64;
+
+            // apply flow field strength
+            let flow_x = (norm_x + quantum_data.flow_field_strength * 0.1).sin() * 0.05;
+            let flow_y = (norm_y + quantum_data.flow_field_strength * 0.1).cos() * 0.05;
+            norm_x += flow_x;
+            norm_y += flow_y;
 
             let noise_val = perlin_noise.get(
                 norm_x * quantum_data.pattern_density * 10.0
-                    + quantum_data.noise_seed as f64 / 1000.0,
+                    + quantum_data.noise_seed as f64 / 1000.0
+                    + quantum_data.chaos_factor * 5.0, // incorporate chaos_factor
                 norm_y * quantum_data.pattern_density * 10.0
-                    + quantum_data.noise_seed as f64 / 1000.0,
+                    + quantum_data.noise_seed as f64 / 1000.0
+                    + quantum_data.chaos_factor * 5.0, // incorporate chaos_factor
             );
 
             // quantum interference pattern
-            let interference =
-                (norm_x * 10.0).sin() * (norm_y * 10.0).cos() * quantum_data.interference_pattern;
+            let interference = (norm_x * 10.0).sin() * (norm_y * 10.0).cos() * quantum_data.interference_pattern;
             let final_noise = (noise_val + interference).max(-1.0).min(1.0);
 
             let brightness_base = quantum_data.base_brightness;
@@ -727,7 +769,8 @@ pub fn render_frame(
 
             // color mapping with hue based on audio features and quantum state
             let hue = (quantum_data.color_hue
-                + normalized_centroid_for_color(&spectrum_data) * 180.0)
+                + normalized_centroid_for_color(&spectrum_data) * 180.0
+                + quantum_data.quantum_coherence * 90.0) // incorporate quantum_coherence
                 % 360.0;
             let saturation = (0.7 + quantum_data.quantum_entanglement * 0.3).min(1.0);
             let value = final_brightness;
@@ -735,13 +778,13 @@ pub fn render_frame(
             let rgb_color = hsv_to_rgb(hue, saturation, value);
 
             // apply distortion
-            let distorted_x =
-                (x as f64 + (norm_x * quantum_data.distortion_magnitude * 50.0).sin()) as u32;
-            let distorted_y =
-                (y as f64 + (norm_y * quantum_data.distortion_magnitude * 50.0).cos()) as u32;
+            let distorted_x = (x as f64 + (norm_x * quantum_data.distortion_magnitude * 50.0).sin()
+                + quantum_data.depth_modulation * 20.0 * (noise_val * 2.0).sin()) as u32; // incorporate depth_modulation
+            let distorted_y = (y as f64 + (norm_y * quantum_data.distortion_magnitude * 50.0).cos()
+                + quantum_data.depth_modulation * 20.0 * (noise_val * 2.0).cos()) as u32; // incorporate depth_modulation
 
             let current_pixel: &mut Rgb<u8> = img.get_pixel_mut(
-                // Added type annotation
+                // added type annotation
                 distorted_x.min(width - 1),
                 distorted_y.min(height - 1),
             );
@@ -752,7 +795,7 @@ pub fn render_frame(
                 (rgb_color.2 * 255.0) as u8,
             ]);
 
-            // Simple blending (alpha compositing concept)
+            // simple blending (alpha compositing concept)
             let blended_pixel = Rgb([
                 ((current_pixel[0] as f32 * 0.5 + new_pixel[0] as f32 * 0.5) as u8),
                 ((current_pixel[1] as f32 * 0.5 + new_pixel[1] as f32 * 0.5) as u8),
@@ -774,13 +817,13 @@ pub fn render_frame(
         let bar_height = (magnitude * 500.0).min(spectrum_height as f64);
         let start_y = match spectrum_direction {
             SpectrumDirection::Ltr => height - bar_height as u32,
-            SpectrumDirection::Rtl => 0, // Top of the image for RTL for now, can be adjusted
-            SpectrumDirection::None => continue, // No spectrum rendering
+            SpectrumDirection::Rtl => 0, // top of the image for rtl for now, can be adjusted
+            SpectrumDirection::None => continue, // no spectrum rendering
         };
 
         let x_pos = match spectrum_direction {
             SpectrumDirection::Ltr => (i as f64 * bar_width) as u32,
-            SpectrumDirection::Rtl => width - (i as f64 * bar_width) as u32 - bar_width as u32, // Adjust for RTL
+            SpectrumDirection::Rtl => width - (i as f64 * bar_width) as u32 - bar_width as u32, // adjust for rtl
             SpectrumDirection::None => continue,
         };
 
@@ -802,7 +845,7 @@ pub fn render_frame(
     img
 }
 
-// Converts HSV to RGB.
+// converts hsv to rgb.
 fn hsv_to_rgb(h: f64, s: f64, v: f64) -> (f64, f64, f64) {
     let h = h.rem_euclid(360.0); // ensures h is always in [0, 360)
     let c = v * s;
@@ -832,7 +875,7 @@ fn normalized_centroid_for_color(spectrum_data: &[f64]) -> f64 {
     let mut sum_weighted_freq = 0.0;
     let mut sum_magnitudes = 0.0;
     for (i, &mag) in spectrum_data.iter().enumerate() {
-        // Use a simpler mapping for color, e.g., 0-1 range for frequency
+        // use a simpler mapping for color, e.g., 0-1 range for frequency
         let normalized_freq = i as f64 / spectrum_data.len() as f64;
         sum_weighted_freq += normalized_freq * mag;
         sum_magnitudes += mag;
@@ -852,7 +895,8 @@ pub fn parse_spectrum_direction(arg: Option<&str>) -> SpectrumDirection {
     }
 }
 
-// Important function below related to conversion & printing with visualizer & ffmpeg, do not touch unless you know what you are doing!
+// important function below related to conversion & printing with visualizer & ffmpeg,
+// do not touch unless you know what you are doing!
 
 pub fn run_qoa_to_video<D, P>(
     audio_decoder: &D,
@@ -871,7 +915,7 @@ where
     P: QuantumProcessor + Send + Sync,
 {
     use num_complex::Complex;
-    use rand::Rng;
+    use rand::Rng; // keep this import for Rng trait
     use std::time::Instant;
     use std::{
         io::Read,
@@ -880,7 +924,7 @@ where
         thread,
     };
 
-    info!("starting QOA to video conversion...");
+    info!("starting qoa to video conversion...");
 
     let (audio_samples, sample_rate) =
         audio_decoder.decode_audio_file_to_samples(input_audio_path)?;
@@ -890,7 +934,7 @@ where
     let total_frames = (total_audio_samples as f64 / samples_per_frame as f64).ceil() as usize;
 
     info!(
-        "audio length: {} samples at {} Hz",
+        "audio length: {} samples at {} hz",
         total_audio_samples, sample_rate
     );
     info!(
@@ -904,7 +948,7 @@ where
     let mut real_fft_planner = RealFftPlanner::<f32>::new();
     let rfft = real_fft_planner.plan_fft_forward(samples_per_frame);
 
-    let perlin_noise_gen_seed = rand::thread_rng().gen::<u32>();
+    let perlin_noise_gen_seed = ThreadRng::default().random::<u32>(); // Changed: use random()
     let perlin_noise = PerlinNoise::new(perlin_noise_gen_seed);
 
     // --- frame progress bar ---
@@ -966,16 +1010,16 @@ where
             let frame_path = frames_dir.join(format!("frame_{:05}.png", i));
             frame_img
                 .save_with_format(&frame_path, ImageFormat::Png)
-                .expect("Failed to save frame");
+                .expect("failed to save frame");
             progress_bar.inc(1);
         })
         .count();
 
     progress_bar.finish_with_message("frames generated.");
     let elapsed = start_time.elapsed();
-    println!("Total time: {:.2} seconds", elapsed.as_secs_f64());
+    println!("total time: {:.2} seconds", elapsed.as_secs_f64());
 
-    // --- Check all frames exist to avoid FFmpeg hang ---
+    // --- check all frames exist to avoid ffmpeg hang ---
     let missing_frames: Vec<String> = (0..total_frames)
         .map(|i| frames_dir.join(format!("frame_{:05}.png", i)))
         .filter(|p| !p.exists())
@@ -983,14 +1027,14 @@ where
         .collect();
 
     if !missing_frames.is_empty() {
-        eprintln!("ERROR: The following frames are missing:");
+        eprintln!("error: the following frames are missing:");
         for f in missing_frames.iter().take(10) {
             eprintln!("  {}", f);
         }
         if missing_frames.len() > 10 {
             eprintln!("  ...and {} more", missing_frames.len() - 10);
         }
-        return Err("Aborting: missing PNG frames for FFmpeg".into());
+        return Err("aborting: missing png frames for ffmpeg".into());
     }
 
     let mut frame_files: Vec<_> = std::fs::read_dir(&frames_dir)?
@@ -999,15 +1043,15 @@ where
         .collect();
     frame_files.sort();
     println!(
-        "First 3 frames: {:?}",
+        "first 3 frames: {:?}",
         &frame_files[..3.min(frame_files.len())]
     );
     println!(
-        "Last 3 frames: {:?}",
+        "last 3 frames: {:?}",
         &frame_files[frame_files.len().saturating_sub(3)..]
     );
 
-    // --- FFmpeg command to stitch frames and audio into a video ---
+    // --- ffmpeg command to stitch frames and audio into a video ---
     info!("stitching video with ffmpeg...");
 
     let fps_str_owned = fps.to_string();
@@ -1051,7 +1095,7 @@ where
         resolution_str_owned.clone(),
     ];
 
-    // Append user args last
+    // append user args last
     for flag in ffmpeg_flags {
         ffmpeg_command.push(flag.clone());
     }
@@ -1059,18 +1103,19 @@ where
         ffmpeg_command.push(arg.to_string());
     }
     ffmpeg_command.push(output_video_path_string.clone());
-    // Print the exact ffmpeg command for debugging
-    println!("FFmpeg command: ffmpeg {}", ffmpeg_command[1..].join(" "));
+    // print the exact ffmpeg command for debugging
+    println!("ffmpeg command: ffmpeg {}", ffmpeg_command[1..].join(" "));
 
-    // --- FFmpeg output: print on both \r and \n ---
+    // --- ffmpeg output: print on both \r and \n ---
+    
     let mut child = Command::new("ffmpeg")
         .args(&ffmpeg_command[1..])
-        .stdout(Stdio::null()) // We don't need ffmpeg stdout, only stderr for progress
+        .stdout(Stdio::null()) // we don't need ffmpeg stdout, only stderr for progress
         .stderr(Stdio::piped())
         .spawn()
         .expect("failed to start ffmpeg");
 
-    let mut stderr = child.stderr.take().expect("Failed to open ffmpeg stderr");
+    let mut stderr = child.stderr.take().expect("failed to open ffmpeg stderr");
 
     let h = thread::spawn(move || {
         let mut buf = [0u8; 4096];
