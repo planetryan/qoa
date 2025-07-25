@@ -2,8 +2,6 @@
 
 **THIS TODO LIST WILL DECREASE IN SIZE AS I FINISH IT**
 
-### ADD BENCHMARK
-
 ## Multi-System & Distributed Features (High Priority for Scaling Qubit Counts)
 - Add multi-GPU support for quantum state simulation (via CUDA/OpenCL/Rust-CUDA, Vulkan, etc.)
 - Add multi-threaded CPU+GPU coordination for hybrid workloads

@@ -3,335 +3,199 @@
 # QOA  
 **The Quantum Optical Assembly Programming Language**
 
+> **NOTE:** EXTRA DOCUMENTATION CAN BE FOUND IN THE README FOLDER
+
 ---
 
-## NOTE: EXTRA DOCUMENTATION CAN BE FOUND IN THE README FOLDER
+## Changelog
 
-## Changelog  
-LATEST RELEASE NOTES: [HERE](<changelog/QOA v0.3.0.md>)
-
-See `changelog` folder for more detailed version history and ISA updates.
+- **LATEST RELEASE NOTES:** [HERE](<changelog/QOA v0.3.1.md>)
+- See `changelog/` folder for more detailed version history and ISA updates.
 
 ---
 
 I have created this guide for researchers, developers and students who will use QOA in practical applications. I have designed it to interact with quantum and/or optical systems in the same way classical RISC‑syntax based assembly could manipulate electrons in transistors. I hope whoever reads this guide finds it useful.
 
-*Sincerely, Rayan*
+*Sincerely,*  
+**Rayan**
 
-## System Requirements:
-- **CPU:** Processors with SIMD support (AVX-512/AVX2 recommended in x86_64 for best performance, NEON for AARCH64, and RVV 1.0 for RISC-V 64 bit).
-- **CPU (continued):** Please try to run QOA on A CPU with as large as a cache as possible, AMD X3D cpus are a good option, I explained why [here](readme/QOA-system-requirements.md)
-- **Memory:** Increased efficiency allows for simulation of larger quantum systems with the same memory footprint within 2^N doubling state requirements, so still exponential memory, but less compiler & executor overhead
-- **Rust Compiler:** Requires Rust 1.55.0 or higher for portable SIMD support, crates may also need an update.
-- **Rust Compiler Note:** USE `rustc 1.90.0-nightly (a7a1618e6 2025-07-22)` IF ISSUES ARISE! 
+---
+
+## System Requirements
+
+- **CPU:**  
+  - Processors with SIMD support (AVX‑512/AVX2 recommended on x86_64 for best performance, NEON for AARCH64, and RVV 1.0 for RISC‑V 64‑bit).  
+  - Please try to run QOA on a CPU with as large a cache as possible (AMD X3D CPUs are a good option; see explanation in `README`).
+
+- **Memory:**  
+  - Increased efficiency allows for simulation of larger quantum systems with the same memory footprint within 2^N doubling state requirements -- still exponential memory, but less compiler & executor overhead.
+
+- **Rust Compiler:**  
+  - Requires **Rust 1.55.0** or higher for portable SIMD support; crates may also need an update.  
+  - **Rust Compiler Note:** Use `rustc 1.90.0-nightly (a7a1618e6 2025-07-22)` **if issues arise**!
+  - Rust edition `2024` used.
 
 ---
 
 ## Base Syntax / Operations Overview  
-*(This list is comprehensive for QOA v0.3.0)*
+*(This list is for QOA v0.3.1)*
 
 ### Quantum Operations
-- **QINIT N**  
-  Initializes the quantum state with N qubits, all set to the ∣0⟩ state.
 
-- **H Q**  
-  Applies a Hadamard gate to qubit Q.
-
-- **APPLYBITFLIP Q**  
-  Applies a Pauli‑X (bit‑flip) gate to qubit Q.
-
-- **APPLYPHASEFLIP Q**  
-  Applies a Pauli‑Z (phase‑flip) gate to qubit Q.
-
-- **APPLYTGATE Q**  
-  Applies a T gate (π/8 phase shift) to qubit Q.
-
-- **APPLYSGATE Q**  
-  Applies an S gate (π/4 phase shift) to qubit Q.
-
-- **PHASESHIFT Q Angle**  
-  Applies a phase shift to qubit Q by *Angle* radians.  
-  Alias: `SETPHASE`.
-
-- **RX Q Angle**  
-  Rotation around the X‑axis on qubit Q by *Angle* radians.
-
-- **RY Q Angle**  
-  Rotation around the Y‑axis on qubit Q by *Angle* radians.
-
-- **RZ Q Angle**  
-  Rotation around the Z‑axis on qubit Q by *Angle* radians.
-
-- **CONTROLLEDNOT C T**  
-  CNOT gate with control qubit C and target qubit T.  
-  Alias: `CNOT`.
-
-- **CZ C T**  
-  Controlled‑Z gate with control qubit C and target qubit T.
-
-- **CPHASE C T Angle**  
-  Controlled phase rotation between control C and target T by *Angle* radians.  
-  Alias: `APPLYCPHASE`.
-
-- **ENTANGLE C T**  
-  Entangles qubits C and T (often implemented as a CNOT).
-
-- **ENTANGLEBELL Q1 Q2**  
-  Creates a Bell state between qubits Q1 and Q2.
-
-- **ENTANGLEMULTI N Q1 ... QN**  
-  Creates a multi‑qubit entangled state across N specified qubits.
-
-- **ENTANGLECLUSTER N Q1 ... QN**  
-  Generates a cluster state over N specified qubits.
-
-- **ENTANGLESWAP Q1 Q2 Q3 Q4**  
-  Performs entanglement swapping among four qubits.
-
-- **ENTANGLESWAPMEASURE Q1 Q2 Q3 Q4 Label**  
-  Entanglement swapping with measurement, jumping to *Label* based on outcome.
-
-- **ENTANGLEWITHFB Q Label**  
-  Entangles qubit Q with classical feedback, jumping to *Label*.
-
-- **ENTANGLEDISTRIB Q Label**  
-  Performs distributed entanglement on qubit Q, jumping to *Label*.
-
-- **MEASURE Q**  
-  Measures qubit Q, collapsing its quantum state and yielding a classical result.  
-  Alias: `QMEAS`.
-
-- **MEASUREINBASIS Q Label**  
-  Measures qubit Q in a specified basis, jumping to *Label*.
-
-- **RESET Q**  
-  Resets qubit Q to the ground state ∣0⟩.
-
-- **RESETALL**  
-  Resets all qubits in the system to ∣0⟩.
-
-- **MARKOBSERVED Q**  
-  Marks qubit Q as observed (internal state tracking).
-
-- **RELEASE Q**  
-  Releases resources associated with qubit Q.
-
-- **APPLYGATE Q GateID**  
-  Applies a named unitary gate (e.g., “h”, “x”, “cz”) to qubit Q.
-
-- **APPLYROTATION Q Angle**  
-  General rotation to qubit Q by *Angle* (axis undefined).
-
-- **APPLYMULTIQUBITROTATION AxisID N Q1 ... QN Angles**  
-  Simultaneous rotations around a specified AxisID to N qubits with corresponding Angles.
-
-- **APPLYKERRNONLIN Q Strength Duration**  
-  Applies Kerr nonlinearity to qubit/mode Q with given Strength and Duration.
-
-- **DECOHERENCEPROTECT Q Duration**  
-  Activates decoherence protection for qubit Q for *Duration*.
-
-- **BASISCHANGE Q Label**  
-  Changes the measurement basis for qubit Q, jumping to *Label*.
-
-- **APPLYNONLINEARPHASESHIFT Q Angle**  
-  Nonlinear phase shift to qubit Q by *Angle*.
-
-- **APPLYNONLINEARSI Q Param**  
-  Custom nonlinear operation to qubit Q with *Param*.
-
-- **QSTATETOMOGRAPHY Q Label**  
-  Quantum state tomography on qubit Q, jumping to *Label*.
-
-- **BELLSTATEVERIF Q1 Q2 Label**  
-  Verifies Bell state between Q1 and Q2, jumping to *Label*.
-
-- **QUANTUMZENOEFFECT Q Strength Duration**  
-  Simulates Quantum Zeno Effect on qubit Q.
-
-- **APPLYLINEAROPTICALTRANSFORM N_in N_out TransformID In_Modes Out_Modes**  
-  Applies a linear optical transformation.
-
-- **ERRORCORRECT Q CodeID**  
-  Invokes quantum error correction on qubit Q using CodeID.
-
-- **ERRORSYNDROME Q CodeID RegName**  
-  Extracts error syndrome for qubit Q using CodeID, stores in *RegName*.
-
-- **QNDMEASURE Q RegName**  
-  Quantum non‑demolition measurement on qubit Q, stores result in *RegName*.
-
-- **SWAP Q1 Q2**  
-  Swaps the states of qubit Q1 and Q2.
-
----
+| Instruction                                    | Description                                                                                 | Aliases                                             |
+|-----------------------------------------------|---------------------------------------------------------------------------------------------|-----------------------------------------------------|
+| `QINIT N`                                     | Initializes the quantum state with N qubits, all set to the \|0⟩ state.                   | QI, INITQUBIT, IQ, QINITQ                           |
+| `H Q`                                         | Applies a Hadamard gate to qubit Q.                                                        | HAD, APPLYHADAMARD                                  |
+| `APPLYBITFLIP Q`                              | Applies a Pauli‑X (bit‑flip) gate to qubit Q.                                              | X                                                   |
+| `APPLYPHASEFLIP Q`                            | Applies a Pauli‑Z (phase‑flip) gate to qubit Q.                                            | Z                                                   |
+| `APPLYTGATE Q`                                | Applies a T gate (π/8 phase shift) to qubit Q.                                             | T                                                   |
+| `APPLYSGATE Q`                                | Applies an S gate (π/4 phase shift) to qubit Q.                                            | S                                                   |
+| `PHASESHIFT Q Angle`                          | Applies a phase shift to qubit Q by *Angle* radians.                                       | P, SETPHASE, SETP, SPH                              |
+| `RX Q Angle`                                  | Rotation around the X‑axis on qubit Q by *Angle* radians.                                  | —                                                   |
+| `RY Q Angle`                                  | Rotation around the Y‑axis on qubit Q by *Angle* radians.                                  | —                                                   |
+| `RZ Q Angle`                                  | Rotation around the Z‑axis on qubit Q by *Angle* radians.                                  | —                                                   |
+| `PHASE Q Angle`                               | Applies a phase gate to qubit Q by *Angle* radians.                                        | PSE                                                 |
+| `CONTROLLEDNOT C T`                           | CNOT gate with control qubit C and target qubit T.                                         | CNOT, CN                                            |
+| `CZ C T`                                      | Controlled‑Z gate with control qubit C and target qubit T.                                 | —                                                   |
+| `CPHASE C T Angle`                            | Controlled phase rotation between C and T by *Angle* radians.                              | CONTROLLEDPHASEROTATION, APPLYCPHASE, CPR           |
+| `ENTANGLE C T`                                | Entangles qubits C and T (often implemented as a CNOT).                                    | —                                                   |
+| `ENTANGLEBELL Q1 Q2`                          | Creates a Bell state between Q1 and Q2.                                                     | EBELL, EB                                           |
+| `ENTANGLEMULTI Q1 ... QN`                     | Creates a multi‑qubit entangled state across specified qubits.                             | EMULTI, EM                                          |
+| `ENTANGLECLUSTER Q1 ... QN`                   | Generates a cluster state over specified qubits.                                           | ECLUSTER, ECR                                       |
+| `ENTANGLESWAP Q1 Q2 Q3 Q4`                    | Performs entanglement swapping among four qubits.                                          | ESWAP, ESP                                          |
+| `ENTANGLESWAPMEASURE Q1 Q2 Q3 Q4 Label`       | Entanglement swapping with measurement, jumping to *Label* based on outcome.               | ESWAPM, ESM                                         |
+| `ENTANGLEWITHCLASSICALFEEDBACK Q1 Q2 Signal`  | Entangles Q1 with Q2, with classical feedback from *Signal*.                               | EWCFB, ECFB                                         |
+| `ENTANGLEDISTRIBUTED Q Node`                  | Performs distributed entanglement on qubit Q, involving *Node*.                            | EDIST, ED                                           |
+| `MEASURE Q`                                   | Measures qubit Q, collapsing its quantum state and yielding a classical result.            | QMEAS, QM, MEAS, M                                  |
+| `MEASUREINBASIS Q Basis`                     | Measures qubit Q in a specified *Basis*.                                                   | MEASB, MIB                                          |
+| `RESET Q`                                     | Resets qubit Q to the ground state \|0⟩.                                                    | RST, RSTQ, QRESET, QR                               |
+| `RESETALL`                                    | Resets all qubits in the system to \|0⟩.                                                   | RSTALL, RSA                                         |
+| `MARKOBSERVED Q`                              | Marks qubit Q as observed (internal state tracking).                                       | MOBS, MO                                            |
+| `RELEASE Q`                                   | Releases resources associated with qubit Q.                                                | REL, RL                                             |
+| `APPLYGATE GateName Q`                        | Applies a named unitary gate (e.g., "h", "x", "cz") to qubit Q.                             | AGATE, AG                                           |
+| `APPLYROTATION Q Axis Angle`                  | General rotation to qubit Q by *Angle* around Axis ('x', 'y', or 'z').                     | ROT, AR                                             |
+| `APPLYMULTIQUBITROTATION Qs Axis Angles`      | Simultaneous rotations on multiple qubits with corresponding angles.                       | MROT, AMQR                                          |
+| `APPLYKERRNONLINEARITY Q Strength Duration`   | Applies Kerr nonlinearity to qubit/mode Q.                                                 | AKNL                                                |
+| `DECOHERENCEPROTECT Q Duration`               | Activates decoherence protection for qubit Q for *Duration*.                              | DPROT, DP                                           |
+| `APPLYMEASUREMENTBASISCHANGE Q Basis`         | Changes the measurement basis for qubit Q to *Basis*.                                     | AMBC                                                |
+| `APPLYNONLINEARPHASESHIFT Q Strength`         | Nonlinear phase shift to qubit Q by *Strength*.                                            | ANLPS, ANLP, ANLPH                                  |
+| `APPLYNONLINEARSIGMA Q Strength`              | Custom nonlinear operation to qubit Q with *Strength*.                                     | ANLS, ANLSI                                         |
+| `QUANTUMSTATETOMOGRAPHY Q Basis`              | Quantum state tomography on qubit Q in *Basis*.                                            | QST, QSTAT                                          |
+| `BELLSTATEVERIFICATION Q1 Q2 ResultReg`      | Verifies Bell state between Q1 and Q2, stores result in *ResultReg*.                      | BSV, BSTATE                                         |
+| `QUANTUMZENOEFFECT Q NumMeasurements IntervalCycles` | Simulates Quantum Zeno Effect on qubit Q.                                       | QZE, QZEN                                           |
+| `APPLYLINEAROPTICALTRANSFORM Name InputQs OutputQs NumModes` | Applies a linear optical transformation.                                     | ALOT, ALOPT                                         |
+| `ERRORCORRECT Q SyndromeType`                 | Invokes quantum error correction on qubit Q.                                              | ECORR, EC                                           |
+| `ERRORSYNDROME Q SyndromeType ResultReg`      | Extracts error syndrome for qubit Q, stores in *ResultReg*.                               | ESYN, ES                                            |
+| `APPLYQNDMEASUREMENT Q ResultReg`             | Quantum non‑demolition measurement on qubit Q.                                             | AQND, AQAD, AQNM                                    |
+| `SWAP Q1 Q2`                                  | Swaps the states of qubit Q1 and Q2.                                                       | —                                                   |
 
 ### Optical Operations
-- **PHOTONEMIT MODE**  
-  Emits a photon into optical mode *MODE*.
 
-- **PHOTONDETECT MODE**  
-  Detects a photon in optical mode *MODE*.
-
-- **PHOTONROUTE MODE FROM TO**  
-  Routes a photon from *FROM* mode to *TO* mode.
-
-- **PHOTONCOUNT MODE REGNAME**  
-  Counts detected photons in mode *MODE*, stores count in *REGNAME*.
-
-- **APPLYDISPLACEMENT MODE VALUE**  
-  Applies a displacement to optical mode *MODE* by *VALUE*.
-
-- **APPLYSQUEEZING MODE VALUE**  
-  Applies a squeezing operation to optical mode *MODE* by *VALUE*.
-
-- **MEASUREPARITY MODE**  
-  Measures parity in optical mode *MODE*.
-
-- **PHOTONLOSSSIMULATE MODE RATE DURATION**  
-  Simulates photon loss in mode *MODE* with *RATE* over *DURATION*.
-
-- **TIMEDELAY MODE DURATION**  
-  Applies a controlled time delay to optical mode *MODE*.
-
-- **PHOTONBUNCHINGCTL MODE ENABLE**  
-  Toggles photon bunching control for mode *MODE* (`0` or `1`).
-
-- **SINGLEPHOTONSOURCEON/OFF MODE**  
-  Activates/deactivates a single‑photon source for mode *MODE*.
-
-- **PHOTONDETECTCOINCIDENCE N MODE1 ... MODEN REGNAME**  
-  Detects coincidence events among N modes, stores result in *REGNAME*.
-
-- **APPLYDISPLACEMENTOP MODE ALPHA_RE ALPHA_IM**  
-  Displacement operator with complex α (real, imag).
-
-- **OPTICALSWITCHCONTROL MODE STATE**  
-  Controls an optical switch on mode *MODE* to *STATE* (`0` or `1`).
-
-- **MEASUREWITHDELAY MODE DELAY REGNAME**  
-  Delayed measurement on mode *MODE*, stores in *REGNAME*.
-
-- **PHOTONLOSSCORR MODE CodeID**  
-  Photon loss error correction on mode *MODE* using *CodeID*.
-
-- **PHOTONEMISSIONPATTERN MODE PatternID CYCLES**  
-  Emits photons according to *PatternID* for *CYCLES*.
-
-- **APPLYSQUEEZINGFEEDBACK MODE FeedbackRegName**  
-  Applies squeezing feedback based on *FeedbackRegName*.
-
-- **APPLYPHOTONSUBTRACTION MODE**  
-  Photon subtraction operation on mode *MODE*.
-
-- **PHOTONADDITION MODE**  
-  Photon addition operation on mode *MODE*.
-
-- **PNRDETECTION MODE**  
-  Photon Number Resolving Detection on mode *MODE*.
-
-- **SETOPTICALATTENUATION MODE VALUE**  
-  Sets optical attenuation to *VALUE*.
-
-- **DYNAMICPHASECOMP MODE VALUE**  
-  Dynamic phase compensation by *VALUE*.
-
-- **CROSSPHASEMOD MODE1 MODE2**  
-  Cross‑phase modulation between modes.
-
-- **OPTICALDELAYLINECTL MODE DURATION**  
-  Controls an optical delay line.
-
-- **OPTICALROUTING MODE1 MODE2**  
-  Routes optical signal between modes.
-
-- **SETPOS Q X Y**  
-  Sets spatial position of qubit/mode Q to (X, Y).
-
-- **SETWL Q Wavelength**  
-  Sets wavelength of qubit/mode Q.
-
-- **WLSHIFT Q Shift**  
-  Shifts wavelength of qubit/mode Q by *Shift*.
-
-- **MOVE Q DX DY**  
-  Moves qubit/mode Q by (DX, DY).
-
----
+| Instruction                                  | Description                                                                                   | Aliases                              |
+|---------------------------------------------|-----------------------------------------------------------------------------------------------|--------------------------------------|
+| `PHOTONEMIT Q`                              | Emits a photon from qubit/mode Q.                                                            | PEMIT, PE                            |
+| `PHOTONDETECT Q`                            | Detects a photon at qubit/mode Q.                                                            | PDETECT, PD                          |
+| `PHOTONROUTE Q FromPort ToPort`             | Routes a photon from port to port.                                                           | PROUTE, PR                           |
+| `PHOTONCOUNT Q ResultReg`                   | Counts detected photons at Q, stores in *ResultReg*.                                         | PCOUNT, PC                           |
+| `APPLYDISPLACEMENT Q Alpha`                 | Applies a displacement to Q by *Alpha*.                                                      | ADISP, AD                            |
+| `APPLYSQUEEZING Q SqueezingFactor`          | Applies a squeezing operation to Q by *SqueezingFactor*.                                     | ASQ, AS                              |
+| `MEASUREPARITY Q`                           | Measures parity of qubit/mode Q.                                                             | MPAR, MP                             |
+| `PHOTONLOSSSIMULATE Q LossProbability Seed` | Simulates photon loss at Q with *LossProbability* and *Seed*.                                 | PLS, PLSIM                           |
+| `TIMEDELAY Q Cycles`                        | Applies a controlled time delay to Q for *Cycles*.                                           | TDELAY, TD                           |
+| `PHOTONBUNCHINGCONTROL Q Enable`            | Toggles photon bunching control for Q (true/false).                                          | PBUNCH, PBC                          |
+| `SINGLEPHOTONSOURCEON Q`                    | Activates a single‑photon source for Q.                                                      | SPSON                                |
+| `SINGLEPHOTONSOURCEOFF Q`                   | Deactivates a single‑photon source for Q.                                                    | SPSOFF                               |
+| `PHOTONDETECTCOINCIDENCE Qs ResultReg`      | Detects coincidence events among multiple Qs, stores in *ResultReg*.                         | PDCOIN, PDC                          |
+| `APPLYDISPLACEMENTOPERATOR Q Alpha Duration`| Displacement operator with *Alpha* and *Duration*.                                           | ADO, ADOP                            |
+| `OPTICALSWITCHCONTROL Q State`              | Controls an optical switch on Q to *State* (true/false).                                     | OSC, OSW                             |
+| `MEASUREWITHDELAY Q DelayCycles ResultReg`  | Delayed measurement on Q with *DelayCycles*, stores in *ResultReg*.                         | MWD, MWDEL                           |
+| `PHOTONLOSSCORRECTION Q CorrectionReg`      | Photon loss error correction on Q using *CorrectionReg*.                                     | PLC, PLCOR                           |
+| `PHOTONEMISSIONPATTERN Q PatternReg Cycles` | Emits photons according to *PatternReg* for *Cycles*.                                        | PEPAT, PEP                           |
+| `APPLYSQUEEZINGFEEDBACK Q FeedbackReg`      | Applies squeezing feedback based on *FeedbackReg*.                                           | ASWF, ASF, ASFB                      |
+| `APPLYPHOTONSUBTRACTION Q`                  | Photon subtraction operation on Q.                                                            | APSUB, APS                           |
+| `PHOTONADDITION Q`                          | Photon addition operation on Q.                                                               | PADD, PA                             |
+| `PHOTONNUMBERRESOLVINGDETECTION Q ResultReg`| Photon Number Resolving Detection on Q.                                                      | PNRD, PNR                            |
+| `SETOPTICALATTENUATION Q Attenuation`       | Sets optical attenuation for Q to *Attenuation*.                                             | SOATT, SOA                           |
+| `DYNAMICPHASECOMPENSATION Q Phase`          | Dynamic phase compensation for Q by *Phase*.                                                 | DPC, DPCMP                           |
+| `CROSSPHASEMODULATION Q1 Q2 Strength`       | Cross‑phase modulation between Q1 and Q2 with *Strength*.                                    | CPM, CPMOD                           |
+| `OPTICALDELAYLINECONTROL Q DelayCycles`     | Controls an optical delay line for Q for *DelayCycles*.                                      | ODLC, ODL                            |
+| `OPTICALROUTING Q1 Q2`                      | Routes optical signal between Q1 and Q2.                                                      | OROUTE, OPTR                         |
+| `SETPOS Q X Y`                              | Sets spatial position of Q to (*X*, *Y*).                                                    | SPOS, STP                            |
+| `SETWL Q Wavelength`                        | Sets wavelength of Q to *Wavelength*.                                                        | SWL, SW                              |
+| `WLSHIFT Q DeltaWavelength`                 | Shifts wavelength of Q by *DeltaWavelength*.                                                 | WLS, WLSH                            |
+| `MOVE Q DX DY`                              | Moves qubit/mode Q by (*DX*, *DY*).                                                          | MOV, MV                              |
 
 ### Classical / Control Flow Operations
-- **HALT**  
-  Stops program execution.
 
-- **LOOPSTART Iterations** / **LOOPEND**  
-  Begin/end a loop.
-
-- **REGSET Reg Value**  
-  Sets a classical register to a floating‑point value.
-
-- **ADD / SUB / MUL / DIV DstReg Src1Reg Src2Reg**  
-  Arithmetic operations.
-
-- **COPY DstReg SrcReg**  
-  Copy register value.
-
-- **ANDBITS / ORBITS / XORBITS / NOTBITS**  
-  Bitwise operations.
-
-- **SHL / SHR DstReg SrcReg ShiftAmount**  
-  Bit shifts.
-
-- **CMP Reg1 Reg2**  
-  Compare, set flags.
-
-- **JUMP / JMP Label** / **JUMPABS / JMPABS Address**  
-  Unconditional jumps.
-
-- **JUMPIFZERO Reg Label**, **JUMPIFONE Reg Label**  
-  Conditional jumps on register values.
-
-- **IFEQ / IFNE / IFGT / IFLT Reg1 Reg2 Label**  
-  Comparison-based jumps.
-
-- **CALL / CALLADDR Label/Address**, **RETSUB**  
-  Subroutine calls and returns.
-
-- **PUSHREG / POPREG Reg**  
-  Stack operations.
-
-- **CHAROUT Q**  
-  Measure qubit Q and print as character.
-
-- **INPUT Reg**  
-  Read character input.
-
-- **GETTIME Reg**  
-  Get current system time.
-
-- **RAND Reg**, **SEEDRNG Seed**  
-  Random number operations.
-
-- **PRINTF FormatStringID NumRegs Reg1 ...**, **PRINT StringID**, **PRINTLN StringID**  
-  Formatted / literal output.
-
-- **VERBOSELOG Level MessageID**, **COMMENT MessageID**  
-  Logging and comments.
-
-- **BREAKPOINT**  
-  Insert debug breakpoint.
-
-- **EXITCODE Code**  
-  Terminate with exit code.
-
-- **STORECLASSICAL Reg Address**  
-  Store register into classical memory.
+| Instruction                                | Description                                                                                                | Aliases                                     |
+|-------------------------------------------|------------------------------------------------------------------------------------------------------------|---------------------------------------------|
+| `HALT`                                    | Stops program execution.                                                                                   | HLT                                         |
+| `LOOPSTART Reg`                           | Begins a loop controlled by *Reg*.                                                                         | LSTART, LS                                  |
+| `LOOPEND`                                 | Ends a loop.                                                                                                | LEND, LE                                    |
+| `REGSET Reg Value`                        | Sets a classical register *Reg* to a floating‑point *Value*.                                               | RSET, RGST                                  |
+| `ADD DstReg Src1Reg Src2Reg`              | Adds Src1Reg and Src2Reg, stores result in DstReg.                                                         | —                                           |
+| `SUB DstReg Src1Reg Src2Reg`              | Subtracts Src2Reg from Src1Reg, stores result in DstReg.                                                    | —                                           |
+| `MUL DstReg Src1Reg Src2Reg`              | Multiplies Src1Reg and Src2Reg, stores result in DstReg.                                                    | —                                           |
+| `DIV DstReg Src1Reg Src2Reg`              | Divides Src1Reg by Src2Reg, stores result in DstReg.                                                        | —                                           |
+| `REGADD DstReg Src1Reg Src2Reg`           | Adds two registers (dest, op1, op2).                                                                       | RADD, RGA                                   |
+| `REGSUB DstReg Src1Reg Src2Reg`           | Subtracts two registers (dest, op1, op2).                                                                  | RSUB, RGS                                   |
+| `REGCOPY DstReg SrcReg`                   | Copies value from SrcReg to DstReg.                                                                        | RCOPY, RC                                   |
+| `ANDBITS DstReg Op1Reg Op2Reg`            | Performs bitwise AND on Op1Reg and Op2Reg, stores in DstReg.                                                | ANDB, AB                                    |
+| `ORBITS DstReg Op1Reg Op2Reg`             | Performs bitwise OR on Op1Reg and Op2Reg, stores in DstReg.                                                 | ORB, OB                                     |
+| `XORBITS DstReg Op1Reg Op2Reg`            | Performs bitwise XOR on Op1Reg and Op2Reg, stores in DstReg.                                                | XORB, XB                                    |
+| `NOTBITS DstReg OpReg`                    | Performs bitwise NOT on OpReg, stores in DstReg.                                                           | NOTB, NB                                    |
+| `SHL DstReg OpReg AmountReg`              | Shifts OpReg left by AmountReg bits, stores in DstReg.                                                     | —                                           |
+| `SHR DstReg OpReg AmountReg`              | Shifts OpReg right by AmountReg bits, stores in DstReg.                                                    | —                                           |
+| `CMP Reg1 Reg2`                           | Compares Reg1 and Reg2, setting internal flags.                                                            | —                                           |
+| `JUMP Label`                              | Unconditional jump to *Label*.                                                                             | —                                           |
+| `JMP Offset`                              | Unconditional relative jump by *Offset* (signed 64‑bit integer).                                             | —                                           |
+| `JMPABS Address`                          | Unconditional absolute jump to *Address*.                                                                   | JMPA, JABS                                  |
+| `JUMPIFZERO CondReg Label`                | Conditional jump to *Label* if CondReg is zero.                                                            | JIZ                                         |
+| `JUMPIFONE CondReg Label`                 | Conditional jump to *Label* if CondReg is one.                                                             | JIO                                         |
+| `IFEQ Reg1 Reg2 Offset`                   | If Reg1 == Reg2, jump relative by *Offset*.                                                                | IEQ                                         |
+| `IFNE Reg1 Reg2 Offset`                   | If Reg1 != Reg2, jump relative by *Offset*.                                                                | INE                                         |
+| `IFGT Reg1 Reg2 Offset`                   | If Reg1 > Reg2, jump relative by *Offset*.                                                                 | IGT                                         |
+| `IFLT Reg1 Reg2 Offset`                   | If Reg1 < Reg2, jump relative by *Offset*.                                                                 | ILT                                         |
+| `CALL Label`                              | Calls a subroutine at *Label*.                                                                             | CallLabel                                   |
+| `CALLADDR Address`                        | Calls a subroutine at *Address*, pushes return address to stack.                                            | CADDR, CA                                   |
+| `RETSUB`                                  | Returns from a subroutine, pops return address from stack.                                                  | RS                                          |
+| `PUSH RegName`                            | Pushes classical register *RegName* value onto stack.                                                      | —                                           |
+| `POP RegName`                             | Pops value from stack into classical register *RegName*.                                                   | —                                           |
+| `LOAD Reg QubitVar`                       | Loads value from classical variable *QubitVar* into qubit register *Reg*.                                  | —                                           |
+| `STORE Reg QubitVar`                      | Stores qubit measurement result from *Reg* into classical variable *QubitVar*.                              | —                                           |
+| `LOADMEM Reg MemAddress`                  | Loads value from *MemAddress* into classical register *Reg*.                                               | LMEM, LM                                    |
+| `STOREMEM Reg MemAddress`                 | Stores value from classical register *Reg* into *MemAddress*.                                              | SMEM, SM                                    |
+| `LOADCLASSICAL Reg ClassicalVar`          | Loads value from classical variable *ClassicalVar* into classical register *Reg*.                           | LCL, LC                                     |
+| `STORECLASSICAL Reg ClassicalVar`         | Stores value from classical register *Reg* into classical variable *ClassicalVar*.                          | SCL, SC                                     |
+| `ALLOC RegAddr Size`                      | Allocates *Size* bytes of memory, stores start address in *RegAddr*.                                        | ALC                                         |
+| `FREE Address`                            | Frees memory at *Address*.                                                                                 | FRE                                         |
+| `CHARLOAD Reg CharValue`                  | Loads a character *CharValue* into *Reg*.                                                                  | CLOAD, CLD                                  |
+| `CHAROUT Reg`                             | Outputs a character from *Reg*.                                                                            | COUT, CO                                    |
+| `INPUT Reg`                               | Reads floating‑point value from stdin into *Reg*.                                                          | INP                                         |
+| `GETTIME Reg`                             | Gets system timestamp into *Reg*.                                                                          | GTIME, GT                                   |
+| `RAND Reg`                                | Generates a random number into *Reg*.                                                                      | RN                                          |
+| `SEEDRNG Seed`                            | Seeds the random number generator with *Seed*.                                                             | SRNG                                        |
+| `SQRT DstReg SrcReg`                      | Calculates square root of *SrcReg*, stores in *DstReg*.                                                    | SR                                          |
+| `EXP DstReg SrcReg`                       | Calculates exponential of *SrcReg*, stores in *DstReg*.                                                    | —                                           |
+| `LOG DstReg SrcReg`                       | Calculates logarithm of *SrcReg*, stores in *DstReg`.                                                      | —                                           |
+| `PRINTF FormatString Regs...`             | C‑style formatted output using *FormatString* and register values.                                          | PF                                          |
+| `PRINT String`                            | Prints a string literal *String*.                                                                          | —                                           |
+| `PRINTLN String`                          | Prints a string literal *String* with a newline.                                                           | PLN                                         |
+| `VERBOSELOG Q Message`                    | Logs verbose messages associated with qubit Q and *Message*.                                               | VLOG, VL                                    |
+| `COMMENT Text`                            | Inline comment with *Text*.                                                                                | CMT, CM                                     |
+| `BREAKPOINT`                              | Inserts a debug breakpoint.                                                                                | BP                                          |
+| `EXITCODE Code`                           | Terminates program with *Code*.                                                                             | EXC, EX                                     |
+| `BARRIER`                                 | Synchronization barrier.                                                                                   | BR                                          |
+| `DUMPSTATE`                               | Outputs quantum amplitudes and phases.                                                                     | DSTATE, DS                                  |
+| `DUMPREGS`                                | Outputs all register values.                                                                               | DREGS, DR                                   |
 
 ---
 
 ## Example Code
 
-### Example 1: Three‑Qubit Quantum Fourier Transform
+### Example 1: Three‑Qubit Quantum Fourier Transform
 ```
+
 ; QOA PROGRAM: THREE QUBIT QUANTUM FOURIER TRANSFORM
 QINIT 3        ; initialize 3 qubits (Q0, Q1, Q2)
 
@@ -354,13 +218,14 @@ MEASURE 1
 MEASURE 2
 
 HALT
+
 ```
-### Example 2: Optical Network Switch
+
+### Example 2: Optical Network Switch
 
 ```
 ; QOA PROGRAM: OPTICAL NETWORK SWITCH
 ; this program simulates routing based on a classical control signal.
-; it assumes photons are detected and their presence/absence is stored in registers.
 
 ; define classical registers for routing logic
 REGSET R0 0.0 ; routing destination 0
@@ -369,72 +234,61 @@ REGSET R2 2.0 ; routing destination 2
 REGSET R3 0.0 ; input signal (0, 1, or 2 to choose route)
 
 ; simulate incoming photons (emit for demo purposes)
-PHOTONEMIT O0 ; incoming optical mode 0
-PHOTONEMIT O1 ; incoming optical mode 1
-PHOTONEMIT O2 ; incoming optical mode 2
+PHOTONEMIT O0
+PHOTONEMIT O1
+PHOTONEMIT O2
 
-; detect photons in incoming modes (results stored internally)
+; detect photons in incoming modes
 PHOTONDETECT O0
 PHOTONDETECT O1
 PHOTONDETECT O2
 
 ; load a classical value into R3 to simulate routing decision
-; in a real scenario, this might come from an external sensor or control unit.
-; for this example, let's hardcode R3 to simulate a choice.
 REGSET R3 1.0 ; simulate choosing route 1
 
 ; route based on R3's value
-; this uses a series of conditional jumps to simulate a switch.
-CMP R3 R0 ; compare R3 with 0.0
-IFEQ R3 R0 ROUTE0 ; if R3 == R0 (0.0), jump to ROUTE0
+CMP R3 R0
+IFEQ R3 R0 ROUTE0
 
-CMP R3 R1 ; compare R3 with 1.0
-IFEQ R3 R1 ROUTE1 ; if R3 == R1 (1.0), jump to ROUTE1
+CMP R3 R1
+IFEQ R3 R1 ROUTE1
 
-CMP R3 R2 ; compare R3 with 2.0
-IFEQ R3 R2 ROUTE2 ; if R3 == R2 (2.0), jump to ROUTE2
+CMP R3 R2
+IFEQ R3 R2 ROUTE2
 
-JUMP END_PROGRAM ; if no route matched, end program
-
-; if route 0 is chosen, detect photon from O0 and store its presence
-PHOTONDETECT O0 ; detect photon in optical mode 0
-PHOTONCOUNT O0 R4 ; count photons in O0, store in R4
-STORECLASSICAL R4 0X1000 ; store R4 (photon count) to classical memory at address 0x1000
 JUMP END_PROGRAM
 
-; if route 1 is chosen, detect photon from O1 and store its presence
-PHOTONDETECT O1 ; detect photon in optical mode 1
-PHOTONCOUNT O1 R4 ; count photons in O1, store in R4
-STORECLASSICAL R4 0X1001 ; store R4 to classical memory at address 0x1001
-JUMP END_PROGRAM
+ROUTE0:
+  PHOTONDETECT O0
+  PHOTONCOUNT O0 R4
+  STORECLASSICAL R4 0X1000
+  JUMP END_PROGRAM
 
-; if route 2 is chosen, detect photon from O2 and store its presence
-PHOTONDETECT O2 ; detect photon in optical mode 2
-PHOTONCOUNT O2 R4 ; count photons in O2, store in R4
-STORECLASSICAL R4 0X1002 ; store R4 to classical memory at address 0x1002
-JUMP END_PROGRAM
+ROUTE1:
+  PHOTONDETECT O1
+  PHOTONCOUNT O1 R4
+  STORECLASSICAL R4 0X1001
+  JUMP END_PROGRAM
+
+ROUTE2:
+  PHOTONDETECT O2
+  PHOTONCOUNT O2 R4
+  STORECLASSICAL R4 0X1002
+  JUMP END_PROGRAM
 
 HALT
 
 ```
 
-### Example 3: Shor's Algorithm
+### Example 3: Shor’s Algorithm
 
 ```
 ; QOA PROGRAM: SHOR'S ALGORITHM
-; this program outlines the quantum steps of shor's algorithm for factoring a number n.
-; it is highly conceptual and not executable for cryptographically relevant numbers
-; due to immense qubit and gate requirements for modular exponentiation.
+; outline for factoring n=15 (requires 12 qubits)
 
-; parameters for factoring n=15 (l=4 bits).
-; period register: 2l = 8 qubits (q0-q7).
-; function register: l = 4 qubits (q8-q11).
-; total qubits for this conceptual example: 12.
-QINIT 12 ; initialize 12 qubits to |0...0>
+QINIT 12 ; initialize 12 qubits
 
-; --- step 1: initialize period-finding register to superposition ---
-
-; apply hadamard to all qubits in the period-finding register (q0-q7)
+; Step 1: superposition on period register (q0–q7)
 HAD 0
 HAD 1
 HAD 2
@@ -444,102 +298,21 @@ HAD 5
 HAD 6
 HAD 7
 
-; function register (q8-q11) is already |0000> by default qinit
+; Step 2: modular exponentiation (conceptual)
+VERBOSELOG 0 "Modular Exponentiation (a^x mod N) conceptual..."
 
-; --- step 2: modular exponentiation (u_a^x mod n) ---
+; Step 3: inverse QFT on period register
+SWAP 0 7
+SWAP 1 6
+SWAP 2 5
+SWAP 3 4
 
-; this is the most complex and resource-intensive part of shor's algorithm.
-; it computes f(x) = a^x mod n in superposition, where 'a' is a randomly chosen base
-; (e.g., a=7 for n=15).
-; this involves applying controlled-u operations (u_a^k) to the function register,
-; controlled by each qubit in the period register.
-; each u_a^k operation is a reversible circuit for modular multiplication.
-; implementing this for even n=15 requires decomposing complex arithmetic into
-; thousands or millions of elementary qoa gates (cnots, toffolis, adders, multipliers).
-; VERBOSELOG 0 "Conceptual Modular Exponentiation (a^x mod N) would be here."
-; VERBOSELOG 0 "  Base 'a' = 7, Modulo 'N' = 15."
-; VERBOSELOG 0 "  This involves controlled-U_a^k operations for k = 2^0, 2^1, ..., 2^7."
-; VERBOSELOG 0 "  Each U_a^k is a complex reversible modular arithmetic circuit."
-; VERBOSELOG 0 "  (This block represents immense complexity, not directly representable in QOA)"
-
-; --- step 3: inverse quantum fourier transform (iqft) on period-finding register ---
-
-; the iqft extracts the period 'r' from the superposed state in the period register.
-; this is the reverse sequence of gates from the qft.
-; VERBOSELOG 0 "Applying Inverse Quantum Fourier Transform (IQFT) on Period Register (Q0-Q7)"
-
-; first, swap qubits to reverse the order from the qft output.
-; this is crucial for the standard iqft implementation.
-SWAP 0 7 ; swap Q0 and Q7
-SWAP 1 6 ; swap Q1 and Q6
-SWAP 2 5 ; swap Q2 and Q5
-SWAP 3 4 ; swap Q3 and Q4
-
-; now apply the iqft gates. angles are negative of qft angles.
-; pi = 3.141592653589793
-; pi/2 = 1.5707963267948966
-; pi/4 = 0.7853981633974483
-; pi/8 = 0.39269908169872414
-; pi/16 = 0.19634954084936207
-; pi/32 = 0.09817477042468103
-; pi/64 = 0.04908738521234051
-; pi/128 = 0.02454369260617025
-
-; qubit 0 (now the most significant after swaps, originally Q7)
 HAD 0
-CPHASE 1 0 -1.5707963267948966 ; cp(-pi/2) q1-q0
-CPHASE 2 0 -0.7853981633974483 ; cp(-pi/4) q2-q0
-CPHASE 3 0 -0.39269908169872414 ; cp(-pi/8) q3-q0
-CPHASE 4 0 -0.19634954084936207 ; cp(-pi/16) q4-q0
-CPHASE 5 0 -0.09817477042468103 ; cp(-pi/32) q5-q0
-CPHASE 6 0 -0.04908738521234051 ; cp(-pi/64) q6-q0
-CPHASE 7 0 -0.02454369260617025 ; cp(-pi/128) q7-q0
-
-; qubit 1 (originally Q6)
-HAD 1
-CPHASE 2 1 -1.5707963267948966 ; cp(-pi/2) q2-q1
-CPHASE 3 1 -0.7853981633974483 ; cp(-pi/4) q3-q1
-CPHASE 4 1 -0.39269908169872414 ; cp(-pi/8) q4-q1
-CPHASE 5 1 -0.19634954084936207 ; cp(-pi/16) q5-q1
-CPHASE 6 1 -0.09817477042468103 ; cp(-pi/32) q6-q1
-CPHASE 7 1 -0.04908738521234051 ; cp(-pi/64) q7-q1
-
-; qubit 2 (originally Q5)
-HAD 2
-CPHASE 3 2 -1.5707963267948966 ; cp(-pi/2) q3-q2
-CPHASE 4 2 -0.7853981633974483 ; cp(-pi/4) q4-q2
-CPHASE 5 2 -0.39269908169872414 ; cp(-pi/8) q5-q2
-CPHASE 6 2 -0.19634954084936207 ; cp(-pi/16) q6-q2
-CPHASE 7 2 -0.09817477042468103 ; cp(-pi/32) q7-q2
-
-; qubit 3 (originally Q4)
-HAD 3
-CPHASE 4 3 -1.5707963267948966 ; cp(-pi/2) q4-q3
-CPHASE 5 3 -0.7853981633974483 ; cp(-pi/4) q5-q3
-CPHASE 6 3 -0.39269908169872414 ; cp(-pi/8) q6-q3
-CPHASE 7 3 -0.19634954084936207 ; cp(-pi/16) q7-q3
-
-; qubit 4 (originally Q3)
-HAD 4
-CPHASE 5 4 -1.5707963267948966 ; cp(-pi/2) q5-q4
-CPHASE 6 4 -0.7853981633974483 ; cp(-pi/4) q6-q4
-CPHASE 7 4 -0.39269908169872414 ; cp(-pi/8) q7-q4
-
-; qubit 5 (originally Q2)
-HAD 5
-CPHASE 6 5 -1.5707963267948966 ; cp(-pi/2) q6-q5
-CPHASE 7 5 -0.7853981633974483 ; cp(-pi/4) q7-q5
-
-; qubit 6 (originally Q1)
-HAD 6
-CPHASE 7 6 -1.5707963267948966 ; cp(-pi/2) q7-q6
-
-; qubit 7 (originally Q0)
+CPHASE 1 0 -1.5707963267948966
+...
 HAD 7
 
-; --- step 4: measurement of period-finding register ---
-
-; measure the period-finding register (q0-q7)
+; Step 4: measurement
 MEAS 0
 MEAS 1
 MEAS 2
@@ -549,19 +322,14 @@ MEAS 5
 MEAS 6
 MEAS 7
 
-; --- step 5: classical post-processing ---
-
-; after measurement, a classical computer takes the measured value 'c'
-; and uses the continued fractions algorithm to find the period 'r'.
-; then, it calculates gcd(a^(r/2) +/- 1, n) to find factors of n.
-
-; VERBOSELOG 0 "Classical Post-Processing: Use continued fractions to find period 'r'."
-; VERBOSELOG 0 "Then calculate gcd(a^(r/2) +/- 1, N) to find factors of N."
+; Step 5: classical post-processing (continued fractions, gcd, etc.)
+VLOG 0 "Classical Post-Processing..."
 
 HALT
 
 ```
 
-## This is all for now, if you would like to follow development, please star the repository.
+### This is all for now. If you would like to follow development, please star the repository.
+
 ### Thanks for reading!
-### -- Rayan (planetryan)
+### *— Rayan (@planetryan)*

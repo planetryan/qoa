@@ -2825,7 +2825,7 @@ mod instruction_tests {
 
     #[test]
     fn test_spson_short_for_singlephotonsourceon_instruction_creation() {
-        let instruction = Instruction::SpsOn(0);
+        let instruction = Instruction::SPSON(0);
         assert!(!instruction.encode().is_empty());
     }
 
@@ -2837,7 +2837,7 @@ mod instruction_tests {
 
     #[test]
     fn test_spsoff_short_for_singlephotonsourceoff_instruction_creation() {
-        let instruction = Instruction::SpsOff(0);
+        let instruction = Instruction::SPSOFF(0);
         assert!(!instruction.encode().is_empty());
     }
 

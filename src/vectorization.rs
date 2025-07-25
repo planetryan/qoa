@@ -1,6 +1,13 @@
 #![allow(non_snake_case)]
 #![allow(unused_imports)]
 
+/*
+    Rust likes code to be safe, I agree with this, but for SIMD, sometimes direct, more unsafe methods are needed for preformance
+    I could make it safer, but at a preformance penalty of ~15%, ive chosen preformance.
+
+    If you feel like it is unsafe, feel free to modify it and make it safer.
+*/
+
 // --- common interface for vector operations ---
 use num_complex::Complex64;
 use rayon::prelude::*; // for parallel iterators in fallback
@@ -784,12 +791,14 @@ pub mod x86_64_simd {
             if (i & bit) == 0 {
                 let j = i | bit;
                 if j < total_elements {
-                    let ptr_i = amps.as_ptr().add(i) as *const f64;
-                    let ptr_j = amps.as_ptr().add(j) as *const f64;
-                    let amp_i_vec = _mm_loadu_pd(ptr_i);
-                    let amp_j_vec = _mm_loadu_pd(ptr_j);
-                    _mm_storeu_pd(amps.as_mut_ptr().add(i) as *mut f64, amp_j_vec);
-                    _mm_storeu_pd(amps.as_mut_ptr().add(j) as *mut f64, amp_i_vec);
+                    unsafe {
+                        let ptr_i = amps.as_ptr().add(i) as *const f64;
+                        let ptr_j = amps.as_ptr().add(j) as *const f64;
+                        let amp_i_vec = _mm_loadu_pd(ptr_i);
+                        let amp_j_vec = _mm_loadu_pd(ptr_j);
+                        _mm_storeu_pd(amps.as_mut_ptr().add(i) as *mut f64, amp_j_vec);
+                        _mm_storeu_pd(amps.as_mut_ptr().add(j) as *mut f64, amp_i_vec);
+                    }
                 }
             }
         }
@@ -915,12 +924,14 @@ pub mod x86_64_simd {
         m10: Complex64, m11: Complex64
     ) {
         // ry gate uses the same matrix application logic as rx
-        apply_rx_simd(amps, mask_bit, m00, m01, m10, m11);
+        unsafe {
+            apply_rx_simd(amps, mask_bit, m00, m01, m10, m11);
+        }
     }
 
     // rz rotation: diag(m00, m11)
     pub unsafe fn apply_rz_simd(
-        amps: &mut [Complex64], // Corrected: removed extra '>'
+        amps: &mut [Complex64],
         mask_bit: usize,
         m00: Complex64, m11: Complex64
     ) {
@@ -940,13 +951,17 @@ pub mod x86_64_simd {
     // s-gate = p(π/2)
     pub unsafe fn apply_s_simd(amps: &mut [Complex64], mask_bit: usize) {
         let phase = Complex64::new(0.0, 1.0); // equivalent to e^(i*pi/2)
-        apply_phaseshift_simd(amps, mask_bit, phase);
+        unsafe {
+            apply_phaseshift_simd(amps, mask_bit, phase);
+        }
     }
 
     // t-gate = p(π/4)
     pub unsafe fn apply_t_simd(amps: &mut [Complex64], mask_bit: usize) {
         let phase = Complex64::from_polar(1.0, FRAC_PI_4);
-        apply_phaseshift_simd(amps, mask_bit, phase);
+        unsafe {
+            apply_phaseshift_simd(amps, mask_bit, phase);
+        }
     }
 
     // cnot: if control=1, flip target
@@ -961,12 +976,14 @@ pub mod x86_64_simd {
             if (i & control_mask) == control_mask && (i & target_mask) == 0 {
                 let j = i | target_mask; // state where target qubit is flipped to 1
                 if j < total_elements { // bounds checking
-                    let ptr_i = amps.as_ptr().add(i) as *const f64;
-                    let ptr_j = amps.as_ptr().add(j) as *const f64;
-                    let amp_i_vec = _mm_loadu_pd(ptr_i);
-                    let amp_j_vec = _mm_loadu_pd(ptr_j);
-                    _mm_storeu_pd(amps.as_mut_ptr().add(i) as *mut f64, amp_j_vec);
-                    _mm_storeu_pd(amps.as_mut_ptr().add(j) as *mut f64, amp_i_vec);
+                    unsafe {
+                        let ptr_i = amps.as_ptr().add(i) as *const f64;
+                        let ptr_j = amps.as_ptr().add(j) as *const f64;
+                        let amp_i_vec = _mm_loadu_pd(ptr_i);
+                        let amp_j_vec = _mm_loadu_pd(ptr_j);
+                        _mm_storeu_pd(amps.as_mut_ptr().add(i) as *mut f64, amp_j_vec);
+                        _mm_storeu_pd(amps.as_mut_ptr().add(j) as *mut f64, amp_i_vec);
+                    }
                 }
             }
         }
@@ -1003,12 +1020,14 @@ pub mod x86_64_simd {
                 let idx_q1_0_q2_1 = i | q2_mask; // q1=0, q2=1
                 let idx_q1_1_q2_0 = i | q1_mask; // q1=1, q2=0
                 if idx_q1_0_q2_1 < total_elements && idx_q1_1_q2_0 < total_elements { // bounds checking
-                    let ptr_a = amps.as_ptr().add(idx_q1_0_q2_1) as *const f64;
-                    let ptr_b = amps.as_ptr().add(idx_q1_1_q2_0) as *const f64;
-                    let amp_a_vec = _mm_loadu_pd(ptr_a);
-                    let amp_b_vec = _mm_loadu_pd(ptr_b);
-                    _mm_storeu_pd(amps.as_mut_ptr().add(idx_q1_0_q2_1) as *mut f64, amp_b_vec);
-                    _mm_storeu_pd(amps.as_mut_ptr().add(idx_q1_1_q2_0) as *mut f64, amp_a_vec);
+                    unsafe {
+                        let ptr_a = amps.as_ptr().add(idx_q1_0_q2_1) as *const f64;
+                        let ptr_b = amps.as_ptr().add(idx_q1_1_q2_0) as *const f64;
+                        let amp_a_vec = _mm_loadu_pd(ptr_a);
+                        let amp_b_vec = _mm_loadu_pd(ptr_b);
+                        _mm_storeu_pd(amps.as_mut_ptr().add(idx_q1_0_q2_1) as *mut f64, amp_b_vec);
+                        _mm_storeu_pd(amps.as_mut_ptr().add(idx_q1_1_q2_0) as *mut f64, amp_a_vec);
+                    }
                 }
             }
         }
@@ -1029,12 +1048,14 @@ pub mod x86_64_simd {
                 let idx_c1_t1_0_t2_1 = i | control_mask | t2_mask; // control=1, t1=0, t2=1
                 let idx_c1_t1_1_t2_0 = i | control_mask | t1_mask; // control=1, t1=1, t2=0
                 if idx_c1_t1_0_t2_1 < total_elements && idx_c1_t1_1_t2_0 < total_elements { // bounds checking
-                    let ptr_a = amps.as_ptr().add(idx_c1_t1_0_t2_1) as *const f64;
-                    let ptr_b = amps.as_ptr().add(idx_c1_t1_1_t2_0) as *const f64;
-                    let amp_a_vec = _mm_loadu_pd(ptr_a);
-                    let amp_b_vec = _mm_loadu_pd(ptr_b);
-                    _mm_storeu_pd(amps.as_mut_ptr().add(idx_c1_t1_0_t2_1) as *mut f64, amp_b_vec);
-                    _mm_storeu_pd(amps.as_mut_ptr().add(idx_c1_t1_1_t2_0) as *mut f64, amp_a_vec);
+                    unsafe {
+                        let ptr_a = amps.as_ptr().add(idx_c1_t1_0_t2_1) as *const f64;
+                        let ptr_b = amps.as_ptr().add(idx_c1_t1_1_t2_0) as *const f64;
+                        let amp_a_vec = _mm_loadu_pd(ptr_a);
+                        let amp_b_vec = _mm_loadu_pd(ptr_b);
+                        _mm_storeu_pd(amps.as_mut_ptr().add(idx_c1_t1_0_t2_1) as *mut f64, amp_b_vec);
+                        _mm_storeu_pd(amps.as_mut_ptr().add(idx_c1_t1_1_t2_0) as *mut f64, amp_a_vec);
+                    }
                 }
             }
         }
@@ -1111,20 +1132,22 @@ pub mod aarch64_neon {
         for i in 0..total_elements {
             let flipped_idx = i | bit_val;
             if (i & bit_val) == 0 && flipped_idx < total_elements { // if mask_bit is 0 in i and flipped_idx is valid
-                let a_ptr = amps.as_ptr().add(i) as *const f64;
-                let b_ptr = amps.as_ptr().add(flipped_idx) as *const f64;
+                unsafe {
+                    let a_ptr = amps.as_ptr().add(i) as *const f64;
+                    let b_ptr = amps.as_ptr().add(flipped_idx) as *const f64;
 
-                let a_vec = vld1q_f64(a_ptr);
-                let b_vec = vld1q_f64(b_ptr);
+                    let a_vec = vld1q_f64(a_ptr);
+                    let b_vec = vld1q_f64(b_ptr);
 
-                let sum_vec = vaddq_f64(a_vec, b_vec);
-                let diff_vec = vsubq_f64(a_vec, b_vec);
+                    let sum_vec = vaddq_f64(a_vec, b_vec);
+                    let diff_vec = vsubq_f64(a_vec, b_vec);
 
-                let res_a = mul_complex_f64x2(nf_vec, sum_vec);
-                let res_b = mul_complex_f64x2(nf_vec, diff_vec);
+                    let res_a = mul_complex_f64x2(nf_vec, sum_vec);
+                    let res_b = mul_complex_f64x2(nf_vec, diff_vec);
 
-                vst1q_f64(amps.as_mut_ptr().add(i) as *mut f64, res_a);
-                vst1q_f64(amps.as_mut_ptr().add(flipped_idx) as *mut f64, res_b);
+                    vst1q_f64(amps.as_mut_ptr().add(i) as *mut f64, res_a);
+                    vst1q_f64(amps.as_mut_ptr().add(flipped_idx) as *mut f64, res_b);
+                }
             }
         }
     }
@@ -1138,14 +1161,16 @@ pub mod aarch64_neon {
         for i in 0..total_elements {
             let flipped_idx = i | bit_val;
             if (i & bit_val) == 0 && flipped_idx < total_elements { // if mask_bit is 0 in i and flipped_idx is valid
-                let a_ptr = amps.as_ptr().add(i) as *const f64;
-                let b_ptr = amps.as_ptr().add(flipped_idx) as *const f64;
+                unsafe {
+                    let a_ptr = amps.as_ptr().add(i) as *const f64;
+                    let b_ptr = amps.as_ptr().add(flipped_idx) as *const f64;
 
-                let a_vec = vld1q_f64(a_ptr);
-                let b_vec = vld1q_f64(b_ptr);
+                    let a_vec = vld1q_f64(a_ptr);
+                    let b_vec = vld1q_f64(b_ptr);
 
-                vst1q_f64(amps.as_mut_ptr().add(i) as *mut f64, b_vec);
-                vst1q_f64(amps.as_mut_ptr().add(flipped_idx) as *mut f64, a_vec);
+                    vst1q_f64(amps.as_mut_ptr().add(i) as *mut f64, b_vec);
+                    vst1q_f64(amps.as_mut_ptr().add(flipped_idx) as *mut f64, a_vec);
+                }
             }
         }
     }
@@ -1164,17 +1189,19 @@ pub mod aarch64_neon {
         for i in 0..total_elements {
             let flipped_idx = i | bit_val;
             if (i & bit_val) == 0 && flipped_idx < total_elements { // if mask_bit is 0 in i and flipped_idx is valid
-                let a_ptr = amps.as_ptr().add(i) as *const f64;
-                let b_ptr = amps.as_ptr().add(flipped_idx) as *const f64;
+                unsafe {
+                    let a_ptr = amps.as_ptr().add(i) as *const f64;
+                    let b_ptr = amps.as_ptr().add(flipped_idx) as *const f64;
 
-                let amp0_vec = vld1q_f64(a_ptr);
-                let amp1_vec = vld1q_f64(b_ptr);
+                    let amp0_vec = vld1q_f64(a_ptr);
+                    let amp1_vec = vld1q_f64(b_ptr);
 
-                let res0 = mul_complex_f64x2(neg_i_vec, amp1_vec);
-                let res1 = mul_complex_f64x2(pos_i_vec, amp0_vec);
+                    let res0 = mul_complex_f64x2(neg_i_vec, amp1_vec);
+                    let res1 = mul_complex_f64x2(pos_i_vec, amp0_vec);
 
-                vst1q_f64(amps.as_mut_ptr().add(i) as *mut f64, res0);
-                vst1q_f64(amps.as_mut_ptr().add(flipped_idx) as *mut f64, res1);
+                    vst1q_f64(amps.as_mut_ptr().add(i) as *mut f64, res0);
+                    vst1q_f64(amps.as_mut_ptr().add(flipped_idx) as *mut f64, res1);
+                }
             }
         }
     }
@@ -1188,10 +1215,12 @@ pub mod aarch64_neon {
         // iterate over all elements and apply phase flip if mask_bit is 1
         for i in 0..total_elements {
             if (i & bit_val) != 0 { // if the mask_bit is 1 in current index i
-                let amp_ptr = amps.as_ptr().add(i) as *const f64;
-                let amp_vec = vld1q_f64(amp_ptr);
-                let res_vec = vmulq_f64(amp_vec, neg_one_vec); // multiply by -1.0
-                vst1q_f64(amps.as_mut_ptr().add(i) as *mut f64, res_vec);
+                unsafe {
+                    let amp_ptr = amps.as_ptr().add(i) as *const f64;
+                    let amp_vec = vld1q_f64(amp_ptr);
+                    let res_vec = vmulq_f64(amp_vec, neg_one_vec); // multiply by -1.0
+                    vst1q_f64(amps.as_mut_ptr().add(i) as *mut f64, res_vec);
+                }
             }
         }
     }
@@ -1208,10 +1237,12 @@ pub mod aarch64_neon {
         // iterate over all elements and apply phase shift if mask_bit is 1
         for i in 0..total_elements {
             if (i & bit_val) != 0 { // if the mask_bit is 1 in current index i
-                let amp_ptr = amps.as_ptr().add(i) as *const f64;
-                let amp_vec = vld1q_f64(amp_ptr);
-                let res_vec = mul_complex_f64x2(pf_vec, amp_vec);
-                vst1q_f64(amps.as_mut_ptr().add(i) as *mut f64, res_vec);
+                unsafe {
+                    let amp_ptr = amps.as_ptr().add(i) as *const f64;
+                    let amp_vec = vld1q_f64(amp_ptr);
+                    let res_vec = mul_complex_f64x2(pf_vec, amp_vec);
+                    vst1q_f64(amps.as_mut_ptr().add(i) as *mut f64, res_vec);
+                }
             }
         }
     }
@@ -1220,16 +1251,18 @@ pub mod aarch64_neon {
         let bit_val = 1 << mask_bit;
         let total_elements = amps.len();
         let zero_vec = vdupq_n_f64(0.0);
-        let mut norm_sqr: f64 = 0.0; // Explicitly declared as f64
+        let mut norm_sqr: f64 = 0.0;
 
         // first pass: calculate the norm of the |0> subspace for the target qubit
         for i in 0..total_elements {
             if (i & bit_val) == 0 { // if the mask_bit is 0 in current index i
-                let amp_ptr = amps.as_ptr().add(i) as *const f64;
-                let amp_vec = vld1q_f64(amp_ptr);
-                let re = vgetq_lane_f64(amp_vec, 0);
-                let im = vgetq_lane_f64(amp_vec, 1);
-                norm_sqr += re * re + im * im;
+                unsafe {
+                    let amp_ptr = amps.as_ptr().add(i) as *const f64;
+                    let amp_vec = vld1q_f64(amp_ptr);
+                    let re = vgetq_lane_f64(amp_vec, 0);
+                    let im = vgetq_lane_f64(amp_vec, 1);
+                    norm_sqr += re * re + im * im;
+                }
             }
         }
         
@@ -1240,22 +1273,28 @@ pub mod aarch64_neon {
 
             for i in 0..total_elements {
                 if (i & bit_val) == 0 { // if the mask_bit is 0 in current index i
-                    let amp_ptr = amps.as_ptr().add(i) as *const f64;
-                    let amp_vec = vld1q_f64(amp_ptr);
-                    let res_vec = vmulq_f64(amp_vec, scale_vec); // scale by 1/norm
-                    vst1q_f64(amps.as_mut_ptr().add(i) as *mut f64, res_vec);
+                    unsafe {
+                        let amp_ptr = amps.as_ptr().add(i) as *const f64;
+                        let amp_vec = vld1q_f64(amp_ptr);
+                        let res_vec = vmulq_f64(amp_vec, scale_vec); // scale by 1/norm
+                        vst1q_f64(amps.as_mut_ptr().add(i) as *mut f64, res_vec);
+                    }
                 } else { // if the mask_bit is 1 in current index i
-                    vst1q_f64(amps.as_mut_ptr().add(i) as *mut f64, zero_vec);
+                    unsafe {
+                        vst1q_f64(amps.as_mut_ptr().add(i) as *mut f64, zero_vec);
+                    }
                 }
             }
         } else {
             // if zero probability, set to |0> state
             // this handles cases where the state was entirely in the |1> subspace
             if total_elements > 0 {
-                let one_re_zero_im_vec = vsetq_lane_f64(0.0, vsetq_lane_f64(1.0, vdupq_n_f64(0.0), 0), 1);
-                vst1q_f64(amps.as_mut_ptr() as *mut f64, one_re_zero_im_vec);
-                for i in 1..total_elements {
-                    vst1q_f64(amps.as_mut_ptr().add(i) as *mut f64, zero_vec);
+                unsafe {
+                    let one_re_zero_im_vec = vsetq_lane_f64(0.0, vsetq_lane_f64(1.0, vdupq_n_f64(0.0), 0), 1);
+                    vst1q_f64(amps.as_mut_ptr() as *mut f64, one_re_zero_im_vec);
+                    for i in 1..total_elements {
+                        vst1q_f64(amps.as_mut_ptr().add(i) as *mut f64, zero_vec);
+                    }
                 }
             }
         }
@@ -1273,14 +1312,16 @@ pub mod aarch64_neon {
                 // these two indices form the pair that needs swapping.
                 // no need for 'if i < j' because we explicitly construct the two indices from a base state.
                 if idx_q1_0_q2_1 < total_elements && idx_q1_1_q2_0 < total_elements { // bounds checking
-                    let a_ptr = amps.as_ptr().add(idx_q1_0_q2_1) as *const f64;
-                    let b_ptr = amps.as_ptr().add(idx_q1_1_q2_0) as *const f64;
+                    unsafe {
+                        let a_ptr = amps.as_ptr().add(idx_q1_0_q2_1) as *const f64;
+                        let b_ptr = amps.as_ptr().add(idx_q1_1_q2_0) as *const f64;
 
-                    let amp_a_vec = vld1q_f64(a_ptr);
-                    let amp_b_vec = vld1q_f64(b_ptr);
+                        let amp_a_vec = vld1q_f64(a_ptr);
+                        let amp_b_vec = vld1q_f64(b_ptr);
 
-                    vst1q_f64(amps.as_mut_ptr().add(idx_q1_0_q2_1) as *mut f64, amp_b_vec);
-                    vst1q_f64(amps.as_mut_ptr().add(idx_q1_1_q2_0) as *mut f64, amp_a_vec);
+                        vst1q_f64(amps.as_mut_ptr().add(idx_q1_0_q2_1) as *mut f64, amp_b_vec);
+                        vst1q_f64(amps.as_mut_ptr().add(idx_q1_1_q2_0) as *mut f64, amp_a_vec);
+                    }
                 }
             }
         }
@@ -1305,14 +1346,16 @@ pub mod aarch64_neon {
                 // these two indices form the pair that needs swapping.
                 // no need for 'if i < j' because we explicitly construct the two indices from a base state.
                 if idx_c1_t10_t21 < total_elements && idx_c1_t11_t20 < total_elements { // bounds checking
-                    let ptr_a = amps.as_ptr().add(idx_c1_t10_t21) as *const f64;
-                    let ptr_b = amps.as_ptr().add(idx_c1_t11_t20) as *const f64;
+                    unsafe {
+                        let ptr_a = amps.as_ptr().add(idx_c1_t10_t21) as *const f64;
+                        let ptr_b = amps.as_ptr().add(idx_c1_t11_t20) as *const f64;
 
-                    let amp_a_vec = vld1q_f64(ptr_a);
-                    let amp_b_vec = vld1q_f64(ptr_b);
+                        let amp_a_vec = vld1q_f64(ptr_a);
+                        let amp_b_vec = vld1q_f64(ptr_b);
 
-                    vst1q_f64(amps.as_mut_ptr().add(idx_c1_t10_t21) as *mut f64, amp_b_vec);
-                    vst1q_f64(amps.as_mut_ptr().add(idx_c1_t11_t20) as *mut f64, amp_a_vec);
+                        vst1q_f64(amps.as_mut_ptr().add(idx_c1_t10_t21) as *mut f64, amp_b_vec);
+                        vst1q_f64(amps.as_mut_ptr().add(idx_c1_t11_t20) as *mut f64, amp_a_vec);
+                    }
                 }
             }
         }
@@ -1363,15 +1406,17 @@ pub mod riscv64_rvv {
         b_im: float64m1_t,
         vl: u64,
     ) -> (float64m1_t, float64m1_t) {
-        let res_re_term1 = vfmul_vv_f64m1(a_re, b_re, vl);
-        let res_re_term2 = vfmul_vv_f64m1(a_im, b_im, vl);
-        let res_re = vfsub_vv_f64m1(res_re_term1, res_re_term2, vl);
+        unsafe {
+            let res_re_term1 = vfmul_vv_f64m1(a_re, b_re, vl);
+            let res_re_term2 = vfmul_vv_f64m1(a_im, b_im, vl);
+            let res_re = vfsub_vv_f64m1(res_re_term1, res_re_term2, vl);
 
-        let res_im_term1 = vfmul_vv_f64m1(a_re, b_im, vl);
-        let res_im_term2 = vfmul_vv_f64m1(a_im, b_re, vl);
-        let res_im = vfadd_vv_f64m1(res_im_term1, res_im_term2, vl);
+            let res_im_term1 = vfmul_vv_f64m1(a_re, b_im, vl);
+            let res_im_term2 = vfmul_vv_f64m1(a_im, b_re, vl);
+            let res_im = vfadd_vv_f64m1(res_im_term1, res_im_term2, vl);
 
-        (res_re, res_im)
+            (res_re, res_im)
+        }
     }
 
     pub unsafe fn apply_hadamard_simd(
@@ -1385,40 +1430,42 @@ pub mod riscv64_rvv {
         let nf_re_scalar = norm_factor.re;
         let nf_im_scalar = norm_factor.im;
 
-        let vl_complex_pair = vsetvl(2, VLENB::V64, LMUL::M1); 
+        let vl_complex_pair = unsafe { vsetvl(2, VLENB::V64, LMUL::M1) }; 
         if vl_complex_pair == 0 {
             return;
         }
-        let nf_re_vec = vfmv_v_f_f64m1(nf_re_scalar, vl_complex_pair);
-        let nf_im_vec = vfmv_v_f_f64m1(nf_im_scalar, vl_complex_pair);
+        let nf_re_vec = unsafe { vfmv_v_f_f64m1(nf_re_scalar, vl_complex_pair) };
+        let nf_im_vec = unsafe { vfmv_v_f_f64m1(nf_im_scalar, vl_complex_pair) };
 
         // iterate over pairs (i, flipped_idx) where i has the mask_bit as 0
         // this ensures each pair is processed exactly once
         for i in 0..total_elements {
             let flipped_idx = i | bit_val;
             if (i & bit_val) == 0 && flipped_idx < total_elements { // if mask_bit is 0 in i and flipped_idx is valid
-                // load amps[i]
-                let (a_re, a_im) = vlseg2e64_v_f64m1(amps.as_ptr().add(i) as *const f64, vl_complex_pair);
-                // load amps[flipped_idx]
-                let (b_re, b_im) = vlseg2e64_v_f64m1(amps.as_ptr().add(flipped_idx) as *const f64, vl_complex_pair);
+                unsafe {
+                    // load amps[i]
+                    let (a_re, a_im) = vlseg2e64_v_f64m1(amps.as_ptr().add(i) as *const f64, vl_complex_pair);
+                    // load amps[flipped_idx]
+                    let (b_re, b_im) = vlseg2e64_v_f64m1(amps.as_ptr().add(flipped_idx) as *const f64, vl_complex_pair);
 
-                // sum = a + b
-                let sum_re = vfadd_vv_f64m1(a_re, b_re, vl_complex_pair);
-                let sum_im = vfadd_vv_f64m1(a_im, b_im, vl_complex_pair);
+                    // sum = a + b
+                    let sum_re = vfadd_vv_f64m1(a_re, b_re, vl_complex_pair);
+                    let sum_im = vfadd_vv_f64m1(a_im, b_im, vl_complex_pair);
 
-                // diff = a - b
-                let diff_re = vfsub_vv_f64m1(a_re, b_re, vl_complex_pair);
-                let diff_im = vfsub_vv_f64m1(a_im, b_im, vl_complex_pair);
+                    // diff = a - b
+                    let diff_re = vfsub_vv_f64m1(a_re, b_re, vl_complex_pair);
+                    let diff_im = vfsub_vv_f64m1(a_im, b_im, vl_complex_pair);
 
-                // result_a = norm_factor * sum
-                let (res_a_re, res_a_im) = mul_complex_rvv(nf_re_vec, nf_im_vec, sum_re, sum_im, vl_complex_pair);
+                    // result_a = norm_factor * sum
+                    let (res_a_re, res_a_im) = mul_complex_rvv(nf_re_vec, nf_im_vec, sum_re, sum_im, vl_complex_pair);
 
-                // result_b = norm_factor * diff
-                let (res_b_re, res_b_im) = mul_complex_rvv(nf_re_vec, nf_im_vec, diff_re, diff_im, vl_complex_pair);
+                    // result_b = norm_factor * diff
+                    let (res_b_re, res_b_im) = mul_complex_rvv(nf_re_vec, nf_im_vec, diff_re, diff_im, vl_complex_pair);
 
-                // store results
-                vsseg2e64_v_f64m1(amps.as_mut_ptr().add(i) as *mut f64, res_a_re, res_a_im, vl_complex_pair);
-                vsseg2e64_v_f64m1(amps.as_mut_ptr().add(flipped_idx) as *mut f64, res_b_re, res_b_im, vl_complex_pair);
+                    // store results
+                    vsseg2e64_v_f64m1(amps.as_mut_ptr().add(i) as *mut f64, res_a_re, res_a_im, vl_complex_pair);
+                    vsseg2e64_v_f64m1(amps.as_mut_ptr().add(flipped_idx) as *mut f64, res_b_re, res_b_im, vl_complex_pair);
+                }
             }
         }
     }
@@ -1427,7 +1474,7 @@ pub mod riscv64_rvv {
         let bit_val = 1 << mask_bit;
         let total_elements = amps.len();
 
-        let vl_complex_pair = vsetvl(2, VLENB::V64, LMUL::M1);
+        let vl_complex_pair = unsafe { vsetvl(2, VLENB::V64, LMUL::M1) };
         if vl_complex_pair == 0 { return; }
 
         // iterate over pairs (i, flipped_idx) where i has the mask_bit as 0
@@ -1435,11 +1482,13 @@ pub mod riscv64_rvv {
         for i in 0..total_elements {
             let flipped_idx = i | bit_val;
             if (i & bit_val) == 0 && flipped_idx < total_elements { // if mask_bit is 0 in i and flipped_idx is valid
-                let (a_re, a_im) = vlseg2e64_v_f64m1(amps.as_ptr().add(i) as *const f64, vl_complex_pair);
-                let (b_re, b_im) = vlseg2e64_v_f64m1(amps.as_ptr().add(flipped_idx) as *const f64, vl_complex_pair);
+                unsafe {
+                    let (a_re, a_im) = vlseg2e64_v_f64m1(amps.as_ptr().add(i) as *const f64, vl_complex_pair);
+                    let (b_re, b_im) = vlseg2e64_v_f64m1(amps.as_ptr().add(flipped_idx) as *const f64, vl_complex_pair);
 
-                vsseg2e64_v_f64m1(amps.as_mut_ptr().add(i) as *mut f64, b_re, b_im, vl_complex_pair);
-                vsseg2e64_v_f64m1(amps.as_mut_ptr().add(flipped_idx) as *mut f64, a_re, a_im, vl_complex_pair);
+                    vsseg2e64_v_f64m1(amps.as_mut_ptr().add(i) as *mut f64, b_re, b_im, vl_complex_pair);
+                    vsseg2e64_v_f64m1(amps.as_mut_ptr().add(flipped_idx) as *mut f64, a_re, a_im, vl_complex_pair);
+                }
             }
         }
     }
@@ -1450,26 +1499,28 @@ pub mod riscv64_rvv {
         let neg_i = Complex64::new(0.0, -1.0);
         let pos_i = Complex64::new(0.0, 1.0);
 
-        let vl_complex_pair = vsetvl(2, VLENB::V64, LMUL::M1);
+        let vl_complex_pair = unsafe { vsetvl(2, VLENB::V64, LMUL::M1) };
         if vl_complex_pair == 0 { return; }
-        let neg_i_re_vec = vfmv_v_f_f64m1(neg_i.re, vl_complex_pair);
-        let neg_i_im_vec = vfmv_v_f_f64m1(neg_i.im, vl_complex_pair);
-        let pos_i_re_vec = vfmv_v_f_f64m1(pos_i.re, vl_complex_pair);
-        let pos_i_im_vec = vfmv_v_f_f64m1(pos_i.im, vl_complex_pair);
+        let neg_i_re_vec = unsafe { vfmv_v_f_f64m1(neg_i.re, vl_complex_pair) };
+        let neg_i_im_vec = unsafe { vfmv_v_f_f64m1(neg_i.im, vl_complex_pair) };
+        let pos_i_re_vec = unsafe { vfmv_v_f_f64m1(pos_i.re, vl_complex_pair) };
+        let pos_i_im_vec = unsafe { vfmv_v_f_f64m1(pos_i.im, vl_complex_pair) };
 
         // iterate over pairs (i, flipped_idx) where i has the mask_bit as 0
         // this ensures each pair is processed exactly once
         for i in 0..total_elements {
             let flipped_idx = i | bit_val;
             if (i & bit_val) == 0 && flipped_idx < total_elements { // if mask_bit is 0 in i and flipped_idx is valid
-                let (amp0_re, amp0_im) = vlseg2e64_v_f64m1(amps.as_ptr().add(i) as *const f64, vl_complex_pair);
-                let (amp1_re, amp1_im) = vlseg2e64_v_f64m1(amps.as_ptr().add(flipped_idx) as *const f64, vl_complex_pair);
+                unsafe {
+                    let (amp0_re, amp0_im) = vlseg2e64_v_f64m1(amps.as_ptr().add(i) as *const f64, vl_complex_pair);
+                    let (amp1_re, amp1_im) = vlseg2e64_v_f64m1(amps.as_ptr().add(flipped_idx) as *const f64, vl_complex_pair);
 
-                let (res0_re, res0_im) = mul_complex_rvv(neg_i_re_vec, neg_i_im_vec, amp1_re, amp1_im, vl_complex_pair);
-                let (res1_re, res1_im) = mul_complex_rvv(pos_i_re_vec, pos_i_im_vec, amp0_re, amp0_im, vl_complex_pair);
+                    let (res0_re, res0_im) = mul_complex_rvv(neg_i_re_vec, neg_i_im_vec, amp1_re, amp1_im, vl_complex_pair);
+                    let (res1_re, res1_im) = mul_complex_rvv(pos_i_re_vec, pos_i_im_vec, amp0_re, amp0_im, vl_complex_pair);
 
-                vsseg2e64_v_f64m1(amps.as_mut_ptr().add(i) as *mut f64, res0_re, res0_im, vl_complex_pair);
-                vsseg2e64_v_f64m1(amps.as_mut_ptr().add(flipped_idx) as *mut f64, res1_re, res1_im, vl_complex_pair);
+                    vsseg2e64_v_f64m1(amps.as_mut_ptr().add(i) as *mut f64, res0_re, res0_im, vl_complex_pair);
+                    vsseg2e64_v_f64m1(amps.as_mut_ptr().add(flipped_idx) as *mut f64, res1_re, res1_im, vl_complex_pair);
+                }
             }
         }
     }
@@ -1478,16 +1529,18 @@ pub mod riscv64_rvv {
         let bit_val = 1 << mask_bit;
         let total_elements = amps.len();
 
-        let vl_complex_pair = vsetvl(2, VLENB::V64, LMUL::M1);
+        let vl_complex_pair = unsafe { vsetvl(2, VLENB::V64, LMUL::M1) };
         if vl_complex_pair == 0 { return; }
         
         // iterate over all elements and apply phase flip if mask_bit is 1
         for i in 0..total_elements {
             if (i & bit_val) != 0 { // if the mask_bit is 1 in current index i
-                let (mut amp_re, mut amp_im) = vlseg2e64_v_f64m1(amps.as_ptr().add(i) as *const f64, vl_complex_pair);
-                amp_re = vfmul_vf_f64m1(amp_re, -1.0, vl_complex_pair);
-                amp_im = vfmul_vf_f64m1(amp_im, -1.0, vl_complex_pair);
-                vsseg2e64_v_f64m1(amps.as_mut_ptr().add(i) as *mut f64, amp_re, amp_im, vl_complex_pair);
+                unsafe {
+                    let (mut amp_re, mut amp_im) = vlseg2e64_v_f64m1(amps.as_ptr().add(i) as *const f64, vl_complex_pair);
+                    amp_re = vfmul_vf_f64m1(amp_re, -1.0, vl_complex_pair);
+                    amp_im = vfmul_vf_f64m1(amp_im, -1.0, vl_complex_pair);
+                    vsseg2e64_v_f64m1(amps.as_mut_ptr().add(i) as *mut f64, amp_re, amp_im, vl_complex_pair);
+                }
             }
         }
     }
@@ -1500,17 +1553,19 @@ pub mod riscv64_rvv {
         let bit_val = 1 << mask_bit;
         let total_elements = amps.len();
 
-        let vl_complex_pair = vsetvl(2, VLENB::V64, LMUL::M1);
+        let vl_complex_pair = unsafe { vsetvl(2, VLENB::V64, LMUL::M1) };
         if vl_complex_pair == 0 { return; }
-        let pf_re_vec = vfmv_v_f_f64m1(phase_factor.re, vl_complex_pair);
-        let pf_im_vec = vfmv_v_f_f64m1(phase_factor.im, vl_complex_pair);
+        let pf_re_vec = unsafe { vfmv_v_f_f64m1(phase_factor.re, vl_complex_pair) };
+        let pf_im_vec = unsafe { vfmv_v_f_f64m1(phase_factor.im, vl_complex_pair) };
 
         // iterate over all elements and apply phase shift if mask_bit is 1
         for i in 0..total_elements {
             if (i & bit_val) != 0 { // if the mask_bit is 1 in current index i
-                let (amp_re, amp_im) = vlseg2e64_v_f64m1(amps.as_ptr().add(i) as *const f64, vl_complex_pair);
-                let (res_re, res_im) = mul_complex_rvv(pf_re_vec, pf_im_vec, amp_re, amp_im, vl_complex_pair);
-                vsseg2e64_v_f64m1(amps.as_mut_ptr().add(i) as *mut f64, res_re, res_im, vl_complex_pair);
+                unsafe {
+                    let (amp_re, amp_im) = vlseg2e64_v_f64m1(amps.as_ptr().add(i) as *const f64, vl_complex_pair);
+                    let (res_re, res_im) = mul_complex_rvv(pf_re_vec, pf_im_vec, amp_re, amp_im, vl_complex_pair);
+                    vsseg2e64_v_f64m1(amps.as_mut_ptr().add(i) as *mut f64, res_re, res_im, vl_complex_pair);
+                }
             }
         }
     }
@@ -1519,46 +1574,54 @@ pub mod riscv64_rvv {
         let bit_val = 1 << mask_bit;
         let total_elements = amps.len();
 
-        let vl_complex_pair = vsetvl(2, VLENB::V64, LMUL::M1);
+        let vl_complex_pair = unsafe { vsetvl(2, VLENB::V64, LMUL::M1) };
         if vl_complex_pair == 0 { return; }
-        let zero_vec = vfmv_v_f_f64m1(0.0, vl_complex_pair);
+        let zero_vec = unsafe { vfmv_v_f_f64m1(0.0, vl_complex_pair) };
         let mut norm_sqr = 0.0;
 
         // first pass: calculate the norm of the |0> subspace for the target qubit
         for i in 0..total_elements {
             if (i & bit_val) == 0 { // if the mask_bit is 0 in current index i
-                let (amp_re, amp_im) = vlseg2e64_v_f64m1(amps.as_ptr().add(i) as *const f64, vl_complex_pair);
-                // extract scalar real and imaginary parts for norm calculation
-                let amp_re_scalar = vfmv_f_s_f64m1_f64(amp_re);
-                let amp_im_scalar = vfmv_f_s_f64m1_f64(amp_im);
-                norm_sqr += amp_re_scalar * amp_re_scalar + amp_im_scalar * amp_im_scalar;
+                unsafe {
+                    let (amp_re, amp_im) = vlseg2e64_v_f64m1(amps.as_ptr().add(i) as *const f64, vl_complex_pair);
+                    // extract scalar real and imaginary parts for norm calculation
+                    let amp_re_scalar = vfmv_f_s_f64m1_f64(amp_re);
+                    let amp_im_scalar = vfmv_f_s_f64m1_f64(amp_im);
+                    norm_sqr += amp_re_scalar * amp_re_scalar + amp_im_scalar * amp_im_scalar;
+                }
             }
         }
 
         // second pass: normalize and collapse
         if norm_sqr > 1e-12 { // avoid division by zero
             let scale_scalar = 1.0 / norm_sqr.sqrt();
-            let scale_re_vec = vfmv_v_f_f64m1(scale_scalar, vl_complex_pair);
-            let scale_im_vec = vfmv_v_f_f64m1(0.0, vl_complex_pair); // imaginary part of scaling factor is 0
+            let scale_re_vec = unsafe { vfmv_v_f_f64m1(scale_scalar, vl_complex_pair) };
+            let scale_im_vec = unsafe { vfmv_v_f_f64m1(0.0, vl_complex_pair) }; // imaginary part of scaling factor is 0
 
             for i in 0..total_elements {
                 if (i & bit_val) == 0 { // if the mask_bit is 0 in current index i
-                    let (amp_re, amp_im) = vlseg2e64_v_f64m1(amps.as_ptr().add(i) as *const f64, vl_complex_pair);
-                    let (res_re, res_im) = mul_complex_rvv(scale_re_vec, scale_im_vec, amp_re, amp_im, vl_complex_pair);
-                    vsseg2e64_v_f64m1(amps.as_mut_ptr().add(i) as *mut f64, res_re, res_im, vl_complex_pair);
+                    unsafe {
+                        let (amp_re, amp_im) = vlseg2e64_v_f64m1(amps.as_ptr().add(i) as *const f64, vl_complex_pair);
+                        let (res_re, res_im) = mul_complex_rvv(scale_re_vec, scale_im_vec, amp_re, amp_im, vl_complex_pair);
+                        vsseg2e64_v_f64m1(amps.as_mut_ptr().add(i) as *mut f64, res_re, res_im, vl_complex_pair);
+                    }
                 } else { // if the mask_bit is 1 in current index i
-                    vsseg2e64_v_f64m1(amps.as_mut_ptr().add(i) as *mut f64, zero_vec, zero_vec, vl_complex_pair);
+                    unsafe {
+                        vsseg2e64_v_f64m1(amps.as_mut_ptr().add(i) as *mut f64, zero_vec, zero_vec, vl_complex_pair);
+                    }
                 }
             }
         } else {
             // if zero probability, set to |0> state
             // this handles cases where the state was entirely in the |1> subspace
             if total_elements > 0 {
-                let one_re = vfmv_v_f_f64m1(1.0, vl_complex_pair);
-                let zero_im = vfmv_v_f_f64m1(0.0, vl_complex_pair);
-                vsseg2e64_v_f64m1(amps.as_mut_ptr() as *mut f64, one_re, zero_im, vl_complex_pair);
-                for i in 1..total_elements {
-                    vsseg2e64_v_f64m1(amps.as_mut_ptr().add(i) as *mut f64, zero_vec, zero_vec, vl_complex_pair);
+                unsafe {
+                    let one_re = vfmv_v_f_f64m1(1.0, vl_complex_pair);
+                    let zero_im = vfmv_v_f_f64m1(0.0, vl_complex_pair);
+                    vsseg2e64_v_f64m1(amps.as_mut_ptr() as *mut f64, one_re, zero_im, vl_complex_pair);
+                    for i in 1..total_elements {
+                        vsseg2e64_v_f64m1(amps.as_mut_ptr().add(i) as *mut f64, zero_vec, zero_vec, vl_complex_pair);
+                    }
                 }
             }
         }
@@ -1566,11 +1629,12 @@ pub mod riscv64_rvv {
 
     pub unsafe fn apply_swap_simd(amps: &mut [Complex64], q1_mask: usize, q2_mask: usize) {
         let total_elements = amps.len();
-        let vl_complex_pair = vsetvl(2, VLENB::V64, LMUL::M1);
+        let vl_complex_pair = unsafe { vsetvl(2, VLENB::V64, LMUL::M1) };
         if vl_complex_pair == 0 { return; }
 
         // iterate over states where both q1_mask and q2_mask bits are 0.
-        // this ensures each pair (i | q1_mask, i | q2_mask) is visited exactly once.
+        // this ensures each pair (i, i ^ target_mask) is visited exactly once,
+        // specifically when 'i' is the smaller index of the pair.
         let combined_mask = q1_mask | q2_mask;
         for i in 0..total_elements {
             if (i & combined_mask) == 0 { // if both q1 and q2 bits are 0 in current index 'i'
@@ -1580,11 +1644,13 @@ pub mod riscv64_rvv {
                 // these two indices form the pair that needs swapping.
                 // no need for 'if i < j' because we explicitly construct the two indices from a base state.
                 if idx_q1_0_q2_1 < total_elements && idx_q1_1_q2_0 < total_elements { // bounds checking
-                    let (a_re, a_im) = vlseg2e64_v_f64m1(amps.as_ptr().add(idx_q1_0_q2_1) as *const f64, vl_complex_pair);
-                    let (b_re, b_im) = vlseg2e64_v_f64m1(amps.as_ptr().add(idx_q1_1_q2_0) as *const f64, vl_complex_pair);
+                    unsafe {
+                        let (a_re, a_im) = vlseg2e64_v_f64m1(amps.as_ptr().add(idx_q1_0_q2_1) as *const f64, vl_complex_pair);
+                        let (b_re, b_im) = vlseg2e64_v_f64m1(amps.as_ptr().add(idx_q1_1_q2_0) as *const f64, vl_complex_pair);
 
-                    vsseg2e64_v_f64m1(amps.as_mut_ptr().add(idx_q1_0_q2_1) as *mut f64, b_re, b_im, vl_complex_pair);
-                    vsseg2e64_v_f64m1(amps.as_mut_ptr().add(idx_q1_1_q2_0) as *mut f64, a_re, a_im, vl_complex_pair);
+                        vsseg2e64_v_f64m1(amps.as_mut_ptr().add(idx_q1_0_q2_1) as *mut f64, b_re, b_im, vl_complex_pair);
+                        vsseg2e64_v_f64m1(amps.as_mut_ptr().add(idx_q1_1_q2_0) as *mut f64, a_re, a_im, vl_complex_pair);
+                    }
                 }
             }
         }
@@ -1597,7 +1663,7 @@ pub mod riscv64_rvv {
         target2_mask: usize,
     ) {
         let total_elements = amps.len();
-        let vl_complex_pair = vsetvl(2, VLENB::V64, LMUL::M1);
+        let vl_complex_pair = unsafe { vsetvl(2, VLENB::V64, LMUL::M1) };
         if vl_complex_pair == 0 { return; }
 
         // iterate over states where control, t1, and t2 bits are all 0.
@@ -1612,11 +1678,13 @@ pub mod riscv64_rvv {
                 // these two indices form the pair that needs swapping.
                 // no need for 'if i < j' because we explicitly construct the two indices from a base state.
                 if idx_c1_t10_t21 < total_elements && idx_c1_t11_t20 < total_elements { // bounds checking
-                    let (a_re, a_im) = vlseg2e64_v_f64m1(amps.as_ptr().add(idx_c1_t10_t21) as *const f64, vl_complex_pair);
-                    let (b_re, b_im) = vlseg2e64_v_f64m1(amps.as_ptr().add(idx_c1_t11_t20) as *const f64, vl_complex_pair);
+                    unsafe {
+                        let (a_re, a_im) = vlseg2e64_v_f64m1(amps.as_ptr().add(idx_c1_t10_t21) as *const f64, vl_complex_pair);
+                        let (b_re, b_im) = vlseg2e64_v_f64m1(amps.as_ptr().add(idx_c1_t11_t20) as *const f64, vl_complex_pair);
 
-                    vsseg2e64_v_f64m1(amps.as_mut_ptr().add(idx_c1_t10_t21) as *mut f64, b_re, b_im, vl_complex_pair);
-                    vsseg2e64_v_f64m1(amps.as_mut_ptr().add(idx_c1_t11_t20) as *mut f64, a_re, a_im, vl_complex_pair);
+                        vsseg2e64_v_f64m1(amps.as_mut_ptr().add(idx_c1_t10_t21) as *mut f64, b_re, b_im, vl_complex_pair);
+                        vsseg2e64_v_f64m1(amps.as_mut_ptr().add(idx_c1_t11_t20) as *mut f64, a_re, a_im, vl_complex_pair);
+                    }
                 }
             }
         }
@@ -1633,39 +1701,41 @@ pub mod riscv64_rvv {
         let bit_val = 1 << mask_bit;
         let total_elements = amps.len();
 
-        let vl_complex_pair = vsetvl(2, VLENB::V64, LMUL::M1);
+        let vl_complex_pair = unsafe { vsetvl(2, VLENB::V64, LMUL::M1) };
         if vl_complex_pair == 0 { return; }
-        let m00_re_vec = vfmv_v_f_f64m1(m00.re, vl_complex_pair);
-        let m00_im_vec = vfmv_v_f_f64m1(m00.im, vl_complex_pair);
-        let m01_re_vec = vfmv_v_f_f64m1(m01.re, vl_complex_pair);
-        let m01_im_vec = vfmv_v_f_f64m1(m01.im, vl_complex_pair);
-        let m10_re_vec = vfmv_v_f_f64m1(m10.re, vl_complex_pair);
-        let m10_im_vec = vfmv_v_f_f64m1(m10.im, vl_complex_pair);
-        let m11_re_vec = vfmv_v_f_f64m1(m11.re, vl_complex_pair);
-        let m11_im_vec = vfmv_v_f_f64m1(m11.im, vl_complex_pair);
+        let m00_re_vec = unsafe { vfmv_v_f_f64m1(m00.re, vl_complex_pair) };
+        let m00_im_vec = unsafe { vfmv_v_f_f64m1(m00.im, vl_complex_pair) };
+        let m01_re_vec = unsafe { vfmv_v_f_f64m1(m01.re, vl_complex_pair) };
+        let m01_im_vec = unsafe { vfmv_v_f_f64m1(m01.im, vl_complex_pair) };
+        let m10_re_vec = unsafe { vfmv_v_f_f64m1(m10.re, vl_complex_pair) };
+        let m10_im_vec = unsafe { vfmv_v_f_f64m1(m10.im, vl_complex_pair) };
+        let m11_re_vec = unsafe { vfmv_v_f_f64m1(m11.re, vl_complex_pair) };
+        let m11_im_vec = unsafe { vfmv_v_f_f64m1(m11.im, vl_complex_pair) };
 
         // iterate over pairs (i, flipped_idx) where i has the mask_bit as 0
         // this ensures each pair is processed exactly once
         for i in 0..total_elements {
             let flipped_idx = i | bit_val;
             if (i & bit_val) == 0 && flipped_idx < total_elements { // if mask_bit is 0 in i and flipped_idx is valid
-                let (amp0_re, amp0_im) = vlseg2e64_v_f64m1(amps.as_ptr().add(i) as *const f64, vl_complex_pair);
-                let (amp1_re, amp1_im) = vlseg2e64_v_f64m1(amps.as_ptr().add(flipped_idx) as *const f64, vl_complex_pair);
+                unsafe {
+                    let (amp0_re, amp0_im) = vlseg2e64_v_f64m1(amps.as_ptr().add(i) as *const f64, vl_complex_pair);
+                    let (amp1_re, amp1_im) = vlseg2e64_v_f64m1(amps.as_ptr().add(flipped_idx) as *const f64, vl_complex_pair);
 
-                // res0 = m00 * amp0 + m01 * amp1
-                let (term1_res0_re, term1_res0_im) = mul_complex_rvv(m00_re_vec, m00_im_vec, amp0_re, amp0_im, vl_complex_pair);
-                let (term2_res0_re, term2_res0_im) = mul_complex_rvv(m01_re_vec, m01_im_vec, amp1_re, amp1_im, vl_complex_pair);
-                let res0_re = vfadd_vv_f64m1(term1_res0_re, term2_res0_re, vl_complex_pair);
-                let res0_im = vfadd_vv_f64m1(term1_res0_im, term2_res0_im, vl_complex_pair);
+                    // res0 = m00 * amp0 + m01 * amp1
+                    let (term1_res0_re, term1_res0_im) = mul_complex_rvv(m00_re_vec, m00_im_vec, amp0_re, amp0_im, vl_complex_pair);
+                    let (term2_res0_re, term2_res0_im) = mul_complex_rvv(m01_re_vec, m01_im_vec, amp1_re, amp1_im, vl_complex_pair);
+                    let res0_re = vfadd_vv_f64m1(term1_res0_re, term2_res0_re, vl_complex_pair);
+                    let res0_im = vfadd_vv_f64m1(term1_res0_im, term2_res0_im, vl_complex_pair);
 
-                // res1 = m10 * amp0 + m11 * amp1
-                let (term1_res1_re, term1_res1_im) = mul_complex_rvv(m10_re_vec, m10_im_vec, amp0_re, amp0_im, vl_complex_pair);
-                let (term2_res1_re, term2_res1_im) = mul_complex_rvv(m11_re_vec, m11_im_vec, amp1_re, amp1_im, vl_complex_pair);
-                let res1_re = vfadd_vv_f64m1(term1_res1_re, term2_res1_re, vl_complex_pair);
-                let res1_im = vfadd_vv_f64m1(term1_res1_im, term2_res1_im, vl_complex_pair);
+                    // res1 = m10 * amp0 + m11 * amp1
+                    let (term1_res1_re, term1_res1_im) = mul_complex_rvv(m10_re_vec, m10_im_vec, amp0_re, amp0_im, vl_complex_pair);
+                    let (term2_res1_re, term2_res1_im) = mul_complex_rvv(m11_re_vec, m11_im_vec, amp1_re, amp1_im, vl_complex_pair);
+                    let res1_re = vfadd_vv_f64m1(term1_res1_re, term2_res1_re, vl_complex_pair);
+                    let res1_im = vfadd_vv_f64m1(term1_res1_im, term2_res1_im, vl_complex_pair);
 
-                vsseg2e64_v_f64m1(amps.as_mut_ptr().add(i) as *mut f64, res0_re, res0_im, vl_complex_pair);
-                vsseg2e64_v_f64m1(amps.as_mut_ptr().add(flipped_idx) as *mut f64, res1_re, res1_im, vl_complex_pair);
+                    vsseg2e64_v_f64m1(amps.as_mut_ptr().add(i) as *mut f64, res0_re, res0_im, vl_complex_pair);
+                    vsseg2e64_v_f64m1(amps.as_mut_ptr().add(flipped_idx) as *mut f64, res1_re, res1_im, vl_complex_pair);
+                }
             }
         }
     }
@@ -1681,39 +1751,41 @@ pub mod riscv64_rvv {
         let bit_val = 1 << mask_bit;
         let total_elements = amps.len();
 
-        let vl_complex_pair = vsetvl(2, VLENB::V64, LMUL::M1);
+        let vl_complex_pair = unsafe { vsetvl(2, VLENB::V64, LMUL::M1) };
         if vl_complex_pair == 0 { return; }
-        let m00_re_vec = vfmv_v_f_f64m1(m00.re, vl_complex_pair);
-        let m00_im_vec = vfmv_v_f_f64m1(m00.im, vl_complex_pair);
-        let m01_re_vec = vfmv_v_f_f64m1(m01.re, vl_complex_pair);
-        let m01_im_vec = vfmv_v_f_f64m1(m01.im, vl_complex_pair);
-        let m10_re_vec = vfmv_v_f_f64m1(m10.re, vl_complex_pair);
-        let m10_im_vec = vfmv_v_f_f64m1(m10.im, vl_complex_pair);
-        let m11_re_vec = vfmv_v_f_f64m1(m11.re, vl_complex_pair);
-        let m11_im_vec = vfmv_v_f_f64m1(m11.im, vl_complex_pair);
+        let m00_re_vec = unsafe { vfmv_v_f_f64m1(m00.re, vl_complex_pair) };
+        let m00_im_vec = unsafe { vfmv_v_f_f64m1(m00.im, vl_complex_pair) };
+        let m01_re_vec = unsafe { vfmv_v_f_f64m1(m01.re, vl_complex_pair) };
+        let m01_im_vec = unsafe { vfmv_v_f_f64m1(m01.im, vl_complex_pair) };
+        let m10_re_vec = unsafe { vfmv_v_f_f64m1(m10.re, vl_complex_pair) };
+        let m10_im_vec = unsafe { vfmv_v_f_f64m1(m10.im, vl_complex_pair) };
+        let m11_re_vec = unsafe { vfmv_v_f_f64m1(m11.re, vl_complex_pair) };
+        let m11_im_vec = unsafe { vfmv_v_f_f64m1(m11.im, vl_complex_pair) };
         
         // iterate over pairs (i, flipped_idx) where i has the mask_bit as 0
         // this ensures each pair is processed exactly once
         for i in 0..total_elements {
             let flipped_idx = i | bit_val;
             if (i & bit_val) == 0 && flipped_idx < total_elements { // if mask_bit is 0 in i and flipped_idx is valid
-                let (amp0_re, amp0_im) = vlseg2e64_v_f64m1(amps.as_ptr().add(i) as *const f64, vl_complex_pair);
-                let (amp1_re, amp1_im) = vlseg2e64_v_f64m1(amps.as_ptr().add(flipped_idx) as *const f64, vl_complex_pair);
+                unsafe {
+                    let (amp0_re, amp0_im) = vlseg2e64_v_f64m1(amps.as_ptr().add(i) as *const f64, vl_complex_pair);
+                    let (amp1_re, amp1_im) = vlseg2e64_v_f64m1(amps.as_ptr().add(flipped_idx) as *const f64, vl_complex_pair);
 
-                // res0 = m00 * amp0 + m01 * amp1
-                let (term1_res0_re, term1_res0_im) = mul_complex_rvv(m00_re_vec, m00_im_vec, amp0_re, amp0_im, vl_complex_pair);
-                let (term2_res0_re, term2_res0_im) = mul_complex_rvv(m01_re_vec, m01_im_vec, amp1_re, amp1_im, vl_complex_pair);
-                let res0_re = vfadd_vv_f64m1(term1_res0_re, term2_res0_re, vl_complex_pair);
-                let res0_im = vfadd_vv_f64m1(term1_res0_im, term2_res0_im, vl_complex_pair);
+                    // res0 = m00 * amp0 + m01 * amp1
+                    let (term1_res0_re, term1_res0_im) = mul_complex_rvv(m00_re_vec, m00_im_vec, amp0_re, amp0_im, vl_complex_pair);
+                    let (term2_res0_re, term2_res0_im) = mul_complex_rvv(m01_re_vec, m01_im_vec, amp1_re, amp1_im, vl_complex_pair);
+                    let res0_re = vfadd_vv_f64m1(term1_res0_re, term2_res0_re, vl_complex_pair);
+                    let res0_im = vfadd_vv_f64m1(term1_res0_im, term2_res0_im, vl_complex_pair);
 
-                // res1 = m10 * amp0 + m11 * amp1
-                let (term1_res1_re, term1_res1_im) = mul_complex_rvv(m10_re_vec, m10_im_vec, amp0_re, amp0_im, vl_complex_pair);
-                let (term2_res1_re, term2_res1_im) = mul_complex_rvv(m11_re_vec, m11_im_vec, amp1_re, amp1_im, vl_complex_pair);
-                let res1_re = vfadd_vv_f64m1(term1_res1_re, term2_res1_re, vl_complex_pair);
-                let res1_im = vfadd_vv_f64m1(term1_res1_im, term2_res1_im, vl_complex_pair);
+                    // res1 = m10 * amp0 + m11 * amp1
+                    let (term1_res1_re, term1_res1_im) = mul_complex_rvv(m10_re_vec, m10_im_vec, amp0_re, amp0_im, vl_complex_pair);
+                    let (term2_res1_re, term2_res1_im) = mul_complex_rvv(m11_re_vec, m11_im_vec, amp1_re, amp1_im, vl_complex_pair);
+                    let res1_re = vfadd_vv_f64m1(term1_res1_re, term2_res1_re, vl_complex_pair);
+                    let res1_im = vfadd_vv_f64m1(term1_res1_im, term2_res1_im, vl_complex_pair);
 
-                vsseg2e64_v_f64m1(amps.as_mut_ptr().add(i) as *mut f64, res0_re, res0_im, vl_complex_pair);
-                vsseg2e64_v_f64m1(amps.as_mut_ptr().add(flipped_idx) as *mut f64, res1_re, res1_im, vl_complex_pair);
+                    vsseg2e64_v_f64m1(amps.as_mut_ptr().add(i) as *mut f64, res0_re, res0_im, vl_complex_pair);
+                    vsseg2e64_v_f64m1(amps.as_mut_ptr().add(flipped_idx) as *mut f64, res1_re, res1_im, vl_complex_pair);
+                }
             }
         }
     }
@@ -1727,30 +1799,32 @@ pub mod riscv64_rvv {
         let bit_val = 1 << mask_bit;
         let total_elements = amps.len();
 
-        let vl_complex_pair = vsetvl(2, VLENB::V64, LMUL::M1);
+        let vl_complex_pair = unsafe { vsetvl(2, VLENB::V64, LMUL::M1) };
         if vl_complex_pair == 0 { return; }
-        let m00_re_vec = vfmv_v_f_f64m1(m00.re, vl_complex_pair);
-        let m00_im_vec = vfmv_v_f_f64m1(m00.im, vl_complex_pair);
-        let m11_re_vec = vfmv_v_f_f64m1(m11.re, vl_complex_pair);
-        let m11_im_vec = vfmv_v_f_f64m1(m11.im, vl_complex_pair);
+        let m00_re_vec = unsafe { vfmv_v_f_f64m1(m00.re, vl_complex_pair) };
+        let m00_im_vec = unsafe { vfmv_v_f_f64m1(m00.im, vl_complex_pair) };
+        let m11_re_vec = unsafe { vfmv_v_f_f64m1(m11.re, vl_complex_pair) };
+        let m11_im_vec = unsafe { vfmv_v_f_f64m1(m11.im, vl_complex_pair) };
 
         // iterate over all elements and apply phase based on mask_bit
         for i in 0..total_elements {
-            let (amp_re, amp_im) = vlseg2e64_v_f64m1(amps.as_ptr().add(i) as *const f64, vl_complex_pair);
-            let (res_re, res_im);
+            unsafe {
+                let (amp_re, amp_im) = vlseg2e64_v_f64m1(amps.as_ptr().add(i) as *const f64, vl_complex_pair);
+                let (res_re, res_im);
 
-            if (i & bit_val) == 0 { // if the mask_bit is 0 in current index i
-                (res_re, res_im) = mul_complex_rvv(m00_re_vec, m00_im_vec, amp_re, amp_im, vl_complex_pair);
-            } else { // if the mask_bit is 1 in current index i
-                (res_re, res_im) = mul_complex_rvv(m11_re_vec, m11_im_vec, amp_re, amp_im, vl_complex_pair);
+                if (i & bit_val) == 0 { // if the mask_bit is 0 in current index i
+                    (res_re, res_im) = mul_complex_rvv(m00_re_vec, m00_im_vec, amp_re, amp_im, vl_complex_pair);
+                } else { // if the mask_bit is 1 in current index i
+                    (res_re, res_im) = mul_complex_rvv(m11_re_vec, m11_im_vec, amp_re, amp_im, vl_complex_pair);
+                }
+                vsseg2e64_v_f64m1(amps.as_mut_ptr().add(i) as *mut f64, res_re, res_im, vl_complex_pair);
             }
-            vsseg2e64_v_f64m1(amps.as_mut_ptr().add(i) as *mut f64, res_re, res_im, vl_complex_pair);
         }
     }
 
     pub unsafe fn apply_cnot_simd(amps: &mut [Complex64], control_mask: usize, target_mask: usize) {
         let total_elements = amps.len();
-        let vl_complex_pair = vsetvl(2, VLENB::V64, LMUL::M1);
+        let vl_complex_pair = unsafe { vsetvl(2, VLENB::V64, LMUL::M1) };
         if vl_complex_pair == 0 { return; }
 
         // iterate over states where the target bit is 0.
@@ -1761,11 +1835,13 @@ pub mod riscv64_rvv {
             if (i & control_mask) == control_mask && (i & target_mask) == 0 {
                 let j = i | target_mask; // get the state where target qubit is 1 (control remains 1)
                 if j < total_elements { // bounds checking
-                    let (a_re, a_im) = vlseg2e64_v_f64m1(amps.as_ptr().add(i) as *const f64, vl_complex_pair);
-                    let (b_re, b_im) = vlseg2e64_v_f64m1(amps.as_ptr().add(j) as *const f64, vl_complex_pair);
+                    unsafe {
+                        let (a_re, a_im) = vlseg2e64_v_f64m1(amps.as_ptr().add(i) as *const f64, vl_complex_pair);
+                        let (b_re, b_im) = vlseg2e64_v_f64m1(amps.as_ptr().add(j) as *const f64, vl_complex_pair);
 
-                    vsseg2e64_v_f64m1(amps.as_mut_ptr().add(i) as *mut f64, b_re, b_im, vl_complex_pair);
-                    vsseg2e64_v_f64m1(amps.as_mut_ptr().add(j) as *mut f64, a_re, a_im, vl_complex_pair);
+                        vsseg2e64_v_f64m1(amps.as_mut_ptr().add(i) as *mut f64, b_re, b_im, vl_complex_pair);
+                        vsseg2e64_v_f64m1(amps.as_mut_ptr().add(j) as *mut f64, a_re, a_im, vl_complex_pair);
+                    }
                 }
             }
         }
@@ -1774,17 +1850,19 @@ pub mod riscv64_rvv {
     pub unsafe fn apply_cz_simd(amps: &mut [Complex64], control_mask: usize, target_mask: usize) {
         let total_elements = amps.len();
 
-        let vl_complex_pair = vsetvl(2, VLENB::V64, LMUL::M1);
+        let vl_complex_pair = unsafe { vsetvl(2, VLENB::V64, LMUL::M1) };
         if vl_complex_pair == 0 { return; }
         
         // iterate over all elements and apply phase flip if both control and target bits are 1
         for i in 0..total_elements {
             // changed condition to be more explicit for control qubit state
             if (i & (control_mask | target_mask)) == (control_mask | target_mask) {
-                let (mut amp_re, mut amp_im) = vlseg2e64_v_f64m1(amps.as_ptr().add(i) as *const f64, vl_complex_pair);
-                amp_re = vfmul_vf_f64m1(amp_re, -1.0, vl_complex_pair);
-                amp_im = vfmul_vf_f64m1(amp_im, -1.0, vl_complex_pair);
-                vsseg2e64_v_f64m1(amps.as_mut_ptr().add(i) as *mut f64, amp_re, amp_im, vl_complex_pair);
+                unsafe {
+                    let (mut amp_re, mut amp_im) = vlseg2e64_v_f64m1(amps.as_ptr().add(i) as *const f64, vl_complex_pair);
+                    amp_re = vfmul_vf_f64m1(amp_re, -1.0, vl_complex_pair);
+                    amp_im = vfmul_vf_f64m1(amp_im, -1.0, vl_complex_pair);
+                    vsseg2e64_v_f64m1(amps.as_mut_ptr().add(i) as *mut f64, amp_re, amp_im, vl_complex_pair);
+                }
             }
         }
     }
@@ -1797,18 +1875,19 @@ pub mod riscv64_rvv {
     ) {
         let total_elements = amps.len();
 
-        let vl_complex_pair = vsetvl(2, VLENB::V64, LMUL::M1);
+        let vl_complex_pair = unsafe { vsetvl(2, VLENB::V64, LMUL::M1) };
         if vl_complex_pair == 0 { return; }
-        let pf_re_vec = vfmv_v_f_f64m1(phase_factor.re, vl_complex_pair);
-        let pf_im_vec = vfmv_v_f_f64m1(phase_factor.im, vl_complex_pair);
+        let pf_re_vec = unsafe { vfmv_v_f_f64m1(phase_factor.re, vl_complex_pair) };
+        let pf_im_vec = unsafe { vfmv_v_f_f64m1(phase_factor.im, vl_complex_pair) };
 
         // iterate over all elements and apply phase if both control and target bits are 1
         for i in 0..total_elements {
-            // changed condition to be more explicit for control qubit state
             if (i & (control_mask | target_mask)) == (control_mask | target_mask) {
-                let (amp_re, amp_im) = vlseg2e64_v_f64m1(amps.as_ptr().add(i) as *const f64, vl_complex_pair);
-                let (res_re, res_im) = mul_complex_rvv(pf_re_vec, pf_im_vec, amp_re, amp_im, vl_complex_pair);
-                vsseg2e64_v_f64m1(amps.as_mut_ptr().add(i) as *mut f64, res_re, res_im, vl_complex_pair);
+                unsafe {
+                    let (amp_re, amp_im) = vlseg2e64_v_f64m1(amps.as_ptr().add(i) as *const f64, vl_complex_pair);
+                    let (res_re, res_im) = mul_complex_rvv(pf_re_vec, pf_im_vec, amp_re, amp_im, vl_complex_pair);
+                    vsseg2e64_v_f64m1(amps.as_mut_ptr().add(i) as *mut f64, res_re, res_im, vl_complex_pair);
+                }
             }
         }
     }
@@ -1816,18 +1895,20 @@ pub mod riscv64_rvv {
     pub unsafe fn apply_reset_all_simd(amps: &mut [Complex64]) {
         let total_elements = amps.len();
 
-        let vl_complex_pair = vsetvl(2, VLENB::V64, LMUL::M1);
+        let vl_complex_pair = unsafe { vsetvl(2, VLENB::V64, LMUL::M1) };
         if vl_complex_pair == 0 { return; }
-        let zero_vec = vfmv_v_f_f64m1(0.0, vl_complex_pair);
+        let zero_vec = unsafe { vfmv_v_f_f64m1(0.0, vl_complex_pair) };
 
         // set the state to |0...0>
         if total_elements > 0 {
-            // for the |0...0> state, set real part to 1.0 and imaginary to 0.0
-            let one_re = vfmv_v_f_f64m1(1.0, vl_complex_pair);
-            let zero_im = vfmv_v_f_f64m1(0.0, vl_complex_pair);
-            vsseg2e64_v_f64m1(amps.as_mut_ptr() as *mut f64, one_re, zero_im, vl_complex_pair);
-            for i in 1..total_elements {
-                vsseg2e64_v_f64m1(amps.as_mut_ptr().add(i) as *mut f64, zero_vec, zero_vec, vl_complex_pair);
+            unsafe {
+                // for the |0...0> state, set real part to 1.0 and imaginary to 0.0
+                let one_re = vfmv_v_f_f64m1(1.0, vl_complex_pair);
+                let zero_im = vfmv_v_f_f64m1(0.0, vl_complex_pair);
+                vsseg2e64_v_f64m1(amps.as_mut_ptr() as *mut f64, one_re, zero_im, vl_complex_pair);
+                for i in 1..total_elements {
+                    vsseg2e64_v_f64m1(amps.as_mut_ptr().add(i) as *mut f64, zero_vec, zero_vec, vl_complex_pair);
+                }
             }
         }
     }

@@ -1,0 +1,10 @@
+# COMPILER OPTIMIZATIONS FOR BUILD
+
+[build]
+rustflags = ["-C", "target-cpu=native"]
+
+[profile.dev]
+rustflags = ["-C", "target-cpu=native"]
+
+[profile.release]
+rustflags = ["-C", "target-cpu=native"]

@@ -31,7 +31,7 @@ const QOX: &[u8; 4] = b"QOX ";
 const XEXE: &[u8; 4] = b"XEXE";
 const QX: &[u8; 4] = b"QX\0\0";
 
-const QOA_VERSION: &str = "0.3.0";
+const QOA_VERSION: &str = "0.3.1";
 const QOA_AUTHOR: &str = "Rayan (@planetryan on github)";
 
 #[derive(Parser, Debug)]
@@ -740,7 +740,7 @@ pub fn run_exe(
                     opcode, i
                 );
                 i += 1;
-            }
+            }            
         }
     }
 
@@ -749,6 +749,8 @@ pub fn run_exe(
     } else {
         max_q + 1
     };
+
+
 
     // Initialize qs and registers based on initial_state_data or create new ones
     let (mut qs, mut registers) = if let Some((loaded_qs, loaded_regs)) = initial_state_data {
@@ -2666,9 +2668,47 @@ fn main() {
                         if max_q == 0 && payload.is_empty() { 0 } else { max_q + 1 }
                     };
 
-                    // use the user-provided qubit count if present, otherwise use inferred
-                    let final_num_qubits = qubit.unwrap_or(inferred_qubits);
+                    // determine the actual number of qubits to use for simulation.
+                    // the explicit `--qubit` flag takes precedence over the inferred count.
+                    let final_num_qubits = if let Some(q) = qubit {
+                        info!("using explicit qubit count from --qubit: {}", q);
+                        q
+                    } else {
+                        info!("using inferred qubit count from file: {}", inferred_qubits);
+                        inferred_qubits
+                    };
 
+                    // calculate and display memory usage
+                    let memory_needed_bytes = (2.0_f64).powi(final_num_qubits as i32) * 16.0; // 16 bytes per amplitude (2 f64s)
+                    let memory_needed_kb = memory_needed_bytes / 1024.0;
+                    let memory_needed_mb = memory_needed_bytes / (1024.0 * 1024.0);
+                    let memory_needed_gb = memory_needed_bytes / (1024.0 * 1024.0 * 1024.0);
+                    let memory_needed_tb = memory_needed_bytes / (1024.0 * 1024.0 * 1024.0 * 1024.0);
+                    let memory_needed_pb = memory_needed_bytes / (1024.0 * 1024.0 * 1024.0 * 1024.0 * 1024.0);
+
+                    if final_num_qubits > 0 {
+                        print!("estimated memory for {} qubits: {:.0} bytes", final_num_qubits, memory_needed_bytes);
+                        if memory_needed_pb >= 1.0 {
+                            println!(" ({:.2} pb)", memory_needed_pb);
+                        } else if memory_needed_tb >= 1.0 {
+                            println!(" ({:.2} tb)", memory_needed_tb);
+                        } else if memory_needed_gb >= 1.0 {
+                            println!(" ({:.2} gb)", memory_needed_gb);
+                        } else if memory_needed_mb >= 1.0 {
+                            println!(" ({:.2} mb)", memory_needed_mb);
+                        } else if memory_needed_kb >= 1.0 {
+                            println!(" ({:.2} kb)", memory_needed_kb);
+                        } else {
+                            println!(); // just print bytes if less than 1 kb
+                        }
+                    }
+
+                    // provide a warning if the simulation is still memory intensive, even if allowed.
+                    if final_num_qubits > 26 {
+                        warn!("simulating more than 26 qubits can be very memory intensive. performance might be limited by memory bandwidth rather than raw cpu computation.");
+                    }
+
+                    info!("running '{}' (debug: {}, qubits: {})", program, debug, final_num_qubits);
                     let (qs, registers) = run_exe(
                         &file_data,
                         debug,
@@ -2700,6 +2740,7 @@ fn main() {
                 Err(e) => eprintln!("error reading program file: {}", e),
             }
         }
+
         Commands::CompileJson { source, output } => {
             info!("compiling '{}' to json '{}'", source, output);
             let json_output = serde_json::json!({
