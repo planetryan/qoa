@@ -25,7 +25,7 @@ I have created this guide for researchers, developers and students who will use 
 
 - **CPU:**  
   - Processors with SIMD support (AVX‑512/AVX2 recommended on x86_64 for best performance, NEON for AARCH64, and RVV 1.0 for RISC‑V 64‑bit).  
-  - Please try to run QOA on a CPU with as large a cache as possible (AMD X3D CPUs are a good option; see explanation in `README`).
+  - Please try to run QOA on a CPU with as large a cache as possible (AMD X3D CPUs are a good option; see explanation [HERE](</readme/QOA-system-requirements.md>)).
 
 - **Memory:**  
   - Increased efficiency allows for simulation of larger quantum systems with the same memory footprint within 2^N doubling state requirements -- still exponential memory, but less compiler & executor overhead.
