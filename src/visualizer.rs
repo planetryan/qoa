@@ -16,7 +16,7 @@ use std::fs;
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-
+ use std::simd::f32x4;
 // use std::time::Instant; // i havent removed this import because i might use it later.
 
 #[allow(unused_imports)] // allow unused imports for simd types, as they are conditionally compiled
@@ -530,7 +530,7 @@ impl QoaAudioDecoder for AudioVisualizer {
                             }
                             // handle remainder
                             for pair in temp_f32_samples.chunks_exact(8).remainder().chunks(2) {
-                                if let (Some(&l), Some(&&r)) = (pair.get(0), pair.get(1)) {
+                                if let (Some(&l), Some(&r)) = (pair.get(0), pair.get(1)) {
                                     samples.push((l + r) * 0.5);
                                 } else if let Some(&l) = pair.get(0) {
                                     samples.push(l);
