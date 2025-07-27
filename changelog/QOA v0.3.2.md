@@ -1,5 +1,7 @@
 # QOA v0.3.2 Release Notes
 
+> FIXED INTEL MKL LINKING, SHOULD COMPILE WITH NO ISSUE FROM THE SCRIPTS!
+
 **Release Date:** 07/27/2025
 
 **Status:** Stable Release
