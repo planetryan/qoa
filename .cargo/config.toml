@@ -1,10 +1,27 @@
-# COMPILER OPTIMIZATIONS FOR BUILD
-
 [build]
 rustflags = ["-C", "target-cpu=native"]
 
 [profile.dev]
 rustflags = ["-C", "target-cpu=native"]
+opt-level = 1
+debug = true
 
 [profile.release]
-rustflags = ["-C", "target-cpu=native"]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = true
+
+[profile.release.build-override]
+opt-level = 3
+codegen-units = 1
+
+[target.'cfg(target_arch = "x86_64")']
+rustflags = [
+    "-C", "target-cpu=native",
+    "-C", "llvm-args=-vector-library=SVML",
+    "-C", "llvm-args=-vectorize-loops",
+    "-C", "llvm-args=-vectorize-slp",
+    "-C", "llvm-args=-enable-gvn-hoist"
+]

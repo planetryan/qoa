@@ -38,7 +38,7 @@ I have created this guide for researchers, developers and students who will use 
 ---
 
 ## Base Syntax / Operations Overview  
-*(This list is for QOA v0.3.1)*
+*(This list is for QOA v0.3.1) and later*
 
 ### Quantum Operation Instruction Examples & Aliases
 

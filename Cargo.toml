@@ -1,4 +1,5 @@
 cargo-features = ["profile-rustflags"]
+# ONLY IN NIGHTLY
 
 [package]
 name = "qoa"
@@ -6,6 +7,7 @@ version = "0.3.1"
 edition = "2024"
 authors = ["GitHub: @planetryan"]
 description = "The Quantum Optical Assembly Language"
+build = "build.rs"
 
 [dependencies]
 clap = { version = "4.5", features = ["derive"] }
@@ -30,6 +32,8 @@ jemallocator = "0.5"
 approx = { version = "0.5", features = ["num-complex"] }
 num_cpus = "1.16"
 tempfile = "3.10"
+core_affinity = "0.8"
+bumpalo = { version = "3.19.0", features = ["collections"] }
 
 # COMPILER OPTIMIZATIONS
 
@@ -40,6 +44,9 @@ parking_lot = "0.12"
 memmap2 = "0.9"
 dashmap = "5.5"
 criterion = "0.5" # for benchmarking
+
+[build-dependencies]
+# cc = "1.0"
 
 [profile.dev]
 opt-level = 1
@@ -57,7 +64,7 @@ opt-level = 3
 lto = "fat"
 codegen-units = 1
 panic = "abort"
-strip = "symbols"
+strip = true
 debug = false
 debug-assertions = false
 overflow-checks = false
@@ -83,5 +90,6 @@ criterion = "0.5" # for benchmarking
 proptest = "1.4"
 
 [[bench]]
-name = "benchmark" # This matches your benches/benchmark.rs file name
-harness = false # use Criterion's main function, not rust's default test harness
+name = "benchmark"
+harness = false
+

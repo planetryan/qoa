@@ -30,3 +30,5 @@
 - Provide guides for troubleshooting, debugging, and performance optimization
 - Document multi-node setup and GPU requirements
 - Add examples of AVX/NEON/RVV vectorized instructions in `.qoa` programs
+
+### rust stable, for now its only avaliable on nightly

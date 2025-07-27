@@ -11,7 +11,7 @@
 // --- common interface for vector operations ---
 use num_complex::Complex64;
 use rayon::prelude::*; // for parallel iterators in fallback
-use std::simd::{f32x8, f32x16}; // these are not directly used in the current code structure, but kept from original
+// use std::simd::{f32x8, f32x16};
 
 pub fn apply_hadamard_vectorized(amps: &mut [Complex64], norm_factor: Complex64, mask_bit: usize) {
     #[cfg(target_arch = "x86_64")]

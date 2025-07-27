@@ -1,4 +1,5 @@
 #![feature(portable_simd)]
+#![feature(stdarch_x86_mm_shuffle)]
 
 use crate::visualizer::SpectrumDirection;
 use clap::{Parser, Subcommand};
