@@ -290,13 +290,13 @@ install_mkl_if_needed() {
 install_mkl_linux_x86_64() {
     if command -v apt >/dev/null 2>&1; then
         echo "installing intel mkl full for x86_64 using apt..."
-        sudo apt update && sudo apt install -y intel-mkl-full libmkl-dev libmkl-rt intel-oneapi-mkl
+        sudo apt update && sudo apt install -y intel-mkl-full libmkl-dev libmkl-rt intel-mkl-full
     elif command -v yum >/dev/null 2>&1; then
         echo "installing intel mkl full for x86_64 using yum..."
-        sudo yum install -y intel-mkl-full intel-mkl-devel intel-oneapi-mkl
+        sudo yum install -y intel-mkl-full intel-mkl-devel intel-mkl-full
     elif command -v dnf >/dev/null 2>&1; then
         echo "installing intel mkl full for x86_64 using dnf..."
-        sudo dnf install -y intel-mkl-full intel-mkl-devel intel-oneapi-mkl
+        sudo dnf install -y intel-mkl-full intel-mkl-devel intel-mkl-full
     elif command -v pacman >/dev/null 2>&1; then
         echo "installing intel mkl full for x86_64 using pacman..."
         sudo pacman -S --noconfirm intel-mkl intel-mkl-static
@@ -365,7 +365,7 @@ install_mkl_linux_fallback() {
 install_mkl_macos_x86_64() {
     if command -v brew >/dev/null 2>&1; then
         echo "installing intel mkl full for x86_64 using homebrew..."
-        brew install intel-mkl intel-oneapi-mkl
+        brew install intel-mkl intel-mkl-full
     else
         echo "warning: homebrew not found. please install intel mkl full manually."
         echo "install homebrew from: https://brew.sh/"
@@ -377,7 +377,7 @@ install_mkl_macos_x86_64() {
 install_mkl_macos_arm64() {
     if command -v brew >/dev/null 2>&1; then
         echo "installing intel mkl full for arm64 using homebrew..."
-        brew install intel-mkl intel-oneapi-mkl || {
+        brew install intel-mkl intel-mkl-full || {
             echo "intel mkl not available for arm64, installing openblas as alternative..."
             brew install openblas lapack
         }
