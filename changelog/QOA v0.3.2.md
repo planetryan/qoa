@@ -12,7 +12,7 @@ QOA v0.3.2 builds upon previous versions by introducing significant optimization
 
 ### General Improvements and Optimizations
 
-* **`Build.rs`** Added `Build.rs` For native & optimized builds.
+* **`Build.rs`:** Added `Build.rs` For native & optimized builds.
 
 * **Visualizer Optimization with SIMD:** Implemented SIMD optimizations for the quantum visualizer.
 
