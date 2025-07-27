@@ -8,7 +8,7 @@
 
 ## Summary
 
-QOA v0.3.2 builds upon previous versions by introducing significant optimization to the visualizer using SIMD, alongside continued improvements in some Unix & PowerShell scripts.
+QOA v0.3.2 introduces many significant optimizations to the visualizer using SIMD, alongside continued improvements in some Unix & PowerShell scripts.
 
 ## New Features
 
