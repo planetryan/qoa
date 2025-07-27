@@ -68,7 +68,7 @@ function Get-SystemArchitecture {
     try {
         if ($PSVersionTable.PSVersion.Major -ge 6) {
             # PowerShell Core
-            return [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture
+            return [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()
         } else {
             # Windows PowerShell
             return $env:PROCESSOR_ARCHITECTURE
@@ -214,6 +214,169 @@ function Install-IntelMKLIfNeeded {
     Write-Host ""
 }
 
+# Function to set up Intel MKL environment variables for the current session
+function Set-MKL-Environment {
+    Write-Host "=== Setting up Intel MKL Environment ===" -ForegroundColor Cyan
+    
+    $os = Get-OperatingSystem
+    $arch = Get-SystemArchitecture
+    Write-Host "Detected OS: $os, Architecture: $arch" -ForegroundColor White
+    
+    $mklRoot = $null
+    $mklLibPath = $null
+    $varsScriptFound = $false
+
+    # Common Intel oneAPI/MKL installation paths
+    $oneAPIMKLRoot = "C:\Program Files (x86)\Intel\oneAPI\mkl\latest" # Windows
+    $oneAPIMKLRootLinux = "/opt/intel/oneapi/mkl/latest" # Linux/macOS
+    $traditionalMKLRoot = "/opt/intel/mkl" # Linux/macOS
+    $systemMKLPathX86_64 = "/usr/lib/x86_64-linux-gnu/mkl"
+    $systemMKLPathARM64 = "/usr/lib/aarch64-linux-gnu/mkl"
+    $systemMKLPathRISCV64 = "/usr/lib/riscv64-linux-gnu/mkl"
+    $homebrewLib = "/opt/homebrew/lib" # macOS ARM
+    $localLib = "/usr/local/lib" # macOS x86_64
+
+    # Try to source vars.ps1 or vars.sh first
+    if ($os -eq "Windows") {
+        $varsPs1 = Join-Path $oneAPIMKLRoot "env\vars.ps1"
+        if (Test-Path $varsPs1) {
+            Write-Host "Sourcing oneAPI MKL environment (vars.ps1)..." -ForegroundColor Yellow
+            try {
+                . $varsPs1 -arch intel64 -platform windows # Use dot-sourcing
+                $varsScriptFound = $true
+                Write-Host "oneAPI MKL environment sourced successfully." -ForegroundColor Green
+            } catch {
+                Write-Warning "Failed to source oneAPI MKL vars.ps1: $_"
+            }
+        }
+    } else { # Linux/macOS
+        $libArch = "intel64" # MKL uses intel64 for most platforms
+        if ($arch -match "riscv") {
+            Write-Warning "Intel MKL may not be fully available for RISC-V. Will use fallback options."
+        }
+
+        $varsShOneAPI = Join-Path $oneAPIMKLRootLinux "env\vars.sh"
+        $varsShTraditional = Join-Path $traditionalMKLRoot "bin\mklvars.sh"
+
+        if (Test-Path $varsShOneAPI) {
+            Write-Host "Sourcing oneAPI MKL environment (vars.sh)..." -ForegroundColor Yellow
+            try {
+                # Use bash to source the script and then apply variables to current PowerShell session
+                $output = bash -c "source '$varsShOneAPI' intel64 && env"
+                $output | ForEach-Object {
+                    if ($_ -match "^(.*?)=(.*)$") {
+                        $varName = $matches[1]
+                        $varValue = $matches[2]
+                        # Only set variables that are relevant for MKL
+                        if ($varName -match "^MKL" -or $varName -eq "LD_LIBRARY_PATH" -or $varName -eq "DYLD_LIBRARY_PATH") {
+                            Set-Item Env:$varName $varValue
+                        }
+                    }
+                }
+                $varsScriptFound = $true
+                Write-Host "oneAPI MKL environment sourced successfully." -ForegroundColor Green
+            } catch {
+                Write-Warning "Failed to source oneAPI MKL vars.sh: $_"
+            }
+        } elseif (Test-Path $varsShTraditional) {
+            Write-Host "Sourcing traditional MKL environment (mklvars.sh)..." -ForegroundColor Yellow
+            try {
+                $output = bash -c "source '$varsShTraditional' $libArch && env"
+                $output | ForEach-Object {
+                    if ($_ -match "^(.*?)=(.*)$") {
+                        $varName = $matches[1]
+                        $varValue = $matches[2]
+                        if ($varName -match "^MKL" -or $varName -eq "LD_LIBRARY_PATH" -or $varName -eq "DYLD_LIBRARY_PATH") {
+                            Set-Item Env:$varName $varValue
+                        }
+                    }
+                }
+                $varsScriptFound = $true
+                Write-Host "Traditional MKL environment sourced successfully." -ForegroundColor Green
+            } catch {
+                Write-Warning "Failed to source traditional MKL mklvars.sh: $_"
+            }
+        }
+    }
+
+    # If vars.ps1/vars.sh not found, try to manually set variables
+    if (-not $varsScriptFound) {
+        Write-Host "MKL environment script not found, attempting manual setup..." -ForegroundColor Yellow
+        
+        switch ($os) {
+            "Windows" {
+                if (Test-Path "C:\Program Files (x86)\Intel\oneAPI\mkl" -PathType Container) {
+                    $mklRoot = "C:\Program Files (x86)\Intel\oneAPI\mkl\latest"
+                    $mklLibPath = Join-Path $mklRoot "lib\intel64"
+                }
+            }
+            "Linux" {
+                if (Test-Path $oneAPIMKLRootLinux -PathType Container) {
+                    $mklRoot = $oneAPIMKLRootLinux
+                    $mklLibPath = Join-Path $mklRoot "lib\intel64"
+                } elseif (Test-Path $traditionalMKLRoot -PathType Container) {
+                    $mklRoot = $traditionalMKLRoot
+                    $mklLibPath = Join-Path $mklRoot "lib\intel64"
+                } elseif (Test-Path $systemMKLPathX86_64 -PathType Container) {
+                    $mklRoot = "/usr"
+                    $mklLibPath = $systemMKLPathX86_64
+                } elseif (Test-Path $systemMKLPathARM64 -PathType Container) {
+                    $mklRoot = "/usr"
+                    $mklLibPath = $systemMKLPathARM64
+                } elseif (Test-Path $systemMKLPathRISCV64 -PathType Container) {
+                    $mklRoot = "/usr"
+                    $mklLibPath = $systemMKLPathRISCV64
+                }
+            }
+            "macOS" {
+                if (Test-Path $oneAPIMKLRootLinux -PathType Container) { # oneAPI uses same path structure on macOS/Linux
+                    $mklRoot = $oneAPIMKLRootLinux
+                    $mklLibPath = Join-Path $mklRoot "lib\intel64"
+                } elseif (Test-Path $traditionalMKLRoot -PathType Container) {
+                    $mklRoot = $traditionalMKLRoot
+                    $mklLibPath = Join-Path $mklRoot "lib\intel64"
+                } elseif (Test-Path $homebrewLib -PathType Container) {
+                    $mklRoot = "/opt/homebrew"
+                    $mklLibPath = $homebrewLib
+                } elseif (Test-Path $localLib -PathType Container) {
+                    $mklRoot = "/usr/local"
+                    $mklLibPath = $localLib
+                }
+            }
+        }
+
+        if ($mklRoot -ne $null) {
+            $env:MKLROOT = $mklRoot
+            Write-Host "MKLROOT set to: $env:MKLROOT" -ForegroundColor White
+
+            if ($mklLibPath -ne $null -and (Test-Path $mklLibPath -PathType Container)) {
+                if ($os -eq "Windows") {
+                    $env:Path = "$mklLibPath;$env:Path"
+                    Write-Host "Added $mklLibPath to PATH." -ForegroundColor White
+                } else {
+                    $env:LD_LIBRARY_PATH = "$mklLibPath:$env:LD_LIBRARY_PATH"
+                    Write-Host "Added $mklLibPath to LD_LIBRARY_PATH." -ForegroundColor White
+                    if ($os -eq "macOS") {
+                        $env:DYLD_LIBRARY_PATH = "$mklLibPath:$env:DYLD_LIBRARY_PATH"
+                        Write-Host "Added $mklLibPath to DYLD_LIBRARY_PATH." -ForegroundColor White
+                    }
+                }
+            }
+            
+            $env:MKL_INTERFACE_LAYER = "LP64"
+            $env:MKL_THREADING_LAYER = "INTEL"
+            $env:MKL_NUM_THREADS = (Get-CPUCoreCount).ToString() # Use detected core count
+            
+            Write-Host "MKL_INTERFACE_LAYER: $env:MKL_INTERFACE_LAYER" -ForegroundColor White
+            Write-Host "MKL_THREADING_LAYER: $env:MKL_THREADING_LAYER" -ForegroundColor White
+            Write-Host "MKL_NUM_THREADS: $env:MKL_NUM_THREADS" -ForegroundColor White
+        } else {
+            Write-Warning "Could not determine MKL installation path. MKL environment variables not set."
+        }
+    }
+    Write-Host ""
+}
+
 # Function to display system information
 function Show-SystemInfo {
     $os = Get-OperatingSystem
@@ -247,24 +410,58 @@ function Show-SystemInfo {
 # Function to set optimal build environment variables
 function Set-BuildEnvironment {
     $os = Get-OperatingSystem
+    $arch = Get-SystemArchitecture
     
-    # Set RUSTFLAGS to avoid SVML linking issues
+    Write-Host "=== Setting Build Flags for $os on $arch ===" -ForegroundColor Yellow
+    
+    # Set RUSTFLAGS to include MKL linking and architecture-specific optimizations
     $currentRustFlags = $env:RUSTFLAGS
-    $newRustFlags = "-C target-cpu=generic"
-    
-    if ($currentRustFlags) {
-        $env:RUSTFLAGS = "$currentRustFlags $newRustFlags"
-    } else {
-        $env:RUSTFLAGS = $newRustFlags
+    $baseFlags = ""
+    $mklFlags = ""
+
+    switch ($arch) {
+        "X64" { # x86_64
+            if (Test-Path "$env:MKLROOT\lib\intel64" -PathType Container) {
+                $mklFlags = "-L ""$env:MKLROOT\lib\intel64"" -l mkl_rt -l mkl_intel_lp64 -l mkl_sequential -l mkl_core"
+                $baseFlags = "-C target-cpu=native $mklFlags"
+                Write-Host "Using MKL-optimized flags for x86_64" -ForegroundColor White
+            } else {
+                $baseFlags = "-C target-cpu=native"
+                Write-Host "MKL not found, using native flags for x86_64" -ForegroundColor White
+            }
+        }
+        "Arm64" { # arm64
+            # MKL has limited ARM support; if found, use it, else native
+            if (Test-Path "$env:MKLROOT\lib\intel64" -PathType Container) { # MKL uses intel64 for ARM on some platforms
+                $mklFlags = "-L ""$env:MKLROOT\lib\intel64"" -l mkl_rt"
+                $baseFlags = "-C target-cpu=native $mklFlags"
+                Write-Host "Using MKL-optimized flags for ARM64" -ForegroundColor White
+            } else {
+                $baseFlags = "-C target-cpu=native"
+                Write-Host "Using native flags for ARM64 (no MKL)" -ForegroundColor White
+            }
+        }
+        "RiscV64" { # riscv64
+            $baseFlags = "-C target-cpu=native"
+            Write-Host "Using native flags for RISC-V (MKL not supported)" -ForegroundColor White
+        }
+        Default { # Unknown architecture fallback
+            $baseFlags = "-C target-cpu=generic"
+            Write-Host "Using generic flags for unknown architecture: $arch" -ForegroundColor Yellow
+        }
     }
     
-    Write-Host "Build Environment Configuration:" -ForegroundColor Yellow
-    Write-Host "RUSTFLAGS: $env:RUSTFLAGS" -ForegroundColor White
+    if ($currentRustFlags) {
+        $env:RUSTFLAGS = "$currentRustFlags $baseFlags"
+    } else {
+        $env:RUSTFLAGS = $baseFlags
+    }
+    
+    Write-Host "Final RUSTFLAGS: $env:RUSTFLAGS" -ForegroundColor White
     
     # Set additional environment variables based on OS
     switch ($os) {
         "Windows" {
-            # Windows-specific settings
             if (-not $env:CARGO_TARGET_DIR) {
                 Write-Host "Using default target directory: target\" -ForegroundColor White
             }
@@ -282,12 +479,10 @@ function Set-BuildEnvironment {
         }
         
         "Linux" {
-            # Linux-specific settings in PowerShell Core
             Write-Host "Running on Linux with PowerShell Core" -ForegroundColor White
         }
         
         "macOS" {
-            # macOS-specific settings in PowerShell Core
             Write-Host "Running on macOS with PowerShell Core" -ForegroundColor White
         }
     }
@@ -385,9 +580,17 @@ function Invoke-Build {
             
             # Show binary information
             $binaryPath = if ($Type -eq "release") { 
-                if ($TargetTriple) { "target\$TargetTriple\release\qoa.exe" } else { "target\release\qoa.exe" }
+                if ((Get-OperatingSystem) -eq "Windows") {
+                    if ($TargetTriple) { "target\$TargetTriple\release\qoa.exe" } else { "target\release\qoa.exe" }
+                } else {
+                    if ($TargetTriple) { "target/$TargetTriple/release/qoa" } else { "target/release/qoa" }
+                }
             } else { 
-                if ($TargetTriple) { "target\$TargetTriple\debug\qoa.exe" } else { "target\debug\qoa.exe" }
+                if ((Get-OperatingSystem) -eq "Windows") {
+                    if ($TargetTriple) { "target\$TargetTriple\debug\qoa.exe" } else { "target\debug\qoa.exe" }
+                } else {
+                    if ($TargetTriple) { "target/$TargetTriple/debug/qoa" } else { "target/debug/qoa" }
+                }
             }
             
             if (Test-Path $binaryPath) {
@@ -453,6 +656,9 @@ function Main {
     
     # Check and install Intel MKL if needed
     Install-IntelMKLIfNeeded
+    
+    # Set up MKL environment variables
+    Set-MKL-Environment
     
     # Show disk space
     Get-DiskSpace
