@@ -8,6 +8,9 @@ use qoa::runtime::quantum_state::QuantumState;
 use qoa::vectorization::*;
 use qoa::vectorization::x86_64_simd;
 
+// for distribute.rs
+use qoa::distribute::{DistributedConfig, PartitionStrategy, SparseStateVector, Complex};
+
 // --- common test helpers ---
 
 // creates an initial state vector for n qubits, with |0...0> = 1.0.
@@ -767,7 +770,7 @@ mod fallback_vectorized_tests {
         amps[3] = Complex64::new(1.0, 0.0); // set |11> to 1.0 for testing
         amps[0] = Complex64::new(0.0, 0.0); // zero out |00>
 
-        apply_cz_vectorized(&mut amps, 1, 0); // control q1, target q0
+        apply_cz_vectorized(&mut amps, 1, 0);
 
         // |00>, |01>, |10> should be unchanged (no both bits set)
         // |11> should get a phase flip
@@ -3668,5 +3671,69 @@ mod instruction_tests {
     fn test_exc_short_for_exitcode_instruction_creation() {
         let instruction = Instruction::EXC(0);
         assert!(!instruction.encode().is_empty());
+    }
+}
+
+// --- distribute.rs tests ---
+mod distribute_tests {
+    use super::*; // import everything from the parent module's scope
+    use qoa::distribute::{calculate_partitions, DistributedConfig, PartitionStrategy, SparseStateVector, Complex};
+
+    #[test]
+    fn test_partition_calculation() {
+        let config = DistributedConfig {
+            total_qubits: 10,
+            node_count: 4,
+            node_id: 0,
+            node_addresses: vec![
+                "localhost".to_string(),
+                "node1".to_string(),
+                "node2".to_string(),
+                "node3".to_string(),
+            ],
+            port: 9000,
+            use_mpi: false,
+            use_gpu: true,
+            max_memory_gb: 8.0,
+        };
+
+        let partitions = calculate_partitions(&config, PartitionStrategy::EqualSize);
+
+        assert_eq!(partitions.len(), 4);
+        assert_eq!(partitions[0].node_id, 0);
+        assert_eq!(partitions[1].node_id, 1);
+        assert_eq!(partitions[2].node_id, 2);
+        assert_eq!(partitions[3].node_id, 3);
+
+        // check that the entire state space is covered
+        assert_eq!(partitions[0].start_idx, 0);
+        assert_eq!(partitions[3].end_idx, 1 << 10);
+
+        // check that there are no gaps or overlaps
+        for i in 0..3 {
+            assert_eq!(partitions[i].end_idx, partitions[i+1].start_idx);
+        }
+    }
+
+    #[test]
+    fn test_sparse_state_vector() {
+        let mut state = SparseStateVector::new(2, 1e-10);
+
+        // apply hadamard to qubit 0
+        let h_gate = [
+            [Complex { re: 1.0/2.0_f64.sqrt(), im: 0.0 }, Complex { re: 1.0/2.0_f64.sqrt(), im: 0.0 }],
+            [Complex { re: 1.0/2.0_f64.sqrt(), im: 0.0 }, Complex { re: -1.0/2.0_f64.sqrt(), im: 0.0 }],
+        ];
+
+        state.apply_single_qubit_gate(0, h_gate);
+
+        // should have two non-zero amplitudes now
+        assert_eq!(state.sparsity(), 2);
+
+        // apply hadamard to qubit 1
+        state.apply_single_qubit_gate(1, h_gate);
+
+        // should have four non-zero amplitudes now
+        assert_eq!(state.sparsity(), 4);
     }
 }

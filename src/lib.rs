@@ -7,3 +7,4 @@
 pub mod instructions; // for instruction enum
 pub mod runtime; // for runtime
 pub mod vectorization; // for vectorization implementation
+pub mod distribute; // for distribution

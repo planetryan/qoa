@@ -2,13 +2,15 @@
 
 **THIS TODO LIST WILL DECREASE IN SIZE AS I FINISH IT**
 
-## Multi-System & Distributed Features (High Priority for Scaling Qubit Counts)
-- Add multi-GPU support for quantum state simulation (via CUDA/OpenCL/Rust-CUDA, Vulkan, etc.)
-- Add multi-threaded CPU+GPU coordination for hybrid workloads
+- add GPLv3 Intel MKL alternative backend for any ISA (ARM, RISC-V, PPC, etc.)
+- add multi-GPU support for quantum state simulation (via CUDA/OpenCL/Rust-CUDA, Vulkan, etc.)
+- add multi-threaded CPU+GPU coordination for hybrid workloads
+
 - Design and implement distributed simulation across multiple systems
   - Include state vector partitioning logic
   - Gate synchronization protocol between nodes
   - MPI or custom TCP backend for inter-node communication
+
 - Add support for frame-sliced distributed rendering in QOA visualizer
   - Assign time or frame ranges per system
   - Automate merge and encode process (e.g. ffmpeg concat, lossless)
@@ -17,6 +19,7 @@
 
 ### Quantum State Management
 - tensor network or sparse simulation for memory-limited systems
+- support DPU acceleration for node rendering in quantum graph simulations
 
 ### Testing & Validation
 - Write unit tests for all instructions and quantum operations
