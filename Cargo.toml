@@ -1,11 +1,9 @@
-# Cargo.toml
-
 cargo-features = ["profile-rustflags"]
 # ONLY IN NIGHTLY
 
 [package]
 name = "qoa"
-version = "0.3.2"
+version = "0.3.3"
 edition = "2024"
 authors = ["GitHub: @planetryan"]
 description = "The Quantum Optical Assembly Language"
@@ -19,13 +17,33 @@ num-complex = { version = "0.4", features = ["serde"] }
 rand = "0.9"
 rand_distr = "0.5"
 log = "0.4"
-env_logger = "0.11"
-image = "0.25" # for saving rendered frames
-duct = "1.0"
+env_logger = { version = "0.11", default-features = false }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+duct = { version = "1.0", default-features = false }
 hound = "3.5"
 ndarray = { version = "0.16", features = ["rayon"] }
-realfft = "3.5"
-rustfft = "6.4"
+realfft = "2.0"
+
+# Explicitly override openssl-sys to force vendored compilation
+openssl-sys = { version = "0.9.109", features = ["vendored"] }
+
+# Also ensure openssl uses vendored
+openssl = { version = "0.10.73", features = ["vendored"] }
+
+# Override specific dependencies that might be pulling in OpenSSL
+git2 = { version = "0.18", default-features = false, features = ["vendored-openssl"], optional = true }
+
+# GNU MATH LIBRARIES - Replace Intel dependencies
+fftw = { version = "0.8", optional = true }  # fftw (gpl-compatible) - replaces rustfft/realfft
+# Use pure Rust math libraries for cross-compilation compatibility
+nalgebra = { version = "0.32", features = ["rand"], optional = true }
+# Remove blas-src and lapack-src as they pull in HTTP dependencies
+# blas-src = { version = "0.10", features = ["openblas"], optional = true }
+# lapack-src = { version = "0.10", features = ["openblas"], optional = true }
+blas = { version = "0.22", optional = true } # made optional
+lapack = { version = "0.19", optional = true } # made optional
+libm = "0.2"  # standard math library replacement for svml functions
+
 rayon = "1.10"
 indicatif = { version = "0.18", features = ["rayon"] }
 rand_chacha = "0.9"
@@ -38,11 +56,11 @@ core_affinity = "0.8"
 bumpalo = { version = "3.19.0", features = ["collections"] }
 bincode = "1.3" # for inter-node communication serialization
 
-# gpu support features
+# GPU support features
 ash = { version = "0.37.0", features = ["linked"], optional = true } # for vulkan api
 cudarc = { version = "0.12", optional = true }
 opencl3 = { version = "0.9", optional = true }
-# mpi support
+# MPI support
 mpi = { version = "0.6", optional = true } # for mpi communication, optional
 
 # COMPILER OPTIMIZATIONS
@@ -53,8 +71,19 @@ memmap2 = "0.9"
 dashmap = "5.5"
 criterion = "0.5" # for benchmarking
 
+# Conditional TLS dependencies based on target architecture
+[target.'cfg(any(target_arch = "riscv64", target_arch = "powerpc64"))'.dependencies]
+# For RISC-V and PowerPC, use native-tls (OpenSSL-based)
+reqwest = { version = "0.11", default-features = false, features = ["native-tls", "json"] }
+
+[target.'cfg(not(any(target_arch = "riscv64", target_arch = "powerpc64")))'.dependencies]
+# For other architectures, use rustls-tls
+rustls = "0.21"
+rustls-webpki = "0.100"
+reqwest = { version = "0.11", default-features = false, features = ["rustls-tls", "json"] }
+
 [build-dependencies]
-# cc = "1.0"
+cc = "1.0"
 
 [profile.dev]
 opt-level = 1
@@ -98,8 +127,14 @@ criterion = "0.5" # for benchmarking
 proptest = "1.4"
 
 [features]
-default = []
-cuda = ["cudarc"]
-opencl = ["opencl3"]
-vulkan = ["ash"]
+default = ["pure-rust-math"]
+# Use pure Rust implementations for better cross-compilation support  
+pure-rust-math = ["dep:nalgebra"]
+# Advanced math with external libraries (may require system dependencies)
+gnu-math = ["dep:fftw", "dep:blas", "dep:lapack"]
+# Simplified feature set for cross-compilation (no external math libraries)
+cross-compile = []
+cuda = ["dep:cudarc"]
+opencl = ["dep:opencl3"] 
+vulkan = ["dep:ash"]
 mpi = ["dep:mpi"]

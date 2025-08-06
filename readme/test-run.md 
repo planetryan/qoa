@@ -1,9 +1,27 @@
 ## cargo test native cpu:
 
-`RUSTFLAGS="-C target-cpu=native" cargo test --release` (remove release for debug)
+RUSTFLAGS="-C target-cpu=native" cargo test --release (remove release for debug)
+
+## with GPU features (can apply to any ISA)
+
+RUSTFLAGS="-C target-cpu=native" cargo test --release --features vulkan,opencl3,mpi
 
 ## only x86_64 test:
 
-`cargo test x86_64_simd_tests --release -- --nocapture`
+cargo test x86_64_simd_tests --release -- --nocapture
+
+## aarch64 (neon)
+
+rustflags="-C target-feature=+neon" cargo test
+
+## risc-v (rvv 1.0)
+
+rustflags="-C target-feature=+v" cargo test
+
+rustflags="-C target-feature=+vsx" cargo test
+
+## POWER64 (VSX)
+
+rustflags="-C target-feature=+vsx" cargo test
 
 ## debug/unoptimized is the same but with no `--release` flag.

@@ -9,7 +9,9 @@ use qoa::vectorization::*;
 use qoa::vectorization::x86_64_simd;
 
 // for distribute.rs
-use qoa::distribute::{DistributedConfig, PartitionStrategy, SparseStateVector, Complex};
+use qoa::distribute::{DistributedConfig, PartitionStrategy, SparseStateVector}; // removed Complex
+// explicitly import Complex64 for the distribute tests where it was previously 'Complex'
+use num_complex::Complex64 as DistributeComplex64;
 
 // --- common test helpers ---
 
@@ -484,7 +486,8 @@ fn test_reset_all() {
 #[cfg(not(any(
     target_arch = "x86_64",
     all(target_arch = "aarch64", target_feature = "neon"),
-    all(target_arch = "riscv64", target_feature = "v")
+    all(target_arch = "riscv64", target_feature = "v"),
+    all(target_arch = "powerpc64", target_feature = "vsx")
 )))]
 mod fallback_vectorized_tests {
     use super::*;
@@ -1902,6 +1905,212 @@ mod riscv64_rvv_tests {
 
     #[test]
     fn test_apply_reset_all_simd_riscv64() {
+        let mut amps = vec![Complex64::new(0.5, 0.5), Complex64::new(0.0, 1.0), Complex64::new(1.0, 0.0), Complex64::new(0.2, 0.8)];
+        apply_reset_all_vectorized(&mut amps);
+        assert_complex_approx_eq(amps[0], Complex64::new(1.0, 0.0), 1e-9);
+        assert_complex_approx_eq(amps[1], Complex64::new(0.0, 0.0), 1e-9);
+        assert_complex_approx_eq(amps[2], Complex64::new(0.0, 0.0), 1e-9);
+        assert_complex_approx_eq(amps[3], Complex64::new(0.0, 0.0), 1e-9);
+    }
+}
+
+// --- powerpc64 vsx simd tests ---
+#[cfg(all(target_arch = "powerpc64", target_feature = "vsx"))]
+mod powerpc64_vsx_tests {
+    use super::*;
+    use qoa::vectorization::power_vsx; // import the specific simd module
+    use qoa::vectorization::{
+        apply_cnot_vectorized, apply_controlled_phase_rotation_vectorized,
+        apply_controlled_swap_vectorized, apply_cz_vectorized, apply_hadamard_vectorized,
+        apply_phaseshift_vectorized, apply_reset_all_vectorized, apply_reset_vectorized,
+        apply_rx_vectorized, apply_ry_vectorized, apply_rz_vectorized, apply_s_vectorized,
+        apply_swap_vectorized, apply_t_vectorized, apply_x_vectorized, apply_y_vectorized,
+        apply_z_vectorized,
+    };
+
+    #[test]
+    fn test_apply_hadamard_simd_powerpc64() {
+        let mut amps_1_qubit = initial_state(1); // |0> state
+        let norm_factor = Complex64::new(1.0 / (2.0f64).sqrt(), 0.0);
+        apply_hadamard_vectorized(&mut amps_1_qubit, norm_factor, 0);
+        assert_complex_approx_eq(amps_1_qubit[0], Complex64::new(1.0 / (2.0f64).sqrt(), 0.0), 1e-9);
+        assert_complex_approx_eq(amps_1_qubit[1], Complex64::new(1.0 / (2.0f64).sqrt(), 0.0), 1e-9);
+    }
+
+    #[test]
+    fn test_apply_x_simd_powerpc64() {
+        let mut amps_1_qubit = initial_state(1); // |0> state
+        apply_x_vectorized(&mut amps_1_qubit, 0);
+        assert_complex_approx_eq(amps_1_qubit[0], Complex64::new(0.0, 0.0), 1e-9);
+        assert_complex_approx_eq(amps_1_qubit[1], Complex64::new(1.0, 0.0), 1e-9);
+    }
+
+    #[test]
+    fn test_apply_y_simd_powerpc64() {
+        let mut amps_0 = initial_state(1);
+        apply_y_vectorized(&mut amps_0, 0);
+        assert_complex_approx_eq(amps_0[0], Complex64::new(0.0, 0.0), 1e-9);
+        assert_complex_approx_eq(amps_0[1], Complex64::new(0.0, 1.0), 1e-9);
+
+        let mut amps_1 = vec![Complex64::new(0.0, 0.0); 2];
+        amps_1[1] = Complex64::new(1.0, 0.0);
+        apply_y_vectorized(&mut amps_1, 0);
+        assert_complex_approx_eq(amps_1[0], Complex64::new(0.0, -1.0), 1e-9);
+        assert_complex_approx_eq(amps_1[1], Complex64::new(0.0, 0.0), 1e-9);
+    }
+
+    #[test]
+    fn test_apply_z_simd_powerpc64() {
+        let mut amps_1_qubit = vec![Complex64::new(0.0, 0.0); 2];
+        amps_1_qubit[1] = Complex64::new(1.0, 0.0); // |1> state
+        apply_z_vectorized(&mut amps_1_qubit, 0);
+        assert_complex_approx_eq(amps_1_qubit[0], Complex64::new(0.0, 0.0), 1e-9);
+        assert_complex_approx_eq(amps_1_qubit[1], Complex64::new(-1.0, 0.0), 1e-9);
+    }
+
+    #[test]
+    fn test_apply_t_simd_powerpc64() {
+        let mut amps = vec![Complex64::new(0.0, 0.0); 2];
+        amps[1] = Complex64::new(1.0, 0.0); // |1> state
+        let phase_factor = Complex64::new(0.0, std::f64::consts::FRAC_PI_4).exp();
+        apply_phaseshift_vectorized(&mut amps, 0, std::f64::consts::FRAC_PI_4);
+        assert_complex_approx_eq(amps[0], Complex64::new(0.0, 0.0), 1e-9);
+        assert_complex_approx_eq(amps[1], phase_factor, 1e-9);
+    }
+
+    #[test]
+    fn test_apply_s_simd_powerpc64() {
+        let mut amps = vec![Complex64::new(0.0, 0.0); 2];
+        amps[1] = Complex64::new(1.0, 0.0); // |1> state
+        let phase_factor = Complex64::new(0.0, std::f64::consts::FRAC_PI_2).exp();
+        apply_phaseshift_vectorized(&mut amps, 0, std::f64::consts::FRAC_PI_2);
+        assert_complex_approx_eq(amps[0], Complex64::new(0.0, 0.0), 1e-9);
+        assert_complex_approx_eq(amps[1], phase_factor, 1e-9);
+    }
+
+    #[test]
+    fn test_apply_phaseshift_simd_powerpc64() {
+        let mut amps = vec![Complex64::new(0.0, 0.0); 2];
+        amps[1] = Complex64::new(1.0, 0.0); // |1> state
+        let angle = std::f64::consts::PI / 3.0;
+        let expected_phase_factor = Complex64::new(0.0, angle).exp();
+        apply_phaseshift_vectorized(&mut amps, 0, angle);
+        assert_complex_approx_eq(amps[0], Complex64::new(0.0, 0.0), 1e-9);
+        assert_complex_approx_eq(amps[1], expected_phase_factor, 1e-9);
+    }
+
+    #[test]
+    fn test_apply_reset_simd_powerpc64() {
+        let mut amps = vec![Complex64::new(0.5, 0.5), Complex64::new(0.0, 1.0), Complex64::new(1.0, 0.0), Complex64::new(0.2, 0.8)];
+        let norm = ((0.5*0.5 + 0.5*0.5) + (1.0*1.0) as f64).sqrt();
+        apply_reset_vectorized(&mut amps, 0);
+        assert_complex_approx_eq(amps[0], Complex64::new(0.5, 0.5)/norm, 1e-9);
+        assert_complex_approx_eq(amps[1], Complex64::new(0.0, 0.0), 1e-9);
+        assert_complex_approx_eq(amps[2], Complex64::new(1.0, 0.0)/norm, 1e-9);
+        assert_complex_approx_eq(amps[3], Complex64::new(0.0, 0.0), 1e-9);
+    }
+
+    #[test]
+    fn test_apply_swap_simd_powerpc64() {
+        let mut amps = vec![Complex64::new(0.0, 0.0); 4];
+        amps[1] = Complex64::new(1.0, 0.0); // |01>
+        amps[2] = Complex64::new(0.5, 0.5); // |10>
+        apply_swap_vectorized(&mut amps, 0, 1);
+        assert_complex_approx_eq(amps[0], Complex64::new(0.0, 0.0), 1e-9);
+        assert_complex_approx_eq(amps[1], Complex64::new(0.5, 0.5), 1e-9);
+        assert_complex_approx_eq(amps[2], Complex64::new(1.0, 0.0), 1e-9);
+        assert_complex_approx_eq(amps[3], Complex64::new(0.0, 0.0), 1e-9);
+        // note: if this test fails, it indicates an issue in apply_swap_vectorized
+        // or its underlying simd implementation, as the expected behavior is correct.
+    }
+
+    #[test]
+    fn test_apply_controlled_swap_simd_powerpc64() {
+        let mut amps = vec![Complex64::new(0.0, 0.0); 8];
+        amps[0b101] = Complex64::new(1.0, 0.0);
+        apply_controlled_swap_vectorized(&mut amps, 2, 1, 0);
+        assert_complex_approx_eq(amps[0b101], Complex64::new(0.0, 0.0), 1e-9);
+        assert_complex_approx_eq(amps[0b110], Complex64::new(1.0, 0.0), 1e-9);
+        // note: if this test fails, it indicates an issue in apply_controlled_swap_vectorized
+        // or its underlying simd implementation, as the expected behavior is correct.
+    }
+
+    #[test]
+    fn test_apply_rx_simd_powerpc64() {
+        let mut amps = initial_state(1);
+        let angle = std::f64::consts::PI / 2.0;
+        apply_rx_vectorized(&mut amps, 0, angle);
+        let expected_val = Complex64::new(1.0 / (2.0f64).sqrt(), 0.0);
+        let expected_val_i = Complex64::new(0.0, -1.0 / (2.0f64).sqrt());
+        assert_complex_approx_eq(amps[0], expected_val, 1e-9);
+        assert_complex_approx_eq(amps[1], expected_val_i, 1e-9);
+    }
+
+    #[test]
+    fn test_apply_ry_simd_powerpc64() {
+        let mut amps = initial_state(1);
+        let angle = std::f64::consts::PI / 2.0;
+        apply_ry_vectorized(&mut amps, 0, angle);
+        let expected_val = Complex64::new(1.0 / (2.0f64).sqrt(), 0.0);
+        assert_complex_approx_eq(amps[0], expected_val, 1e-9);
+        assert_complex_approx_eq(amps[1], expected_val, 1e-9);
+    }
+
+    #[test]
+    fn test_apply_rz_simd_powerpc64() {
+        let mut amps = initial_state(1);
+        let angle = std::f64::consts::PI / 2.0;
+        let expected_0 = Complex64::new(0.0, -std::f64::consts::FRAC_PI_4).exp();
+        let _expected_1 = Complex64::new(0.0, std::f64::consts::FRAC_PI_4).exp();
+        apply_rz_vectorized(&mut amps, 0, angle);
+        assert_complex_approx_eq(amps[0], expected_0, 1e-9);
+        assert_complex_approx_eq(amps[1], Complex64::new(0.0, 0.0), 1e-9);
+    }
+
+    #[test]
+    fn test_apply_cnot_simd_powerpc64() {
+        let mut amps_00 = initial_state(2);
+        apply_cnot_vectorized(&mut amps_00, 1, 0);
+        assert_complex_approx_eq(amps_00[0], Complex64::new(1.0, 0.0), 1e-9);
+        assert_complex_approx_eq(amps_00[1], Complex64::new(0.0, 0.0), 1e-9);
+        assert_complex_approx_eq(amps_00[2], Complex64::new(0.0, 0.0), 1e-9);
+        assert_complex_approx_eq(amps_00[3], Complex64::new(0.0, 0.0), 1e-9);
+        // note: if this test fails, it indicates an issue in apply_cnot_vectorized
+        // or its underlying simd implementation, as the expected behavior is correct.
+    }
+
+    #[test]
+    fn test_apply_cz_simd_powerpc64() {
+        let mut amps = initial_state(2);
+        amps[3] = Complex64::new(1.0, 0.0);
+        amps[0] = Complex64::new(0.0, 0.0);
+        apply_cz_vectorized(&mut amps, 1, 0);
+        assert_complex_approx_eq(amps[0], Complex64::new(0.0, 0.0), 1e-9);
+        assert_complex_approx_eq(amps[1], Complex64::new(0.0, 0.0), 1e-9);
+        assert_complex_approx_eq(amps[2], Complex64::new(0.0, 0.0), 1e-9);
+        assert_complex_approx_eq(amps[3], Complex64::new(-1.0, 0.0), 1e-9);
+        // note: if this test fails, it indicates an issue in apply_cz_vectorized
+        // or its underlying simd implementation, as the expected behavior is correct.
+    }
+
+    #[test]
+    fn test_apply_controlled_phase_rotation_simd_powerpc64() {
+        let mut amps = initial_state(2);
+        amps[3] = Complex64::new(1.0, 0.0);
+        amps[0] = Complex64::new(0.0, 0.0);
+        let angle = std::f64::consts::FRAC_PI_4;
+        let expected_phase_factor = Complex64::new(0.0, angle).exp();
+        apply_controlled_phase_rotation_vectorized(&mut amps, 1, 0, angle);
+        assert_complex_approx_eq(amps[0], Complex64::new(0.0, 0.0), 1e-9);
+        assert_complex_approx_eq(amps[1], Complex64::new(0.0, 0.0), 1e-9);
+        assert_complex_approx_eq(amps[2], Complex64::new(0.0, 0.0), 1e-9);
+        assert_complex_approx_eq(amps[3], expected_phase_factor, 1e-9);
+        // note: if this test fails, it indicates an issue in apply_controlled_phase_rotation_vectorized
+        // or its underlying simd implementation, as the expected behavior is correct.
+    }
+
+    #[test]
+    fn test_apply_reset_all_simd_powerpc64() {
         let mut amps = vec![Complex64::new(0.5, 0.5), Complex64::new(0.0, 1.0), Complex64::new(1.0, 0.0), Complex64::new(0.2, 0.8)];
         apply_reset_all_vectorized(&mut amps);
         assert_complex_approx_eq(amps[0], Complex64::new(1.0, 0.0), 1e-9);
@@ -3677,7 +3886,7 @@ mod instruction_tests {
 // --- distribute.rs tests ---
 mod distribute_tests {
     use super::*; // import everything from the parent module's scope
-    use qoa::distribute::{calculate_partitions, DistributedConfig, PartitionStrategy, SparseStateVector, Complex};
+    use qoa::distribute::{calculate_partitions, DistributedConfig, PartitionStrategy, SparseStateVector};
 
     #[test]
     fn test_partition_calculation() {
@@ -3721,8 +3930,8 @@ mod distribute_tests {
 
         // apply hadamard to qubit 0
         let h_gate = [
-            [Complex { re: 1.0/2.0_f64.sqrt(), im: 0.0 }, Complex { re: 1.0/2.0_f64.sqrt(), im: 0.0 }],
-            [Complex { re: 1.0/2.0_f64.sqrt(), im: 0.0 }, Complex { re: -1.0/2.0_f64.sqrt(), im: 0.0 }],
+            [DistributeComplex64 { re: 1.0/2.0_f64.sqrt(), im: 0.0 }, DistributeComplex64 { re: 1.0/2.0_f64.sqrt(), im: 0.0 }],
+            [DistributeComplex64 { re: 1.0/2.0_f64.sqrt(), im: 0.0 }, DistributeComplex64 { re: -1.0/2.0_f64.sqrt(), im: 0.0 }],
         ];
 
         state.apply_single_qubit_gate(0, h_gate);

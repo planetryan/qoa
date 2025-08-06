@@ -1,12 +1,19 @@
 [build]
-rustflags = ["-C", "target-cpu=native"]
+# General rustflags applied to all targets unless overridden
+rustflags = [
+    # Use free software optimizations that work across architectures
+    "-C", "llvm-args=-vectorize-loops",
+    "-C", "llvm-args=-vectorize-slp", 
+    "-C", "llvm-args=-enable-gvn-hoist"
+]
 
 [profile.dev]
-rustflags = ["-C", "target-cpu=native"]
+# Development profile settings
 opt-level = 1
 debug = true
 
 [profile.release]
+# Release profile settings for optimization
 opt-level = 3
 lto = "fat"
 codegen-units = 1
@@ -14,14 +21,73 @@ panic = "abort"
 strip = true
 
 [profile.release.build-override]
+# Override settings for build dependencies in release mode
 opt-level = 3
 codegen-units = 1
 
+# Target-specific settings for x86_64 architecture
 [target.'cfg(target_arch = "x86_64")']
 rustflags = [
     "-C", "target-cpu=native",
-    "-C", "llvm-args=-vector-library=SVML",
+    # Use free software vectorization optimizations
     "-C", "llvm-args=-vectorize-loops",
     "-C", "llvm-args=-vectorize-slp",
     "-C", "llvm-args=-enable-gvn-hoist"
 ]
+
+# Cross-compilation settings for ARM64 (aarch64)
+[target.aarch64-unknown-linux-gnu]
+linker = "aarch64-linux-gnu-gcc"
+rustflags = [
+    "-C", "target-cpu=generic",  # Use generic ARM64 optimizations
+    "-C", "llvm-args=-vectorize-loops",
+    "-C", "llvm-args=-vectorize-slp",
+    # Use static linking to avoid library compatibility issues
+    "-C", "target-feature=+crt-static"
+]
+
+# Cross-compilation settings for RISC-V 64-bit
+[target.riscv64gc-unknown-linux-gnu]
+linker = "riscv64-linux-gnu-gcc"
+rustflags = [
+    "-C", "target-cpu=generic-rv64",  # Generic RISC-V 64-bit
+    "-C", "llvm-args=-vectorize-loops",
+    "-C", "llvm-args=-vectorize-slp"
+]
+
+# Cross-compilation settings for PowerPC 64-bit Little Endian
+[target.powerpc64le-unknown-linux-gnu]
+linker = "powerpc64le-linux-gnu-gcc"
+rustflags = [
+    "-C", "target-cpu=generic",  # Use generic PowerPC optimizations
+    "-C", "llvm-args=-vectorize-loops",
+    "-C", "llvm-args=-vectorize-slp"
+]
+
+# Environment variables for cross-compilation
+[env]
+# Force vendored OpenSSL for cross-compilation
+OPENSSL_STATIC = "1"
+OPENSSL_VENDORED = "1"
+PKG_CONFIG_ALLOW_CROSS = "1"
+
+# ARM64 cross-compilation environment
+CC_aarch64_unknown_linux_gnu = "aarch64-linux-gnu-gcc"
+CXX_aarch64_unknown_linux_gnu = "aarch64-linux-gnu-g++"
+AR_aarch64_unknown_linux_gnu = "aarch64-linux-gnu-ar"
+FC_aarch64_unknown_linux_gnu = "aarch64-linux-gnu-gfortran"
+
+# RISC-V cross-compilation environment  
+CC_riscv64gc_unknown_linux_gnu = "riscv64-linux-gnu-gcc"
+CXX_riscv64gc_unknown_linux_gnu = "riscv64-linux-gnu-g++"
+AR_riscv64gc_unknown_linux_gnu = "riscv64-linux-gnu-ar"
+
+# PowerPC cross-compilation environment
+CC_powerpc64le_unknown_linux_gnu = "powerpc64le-linux-gnu-gcc" 
+CXX_powerpc64le_unknown_linux_gnu = "powerpc64le-linux-gnu-g++"
+AR_powerpc64le_unknown_linux_gnu = "powerpc64le-linux-gnu-ar"
+
+# Use system math libraries instead of Intel-specific ones
+LIBM_STATIC = "true"
+# Force use of GNU toolchain components
+FORCE_GNU_TOOLCHAIN = "true"

@@ -2,11 +2,11 @@
 
 **THIS TODO LIST WILL DECREASE IN SIZE AS I FINISH IT**
 
-- add GPLv3 Intel MKL alternative backend for any ISA (ARM, RISC-V, PPC, etc.)
-- add multi-GPU support for quantum state simulation (via CUDA/OpenCL/Rust-CUDA, Vulkan, etc.)
-- add multi-threaded CPU+GPU coordination for hybrid workloads
+- Create quantum math library for all ISAS > SOME INSTRUCTIONS MISSING BUT BASICALLY DONE
+- add multi-GPU support for quantum state simulation (via CUDA/OpenCL/Rust-CUDA, Vulkan, etc.) > STARTED NOT DONE
+- add multi-threaded CPU+GPU coordination for hybrid workloads > STARTED NOT DONE
 
-- Design and implement distributed simulation across multiple systems
+- Design and implement distributed simulation across multiple systems > STARTED NOT DONE
   - Include state vector partitioning logic
   - Gate synchronization protocol between nodes
   - MPI or custom TCP backend for inter-node communication

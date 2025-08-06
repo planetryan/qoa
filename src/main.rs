@@ -1,5 +1,6 @@
 #![feature(portable_simd)]
-#![feature(stdarch_x86_mm_shuffle)]
+#![feature(stdarch_x86_mm_shuffle)] // IF NOT USING x86_64 COMMENT OUT THIS LINE, 
+// IF YOU GET COMPILING ERRORS ON x86_64 ENABLE THIS LINE!
 
 use crate::visualizer::SpectrumDirection;
 use clap::{Parser, Subcommand};
