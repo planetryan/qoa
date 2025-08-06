@@ -10,6 +10,10 @@ QOA v0.3.3 adds expanded quantum computing math support, adds helpful debugging 
 
 ## New Features
 
+### GPU support / hybrid rendering
+
+* I am working on a GPU kernel for Hybrid GPU / CPU rendering. Not ready yet unfortuately, but in development.
+
 ### Quantum Math Libraries
 
 * **Added QOA Math Modules** - Initial math libraries for quantum computing, including:
