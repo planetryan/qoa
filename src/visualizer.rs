@@ -1,4 +1,5 @@
 #[allow(unused_imports)] // for conditional imports
+
 use clap::Parser;
 use image::{ImageBuffer, ImageFormat, Rgb};
 use indicatif::{ProgressBar, ProgressStyle};
@@ -7,7 +8,7 @@ use memmap2::MmapOptions;
 use num_complex::Complex;
 use parking_lot::{Mutex, RwLock};
 use qoa::runtime::quantum_state::{NoiseConfig, QuantumState};
-use rand::{Rng, SeedableRng};
+use rand::SeedableRng; 
 use rand_chacha::ChaCha8Rng;
 use rayon::prelude::*;
 use realfft::RealFftPlanner;
@@ -95,161 +96,182 @@ mod audio_simd {
 
         // public api for sum_squares_f32, dispatches to appropriate simd or scalar fallback
         pub fn sum_squares_f32(samples: &AlignedBuffer<f32>) -> f64 {
-            if is_x86_feature_detected!("avx512f") {
-                unsafe { sum_squares_avx512(samples) }
-            } else if is_x86_feature_detected!("avx2") {
-                unsafe { sum_squares_avx2(samples) }
-            } else if is_x86_feature_detected!("sse") {
-                unsafe { sum_squares_sse(samples) }
-            } else {
-                super::scalar_fallback::sum_squares_f32(samples.as_slice())
+            // all unsafe calls are now wrapped in an unsafe block
+            unsafe {
+                if is_x86_feature_detected!("avx512f") {
+                    sum_squares_avx512(samples)
+                } else if is_x86_feature_detected!("avx2") {
+                    sum_squares_avx2(samples)
+                } else if is_x86_feature_detected!("sse") {
+                    sum_squares_sse(samples)
+                } else {
+                    super::scalar_fallback::sum_squares_f32(samples.as_slice())
+                }
             }
         }
 
         // public api for mix_stereo_to_mono_f32, dispatches to appropriate simd or scalar fallback
-        pub unsafe fn mix_stereo_to_mono_f32(samples: &[f32], output: &mut Vec<f32>) {
-            if is_x86_feature_detected!("avx512f") {
-                mix_stereo_to_mono_avx512(samples, output)
-            } else if is_x86_feature_detected!("avx2") {
-                mix_stereo_to_mono_avx2(samples, output)
-            } else if is_x86_feature_detected!("sse3") {
-                mix_stereo_to_mono_sse(samples, output)
-            } else {
-                super::scalar_fallback::mix_stereo_to_mono_f32(samples, output)
+        pub fn mix_stereo_to_mono_f32(samples: &[f32], output: &mut Vec<f32>) {
+            // all unsafe calls are now wrapped in an unsafe block
+            unsafe {
+                if is_x86_feature_detected!("avx512f") {
+                    mix_stereo_to_mono_avx512(samples, output)
+                } else if is_x86_feature_detected!("avx2") {
+                    mix_stereo_to_mono_avx2(samples, output)
+                } else if is_x86_feature_detected!("sse3") {
+                    mix_stereo_to_mono_sse(samples, output)
+                } else {
+                    super::scalar_fallback::mix_stereo_to_mono_f32(samples, output)
+                }
             }
         }
 
         // public api for calculate_spectral_centroid_f64, dispatches to appropriate simd or scalar fallback
-        #[target_feature(enable = "avx2")] // Added target_feature
-        pub unsafe fn calculate_spectral_centroid_f64( // Marked as unsafe fn
+        #[target_feature(enable = "avx2")] // added target_feature
+        pub fn calculate_spectral_centroid_f64( // marked as unsafe fn
             spectrum_mags: &[f64],
             bin_width: f64,
         ) -> (f64, f64) {
-            calculate_spectral_centroid_avx2(spectrum_mags, bin_width)
+            // all unsafe calls are now wrapped in an unsafe block
+            unsafe {
+                calculate_spectral_centroid_avx2(spectrum_mags, bin_width)
+            }
         }
 
         // calculates sum of squares for f32 samples using avx512 intrinsics
         #[target_feature(enable = "avx512f")]
         unsafe fn sum_squares_avx512(samples: &AlignedBuffer<f32>) -> f64 {
-            let samples_slice = samples.as_slice();
-            let chunks = samples_slice.chunks_exact(16);
-            let remainder = chunks.remainder();
-            let mut sum_vec = _mm512_setzero_ps();
-            for chunk in chunks {
-                // load data and perform fused multiply-add
-                let data = _mm512_loadu_ps(chunk.as_ptr());
-                sum_vec = _mm512_fmadd_ps(data, data, sum_vec);
+            unsafe { // Wrap entire function body in an unsafe block
+                let samples_slice = samples.as_slice();
+                let chunks = samples_slice.chunks_exact(16);
+                let remainder = chunks.remainder();
+                let mut sum_vec = _mm512_setzero_ps();
+                for chunk in chunks {
+                    // load data and perform fused multiply-add
+                    let data = _mm512_loadu_ps(chunk.as_ptr());
+                    sum_vec = _mm512_fmadd_ps(data, data, sum_vec);
+                }
+                // horizontal sum of the vector
+                let mut total_sum = _mm512_reduce_add_ps(sum_vec) as f64;
+                total_sum += remainder.iter().map(|&s| s as f64 * s as f64).sum::<f64>();
+                total_sum
             }
-            // horizontal sum of the vector
-            let mut total_sum = _mm512_reduce_add_ps(sum_vec) as f64;
-            total_sum += remainder.iter().map(|&s| s as f64 * s as f64).sum::<f64>();
-            total_sum
         }
 
         // calculates sum of squares for f32 samples using avx2 intrinsics
         #[target_feature(enable = "avx2", enable = "fma")]
         unsafe fn sum_squares_avx2(samples: &AlignedBuffer<f32>) -> f64 {
-            let samples_slice = samples.as_slice();
-            let chunks = samples_slice.chunks_exact(8);
-            let remainder = chunks.remainder();
-            let mut sum_vec = _mm256_setzero_ps();
-            for chunk in chunks {
-                // load data and perform fused multiply-add
-                let data = _mm256_loadu_ps(chunk.as_ptr());
-                sum_vec = _mm256_fmadd_ps(data, data, sum_vec);
+            unsafe { // Wrap entire function body in an unsafe block
+                let samples_slice = samples.as_slice();
+                let chunks = samples_slice.chunks_exact(8);
+                let remainder = chunks.remainder();
+                let mut sum_vec = _mm256_setzero_ps();
+                for chunk in chunks {
+                    // load data and perform fused multiply-add
+                    let data = _mm256_loadu_ps(chunk.as_ptr());
+                    sum_vec = _mm256_fmadd_ps(data, data, sum_vec);
+                }
+                // more efficient horizontal sum for avx2
+                let mut total_sum = horizontal_sum_ps(sum_vec) as f64;
+                total_sum += remainder.iter().map(|&s| s as f64 * s as f64).sum::<f64>();
+                total_sum
             }
-            // more efficient horizontal sum for avx2
-            let mut total_sum = horizontal_sum_ps(sum_vec) as f64;
-            total_sum += remainder.iter().map(|&s| s as f64 * s as f64).sum::<f64>();
-            total_sum
         }
 
         // calculates sum of squares for f32 samples using sse intrinsics
         #[target_feature(enable = "sse")]
         unsafe fn sum_squares_sse(samples: &AlignedBuffer<f32>) -> f64 {
-            let samples_slice = samples.as_slice();
-            let chunks = samples_slice.chunks_exact(4);
-            let remainder = chunks.remainder();
-            let mut sum_vec = _mm_setzero_ps();
-            for chunk in chunks {
-                // load data and perform multiply-add
-                let data = _mm_loadu_ps(chunk.as_ptr());
-                sum_vec = _mm_add_ps(sum_vec, _mm_mul_ps(data, data));
+            unsafe { // Wrap entire function body in an unsafe block
+                let samples_slice = samples.as_slice();
+                let chunks = samples_slice.chunks_exact(4);
+                let remainder = chunks.remainder();
+                let mut sum_vec = _mm_setzero_ps();
+                for chunk in chunks {
+                    // load data and perform multiply-add
+                    let data = _mm_loadu_ps(chunk.as_ptr());
+                    sum_vec = _mm_add_ps(sum_vec, _mm_mul_ps(data, data));
+                }
+                // horizontal sum using sse instructions
+                let mut total_sum = {
+                    let shuf = _mm_shuffle_ps(sum_vec, sum_vec, _MM_SHUFFLE(2, 3, 0, 1));
+                    let sums = _mm_add_ps(sum_vec, shuf);
+                    let shuf = _mm_movehl_ps(sums, sums);
+                    let sums = _mm_add_ss(sums, shuf);
+                    _mm_cvtss_f32(sums)
+                } as f64;
+                total_sum += remainder.iter().map(|&s| s as f64 * s as f64).sum::<f64>();
+                total_sum
             }
-            // horizontal sum using sse instructions
-            let mut total_sum = {
-                let shuf = _mm_shuffle_ps(sum_vec, sum_vec, _MM_SHUFFLE(2, 3, 0, 1));
-                let sums = _mm_add_ps(sum_vec, shuf);
-                let shuf = _mm_movehl_ps(sums, sums);
-                let sums = _mm_add_ss(sums, shuf);
-                _mm_cvtss_f32(sums)
-            } as f64;
-            total_sum += remainder.iter().map(|&s| s as f64 * s as f64).sum::<f64>();
-            total_sum
         }
 
         // mixes stereo f32 samples to mono using avx512 intrinsics
         #[target_feature(enable = "avx512f")]
         unsafe fn mix_stereo_to_mono_avx512(samples: &[f32], output: &mut Vec<f32>) {
-            let chunks = samples.chunks_exact(32); // 16 stereo pairs
-            let remainder = chunks.remainder();
-            output.reserve(samples.len() / 2);
-            let mut buffer = [0.0f32; 16];
-            let half_vec = _mm512_set1_ps(0.5);
-            for chunk in chunks {
-                // de-interleave using shuffles
-                let data = _mm512_loadu_ps(chunk.as_ptr());
-                let lefts = _mm512_shuffle_ps(data, data, 0b10_00_10_00);
-                let rights = _mm512_shuffle_ps(data, data, 0b11_01_11_01);
-                let sums = _mm512_add_ps(lefts, rights);
-                let avgs = _mm512_mul_ps(sums, half_vec);
-                _mm512_storeu_ps(buffer.as_mut_ptr(), avgs);
-                output.extend_from_slice(&buffer);
-            }
-            for pair in remainder.chunks_exact(2) {
-                output.push((pair[0] + pair[1]) * 0.5);
+            unsafe { // Wrap entire function body in an unsafe block
+                let chunks = samples.chunks_exact(32); // 16 stereo pairs
+                let remainder = chunks.remainder();
+                output.reserve(samples.len() / 2);
+                let mut buffer = [0.0f32; 16];
+                let half_vec = _mm512_set1_ps(0.5);
+                for chunk in chunks {
+                    // de-interleave using shuffles
+                    let data = _mm512_loadu_ps(chunk.as_ptr());
+                    let lefts = _mm512_shuffle_ps(data, data, 0b10_00_10_00);
+                    let rights = _mm512_shuffle_ps(data, data, 0b11_01_11_01);
+                    let sums = _mm512_add_ps(lefts, rights);
+                    let avgs = _mm512_mul_ps(sums, half_vec);
+                    _mm512_storeu_ps(buffer.as_mut_ptr(), avgs);
+                    output.extend_from_slice(&buffer);
+                }
+                for pair in remainder.chunks_exact(2) {
+                    output.push((pair[0] + pair[1]) * 0.5);
+                }
             }
         }
 
         // mixes stereo f32 samples to mono using avx2 intrinsics
         #[target_feature(enable = "avx2")]
         unsafe fn mix_stereo_to_mono_avx2(samples: &[f32], output: &mut Vec<f32>) {
-            let chunks = samples.chunks_exact(16); // 8 stereo pairs
-            let remainder = chunks.remainder();
-            let half_vec = _mm256_set1_ps(0.5);
-            output.reserve(samples.len() / 2);
-            let mut buffer = [0.0f32; 8];
-            for chunk in chunks {
-                let left = _mm256_loadu_ps(chunk.as_ptr());
-                let right = _mm256_loadu_ps(chunk.as_ptr().add(8));
-                let sums = _mm256_hadd_ps(left, right);
-                let avgs = _mm256_mul_ps(sums, half_vec);
-                _mm256_storeu_ps(buffer.as_mut_ptr(), avgs);
-                output.extend_from_slice(&buffer);
-            }
-            for pair in remainder.chunks_exact(2) {
-                output.push((pair[0] + pair[1]) * 0.5);
+            unsafe { // Wrap entire function body in an unsafe block
+                let chunks = samples.chunks_exact(16); // 8 stereo pairs
+                let remainder = chunks.remainder();
+                let half_vec = _mm256_set1_ps(0.5);
+                output.reserve(samples.len() / 2);
+                let mut buffer = [0.0f32; 8];
+                for chunk in chunks {
+                    let left = _mm256_loadu_ps(chunk.as_ptr());
+                    let right = _mm256_loadu_ps(chunk.as_ptr().add(8));
+                    let sums = _mm256_hadd_ps(left, right);
+                    let avgs = _mm256_mul_ps(sums, half_vec);
+                    _mm256_storeu_ps(buffer.as_mut_ptr(), avgs);
+                    output.extend_from_slice(&buffer);
+                }
+                for pair in remainder.chunks_exact(2) {
+                    output.push((pair[0] + pair[1]) * 0.5);
+                }
             }
         }
 
         // mixes stereo f32 samples to mono using sse3 intrinsics
         #[target_feature(enable = "sse3")]
         unsafe fn mix_stereo_to_mono_sse(samples: &[f32], output: &mut Vec<f32>) {
-            let chunks = samples.chunks_exact(8); // 4 stereo pairs
-            let remainder = chunks.remainder();
-            let half_vec = _mm_set1_ps(0.5);
-            output.reserve(samples.len() / 2);
-            let mut buffer = [0.0f32; 4];
-            for chunk in chunks {
-                let left = _mm_loadu_ps(chunk.as_ptr());
-                let right = _mm_loadu_ps(chunk.as_ptr().add(4));
-                let sums = _mm_hadd_ps(left, right);
-                let avgs = _mm_mul_ps(sums, half_vec);
-                _mm_storeu_ps(buffer.as_mut_ptr(), avgs);
-                output.extend_from_slice(&buffer);
-            }
-            for pair in remainder.chunks_exact(2) {
-                output.push((pair[0] + pair[1]) * 0.5);
+            unsafe { // Wrap entire function body in an unsafe block
+                let chunks = samples.chunks_exact(8); // 4 stereo pairs
+                let remainder = chunks.remainder();
+                let half_vec = _mm_set1_ps(0.5);
+                output.reserve(samples.len() / 2);
+                let mut buffer = [0.0f32; 4];
+                for chunk in chunks {
+                    let left = _mm_loadu_ps(chunk.as_ptr());
+                    let right = _mm_loadu_ps(chunk.as_ptr().add(4));
+                    let sums = _mm_hadd_ps(left, right);
+                    let avgs = _mm_mul_ps(sums, half_vec);
+                    _mm_storeu_ps(buffer.as_mut_ptr(), avgs);
+                    output.extend_from_slice(&buffer);
+                }
+                for pair in remainder.chunks_exact(2) {
+                    output.push((pair[0] + pair[1]) * 0.5);
+                }
             }
         }
 
@@ -259,40 +281,42 @@ mod audio_simd {
             spectrum_mags: &[f64],
             bin_width: f64,
         ) -> (f64, f64) {
-            let chunks = spectrum_mags.chunks_exact(4);
-            let chunks_len = chunks.len();
-            let remainder = chunks.remainder();
+            unsafe { // Wrap entire function body in an unsafe block
+                let chunks = spectrum_mags.chunks_exact(4);
+                let chunks_len = chunks.len();
+                let remainder = chunks.remainder();
 
-            let mut sum_weighted_freq_vec = _mm256_setzero_pd();
-            let mut sum_magnitudes_vec = _mm256_setzero_pd();
+                let mut sum_weighted_freq_vec = _mm256_setzero_pd();
+                let mut sum_magnitudes_vec = _mm256_setzero_pd();
 
-            let bin_width_vec = _mm256_set1_pd(bin_width);
+                let bin_width_vec = _mm256_set1_pd(bin_width);
 
-            for (i, chunk) in chunks.enumerate() {
-                let magnitudes = _mm256_loadu_pd(chunk.as_ptr());
-                let freqs_base = _mm256_set1_pd((i * 4) as f64);
-                let freqs_offset = _mm256_set_pd(3.0, 2.0, 1.0, 0.0); // reversed for correct order
-                let freqs = _mm256_mul_pd(_mm256_add_pd(freqs_base, freqs_offset), bin_width_vec);
+                for (i, chunk) in chunks.enumerate() {
+                    let magnitudes = _mm256_loadu_pd(chunk.as_ptr());
+                    let freqs_base = _mm256_set1_pd((i * 4) as f64);
+                    let freqs_offset = _mm256_set_pd(3.0, 2.0, 1.0, 0.0); // reversed for correct order
+                    let freqs = _mm256_mul_pd(_mm256_add_pd(freqs_base, freqs_offset), bin_width_vec);
 
-                let weighted = _mm256_mul_pd(freqs, magnitudes);
+                    let weighted = _mm256_mul_pd(freqs, magnitudes);
 
-                sum_weighted_freq_vec = _mm256_add_pd(sum_weighted_freq_vec, weighted);
-                sum_magnitudes_vec = _mm256_add_pd(sum_magnitudes_vec, magnitudes);
+                    sum_weighted_freq_vec = _mm256_add_pd(sum_weighted_freq_vec, weighted);
+                    sum_magnitudes_vec = _mm256_add_pd(sum_magnitudes_vec, magnitudes);
+                }
+
+                // more efficient horizontal sum for f64
+                let mut total_sum_weighted_freq = horizontal_sum_pd(sum_weighted_freq_vec);
+                let mut total_sum_magnitudes = horizontal_sum_pd(sum_magnitudes_vec);
+
+                // process remainder
+                // use the original `chunks` variable for `chunks_len` to avoid borrow issues
+                for (i, &mag) in remainder.iter().enumerate() {
+                    let current_idx = chunks_len * 4 + i;
+                    total_sum_weighted_freq += current_idx as f64 * bin_width * mag;
+                    total_sum_magnitudes += mag;
+                }
+
+                (total_sum_weighted_freq, total_sum_magnitudes)
             }
-
-            // more efficient horizontal sum for f64
-            let mut total_sum_weighted_freq = horizontal_sum_pd(sum_weighted_freq_vec);
-            let mut total_sum_magnitudes = horizontal_sum_pd(sum_magnitudes_vec);
-
-            // process remainder
-            // use the original `chunks` variable for `chunks_len` to avoid borrow issues
-            for (i, &mag) in remainder.iter().enumerate() {
-                let current_idx = chunks_len * 4 + i;
-                total_sum_weighted_freq += current_idx as f64 * bin_width * mag;
-                total_sum_magnitudes += mag;
-            }
-
-            (total_sum_weighted_freq, total_sum_magnitudes)
         }
 
         // calculates band energy for f64 magnitudes using avx2 intrinsics
@@ -303,40 +327,42 @@ mod audio_simd {
             low_hz: f64,
             high_hz: f64,
         ) -> f64 {
-            if spectrum_mags.is_empty() || sample_rate == 0 || low_hz >= high_hz {
-                return 0.0; // early return for invalid inputs
+            unsafe { // Wrap entire function body in an unsafe block
+                if spectrum_mags.is_empty() || sample_rate == 0 || low_hz >= high_hz {
+                    return 0.0; // early return for invalid inputs
+                }
+
+                let nyquist_freq = sample_rate as f64 / 2.0;
+                let bin_width = nyquist_freq / spectrum_mags.len() as f64;
+
+                let start_bin = (low_hz / bin_width).floor().max(0.0) as usize;
+                let end_bin = (high_hz / bin_width).ceil() as usize;
+
+                if end_bin <= start_bin || start_bin >= spectrum_mags.len() {
+                    return 0.0;
+                }
+
+                let end_bin = end_bin.min(spectrum_mags.len() - 1);
+                let slice = &spectrum_mags[start_bin..=end_bin];
+
+                let chunks = slice.chunks_exact(4);
+                let remainder = chunks.remainder();
+
+                let mut sum_vec = _mm256_setzero_pd();
+
+                for chunk in chunks {
+                    let mag_vec = _mm256_loadu_pd(chunk.as_ptr());
+                    sum_vec = _mm256_fmadd_pd(mag_vec, mag_vec, sum_vec);
+                }
+
+                // horizontal sum
+                let result = horizontal_sum_pd(sum_vec);
+
+                // add remainder
+                let remainder_sum = remainder.iter().map(|&mag| mag * mag).sum::<f64>();
+
+                result + remainder_sum
             }
-
-            let nyquist_freq = sample_rate as f64 / 2.0;
-            let bin_width = nyquist_freq / spectrum_mags.len() as f64;
-
-            let start_bin = (low_hz / bin_width).floor().max(0.0) as usize;
-            let end_bin = (high_hz / bin_width).ceil() as usize;
-
-            if end_bin <= start_bin || start_bin >= spectrum_mags.len() {
-                return 0.0;
-            }
-
-            let end_bin = end_bin.min(spectrum_mags.len() - 1);
-            let slice = &spectrum_mags[start_bin..=end_bin];
-
-            let chunks = slice.chunks_exact(4);
-            let remainder = chunks.remainder();
-
-            let mut sum_vec = _mm256_setzero_pd();
-
-            for chunk in chunks {
-                let mag_vec = _mm256_loadu_pd(chunk.as_ptr());
-                sum_vec = _mm256_fmadd_pd(mag_vec, mag_vec, sum_vec);
-            }
-
-            // horizontal sum
-            let result = horizontal_sum_pd(sum_vec);
-
-            // add remainder
-            let remainder_sum = remainder.iter().map(|&mag| mag * mag).sum::<f64>();
-
-            result + remainder_sum
         }
 
         // performs a horizontal sum of a __m256d vector (4 f64 elements)
@@ -371,126 +397,138 @@ mod audio_simd {
 
         // public api for sum_squares_f32, dispatches to appropriate simd or scalar fallback
         #[target_feature(enable = "neon")]
-        pub unsafe fn sum_squares_f32(samples: &AlignedBuffer<f32>) -> f64 {
-            let samples_slice = samples.as_slice();
-            let chunks = samples_slice.chunks_exact(4);
-            let remainder = chunks.remainder();
-            let mut sum_vec = vdupq_n_f32(0.0);
-            for chunk in chunks {
-                // load data and perform fused multiply-accumulate
-                sum_vec = vfmaq_f32(sum_vec, unsafe { vld1q_f32(chunk.as_ptr()) }, unsafe { vld1q_f32(chunk.as_ptr()) });
+        pub fn sum_squares_f32(samples: &AlignedBuffer<f32>) -> f64 {
+            // all unsafe calls are now wrapped in an unsafe block
+            unsafe {
+                let samples_slice = samples.as_slice();
+                let chunks = samples_slice.chunks_exact(4);
+                let remainder = chunks.remainder();
+                let mut sum_vec = vdupq_n_f32(0.0);
+                for chunk in chunks {
+                    // load data and perform fused multiply-accumulate
+                    sum_vec = vfmaq_f32(sum_vec, vld1q_f32(chunk.as_ptr()), vld1q_f32(chunk.as_ptr()));
+                }
+                // horizontal add
+                let mut total_sum = vaddvq_f32(sum_vec) as f64;
+                total_sum += remainder.iter().map(|&s| s as f64 * s as f64).sum::<f64>();
+                total_sum
             }
-            // horizontal add
-            let mut total_sum = vaddvq_f32(sum_vec) as f64;
-            total_sum += remainder.iter().map(|&s| s as f64 * s as f64).sum::<f64>();
-            total_sum
         }
 
         // public api for mix_stereo_to_mono_f32, dispatches to appropriate simd or scalar fallback
         #[target_feature(enable = "neon")]
-        pub unsafe fn mix_stereo_to_mono_f32(samples: &[f32], output: &mut Vec<f32>) {
-            let chunks = samples.chunks_exact(8); // 4 stereo pairs
-            let remainder = chunks.remainder();
-            output.reserve(samples.len() / 2);
-            for chunk in chunks {
-                let stereo_pairs = unsafe { vld2q_f32(chunk.as_ptr()) }; // de-interleaves into two vectors
-                let sum_vec = vaddq_f32(stereo_pairs.0, stereo_pairs.1);
-                let avg_vec = vmulq_n_f32(sum_vec, 0.5);
-                let mut buffer = [0.0f32; 4];
-                unsafe { vst1q_f32(buffer.as_mut_ptr(), avg_vec) };
-                output.extend_from_slice(&buffer);
-            }
-            for pair in remainder.chunks_exact(2) {
-                output.push((pair[0] + pair[1]) * 0.5);
+        pub fn mix_stereo_to_mono_f32(samples: &[f32], output: &mut Vec<f32>) {
+            // all unsafe calls are now wrapped in an unsafe block
+            unsafe {
+                let chunks = samples.chunks_exact(8); // 4 stereo pairs
+                let remainder = chunks.remainder();
+                output.reserve(samples.len() / 2);
+                for chunk in chunks {
+                    let stereo_pairs = vld2q_f32(chunk.as_ptr()); // de-interleaves into two vectors
+                    let sum_vec = vaddq_f32(stereo_pairs.0, stereo_pairs.1);
+                    let avg_vec = vmulq_n_f32(sum_vec, 0.5);
+                    let mut buffer = [0.0f32; 4];
+                    vst1q_f32(buffer.as_mut_ptr(), avg_vec);
+                    output.extend_from_slice(&buffer);
+                }
+                for pair in remainder.chunks_exact(2) {
+                    output.push((pair[0] + pair[1]) * 0.5);
+                }
             }
         }
 
         // public api for calculate_spectral_centroid_f64, dispatches to appropriate simd or scalar fallback
-        #[target_feature(enable = "neon")] // Added target_feature
-        pub unsafe fn calculate_spectral_centroid_f64( // Marked as unsafe fn
+        #[target_feature(enable = "neon")] // added target_feature
+        pub fn calculate_spectral_centroid_f64( // marked as unsafe fn
             spectrum_mags: &[f64],
             bin_width: f64,
         ) -> (f64, f64) {
-            let chunks = spectrum_mags.chunks_exact(2); // neon for f64 typically uses 2 elements
-            let remainder = chunks.remainder();
+            // all unsafe calls are now wrapped in an unsafe block
+            unsafe {
+                let chunks = spectrum_mags.chunks_exact(2); // neon for f64 typically uses 2 elements
+                let remainder = chunks.remainder();
 
-            let mut sum_weighted_freq_vec = vdupq_n_f64(0.0);
-            let mut sum_magnitudes_vec = vdupq_n_f64(0.0);
+                let mut sum_weighted_freq_vec = vdupq_n_f64(0.0);
+                let mut sum_magnitudes_vec = vdupq_n_f64(0.0);
 
-            let bin_width_vec = vdupq_n_f64(bin_width);
+                let bin_width_vec = vdupq_n_f64(bin_width);
 
-            // Capture chunks length before it's consumed by `into_iter().enumerate()`
-            let initial_chunks_len = chunks.len();
+                // capture chunks length before it's consumed by `into_iter().enumerate()`
+                let initial_chunks_len = chunks.len();
 
-            for (i, chunk) in chunks.clone().enumerate() { // Clone chunks to allow subsequent use
-                let magnitudes = unsafe { vld1q_f64(chunk.as_ptr()) };
-                let freqs_base = vdupq_n_f64((i * 2) as f64);
-                let freqs_offset = vsetq_lane_f64(1.0, vdupq_n_f64(0.0), 0);
-                let freqs_offset = vsetq_lane_f64(0.0, freqs_offset, 1); // 0.0, 1.0
+                for (i, chunk) in chunks.clone().enumerate() { // clone chunks to allow subsequent use
+                    let magnitudes = vld1q_f64(chunk.as_ptr());
+                    let freqs_base = vdupq_n_f64((i * 2) as f64);
+                    let freqs_offset = vsetq_lane_f64(1.0, vdupq_n_f64(0.0), 0);
+                    let freqs_offset = vsetq_lane_f64(0.0, freqs_offset, 1); // 0.0, 1.0
 
-                let freqs = vmulq_f64(vaddq_f64(freqs_base, freqs_offset), bin_width_vec);
+                    let freqs = vmulq_f64(vaddq_f64(freqs_base, freqs_offset), bin_width_vec);
 
-                let weighted = vmulq_f64(freqs, magnitudes);
+                    let weighted = vmulq_f64(freqs, magnitudes);
 
-                sum_weighted_freq_vec = vaddq_f64(sum_weighted_freq_vec, weighted);
-                sum_magnitudes_vec = vaddq_f64(sum_magnitudes_vec, magnitudes);
+                    sum_weighted_freq_vec = vaddq_f64(sum_weighted_freq_vec, weighted);
+                    sum_magnitudes_vec = vaddq_f64(sum_magnitudes_vec, magnitudes);
+                }
+
+                let mut total_sum_weighted_freq = vaddvq_f64(sum_weighted_freq_vec);
+                let mut total_sum_magnitudes = vaddvq_f64(sum_magnitudes_vec);
+
+                // process remainder
+                for (i, &mag) in remainder.iter().enumerate() {
+                    let current_idx = initial_chunks_len * 2 + i; // use initial_chunks_len
+                    total_sum_weighted_freq += current_idx as f64 * bin_width * mag;
+                    total_sum_magnitudes += mag;
+                }
+
+                (total_sum_weighted_freq, total_sum_magnitudes)
             }
-
-            let mut total_sum_weighted_freq = vaddvq_f64(sum_weighted_freq_vec);
-            let mut total_sum_magnitudes = vaddvq_f64(sum_magnitudes_vec);
-
-            // process remainder
-            for (i, &mag) in remainder.iter().enumerate() {
-                let current_idx = initial_chunks_len * 2 + i; // Use initial_chunks_len
-                total_sum_weighted_freq += current_idx as f64 * bin_width * mag;
-                total_sum_magnitudes += mag;
-            }
-
-            (total_sum_weighted_freq, total_sum_magnitudes)
         }
 
         // calculates band energy for f64 magnitudes using NEON intrinsics
-        #[target_feature(enable = "neon")] // Added target_feature
-        pub unsafe fn calculate_band_energy_simd(
+        #[target_feature(enable = "neon")] // added target_feature
+        pub fn calculate_band_energy_simd(
             spectrum_mags: &[f64],
             sample_rate: u32,
             low_hz: f64,
             high_hz: f64,
         ) -> f64 {
-            if spectrum_mags.is_empty() || sample_rate == 0 || low_hz >= high_hz {
-                return 0.0; // early return for invalid inputs
+            // all unsafe calls are now wrapped in an unsafe block
+            unsafe {
+                if spectrum_mags.is_empty() || sample_rate == 0 || low_hz >= high_hz {
+                    return 0.0; // early return for invalid inputs
+                }
+
+                let nyquist_freq = sample_rate as f64 / 2.0;
+                let bin_width = nyquist_freq / spectrum_mags.len() as f64;
+
+                let start_bin = (low_hz / bin_width).floor().max(0.0) as usize;
+                let end_bin = (high_hz / bin_width).ceil() as usize;
+
+                if end_bin <= start_bin || start_bin >= spectrum_mags.len() {
+                    return 0.0;
+                }
+
+                let end_bin = end_bin.min(spectrum_mags.len() - 1);
+                let slice = &spectrum_mags[start_bin..=end_bin];
+
+                let chunks = slice.chunks_exact(2);
+                let remainder = chunks.remainder();
+
+                let mut sum_vec = vdupq_n_f64(0.0);
+
+                for chunk in chunks {
+                    let mag_vec = vld1q_f64(chunk.as_ptr());
+                    sum_vec = vfmaq_f64(sum_vec, mag_vec, mag_vec);
+                }
+
+                // horizontal sum
+                let result = vaddvq_f64(sum_vec);
+
+                // add remainder
+                let remainder_sum = remainder.iter().map(|&mag| mag * mag).sum::<f64>();
+
+                result + remainder_sum
             }
-
-            let nyquist_freq = sample_rate as f64 / 2.0;
-            let bin_width = nyquist_freq / spectrum_mags.len() as f64;
-
-            let start_bin = (low_hz / bin_width).floor().max(0.0) as usize;
-            let end_bin = (high_hz / bin_width).ceil() as usize;
-
-            if end_bin <= start_bin || start_bin >= spectrum_mags.len() {
-                return 0.0;
-            }
-
-            let end_bin = end_bin.min(spectrum_mags.len() - 1);
-            let slice = &spectrum_mags[start_bin..=end_bin];
-
-            let chunks = slice.chunks_exact(2);
-            let remainder = chunks.remainder();
-
-            let mut sum_vec = vdupq_n_f64(0.0);
-
-            for chunk in chunks {
-                let mag_vec = unsafe { vld1q_f64(chunk.as_ptr()) };
-                sum_vec = vfmaq_f64(sum_vec, mag_vec, mag_vec);
-            }
-
-            // horizontal sum
-            let result = vaddvq_f64(sum_vec);
-
-            // add remainder
-            let remainder_sum = remainder.iter().map(|&mag| mag * mag).sum::<f64>();
-
-            result + remainder_sum
         }
     }
 
@@ -502,128 +540,140 @@ mod audio_simd {
 
         // public api for sum_squares_f32, dispatches to appropriate simd or scalar fallback
         #[target_feature(enable = "v")]
-        pub unsafe fn sum_squares_f32(samples: &AlignedBuffer<f32>) -> f64 {
-            let mut remaining_samples = samples.as_slice();
-            let mut total_sum: f64 = 0.0;
-            let acc_vec = unsafe { vfmv_s_f_f32m1(vfmv_v_f_f32m1(0.0, 1), 1) };
+        pub fn sum_squares_f32(samples: &AlignedBuffer<f32>) -> f64 {
+            // all unsafe calls are now wrapped in an unsafe block
+            unsafe {
+                let mut remaining_samples = samples.as_slice();
+                let mut total_sum: f64 = 0.0;
+                let acc_vec = vfmv_s_f_f32m1(vfmv_v_f_f32m1(0.0, 1), 1);
 
-            while !remaining_samples.is_empty() {
-                let vl = unsafe { vsetvl_e32m1(remaining_samples.len()) };
-                let data_vec = unsafe { vle32_v_f32m1(remaining_samples.as_ptr(), vl) };
-                let squared = unsafe { vfmul_vv_f32m1(data_vec, data_vec, vl) };
-                let acc_vec = unsafe { vfredusum_vs_f32m1(squared, acc_vec, vl) };
-                remaining_samples = &remaining_samples[vl..];
+                while !remaining_samples.is_empty() {
+                    let vl = vsetvl_e32m1(remaining_samples.len());
+                    let data_vec = vle32_v_f32m1(remaining_samples.as_ptr(), vl);
+                    let squared = vfmul_vv_f32m1(data_vec, data_vec, vl);
+                    let acc_vec = vfredusum_vs_f32m1(squared, acc_vec, vl);
+                    remaining_samples = &remaining_samples[vl..];
+                }
+                total_sum += vfmv_f_s_f32m1_f32(acc_vec) as f64;
+                total_sum
             }
-            total_sum += unsafe { vfmv_f_s_f32m1_f32(acc_vec) } as f64;
-            total_sum
         }
 
         // public api for mix_stereo_to_mono_f32, dispatches to appropriate simd or scalar fallback
         #[target_feature(enable = "v")]
-        pub unsafe fn mix_stereo_to_mono_f32(samples: &[f32], output: &mut Vec<f32>) {
-            output.resize(samples.len() / 2, 0.0);
-            let mut remaining_samples = samples;
-            let mut out_ptr = output.as_mut_ptr();
+        pub fn mix_stereo_to_mono_f32(samples: &[f32], output: &mut Vec<f32>) {
+            // all unsafe calls are now wrapped in an unsafe block
+            unsafe {
+                output.resize(samples.len() / 2, 0.0);
+                let mut remaining_samples = samples;
+                let mut out_ptr = output.as_mut_ptr();
 
-            while !remaining_samples.is_empty() {
-                let pairs_to_process = remaining_samples.len() / 2;
-                if pairs_to_process == 0 {
-                    break;
+                while !remaining_samples.is_empty() {
+                    let pairs_to_process = remaining_samples.len() / 2;
+                    if pairs_to_process == 0 {
+                        break;
+                    }
+                    let vl = vsetvl_e32m1(pairs_to_process);
+
+                    let left = vlse32_v_f32m1(
+                        remaining_samples.as_ptr(),
+                        (std::mem::size_of::<f32>() * 2) as isize,
+                        vl,
+                    );
+                    let right = vlse32_v_f32m1(
+                        remaining_samples.as_ptr().add(1),
+                        (std::mem::size_of::<f32>() * 2) as isize,
+                        vl,
+                    );
+
+                    let sum_vec = vfadd_vv_f32m1(left, right, vl);
+                    let avg_vec = vfmul_vf_f32m1(sum_vec, 0.5, vl);
+
+                    vse32_v_f32m1(out_ptr, avg_vec, vl);
+
+                    remaining_samples = &remaining_samples[vl * 2..];
+                    out_ptr = out_ptr.add(vl);
                 }
-                let vl = unsafe { vsetvl_e32m1(pairs_to_process) };
-
-                let left = unsafe { vlse32_v_f32m1(
-                    remaining_samples.as_ptr(),
-                    (std::mem::size_of::<f32>() * 2) as isize,
-                    vl,
-                ) };
-                let right = unsafe { vlse32_v_f32m1(
-                    remaining_samples.as_ptr().add(1),
-                    (std::mem::size_of::<f32>() * 2) as isize,
-                    vl,
-                ) };
-
-                let sum_vec = unsafe { vfadd_vv_f32m1(left, right, vl) };
-                let avg_vec = unsafe { vfmul_vf_f32m1(sum_vec, 0.5, vl) };
-
-                unsafe { vse32_v_f32m1(out_ptr, avg_vec, vl) };
-
-                remaining_samples = &remaining_samples[vl * 2..];
-                out_ptr = unsafe { out_ptr.add(vl) };
             }
         }
 
         // public api for calculate_spectral_centroid_f64, dispatches to appropriate simd or scalar fallback
-        #[target_feature(enable = "v")] // Added target_feature
-        pub unsafe fn calculate_spectral_centroid_f64( // Marked as unsafe fn
+        #[target_feature(enable = "v")] // added target_feature
+        pub fn calculate_spectral_centroid_f64( // marked as unsafe fn
             spectrum_mags: &[f64],
             bin_width: f64,
         ) -> (f64, f64) {
-            let mut remaining_mags = spectrum_mags;
-            let mut total_sum_weighted_freq: f64 = 0.0;
-            let mut total_sum_magnitudes: f64 = 0.0;
-            let mut current_idx_base = 0;
+            // all unsafe calls are now wrapped in an unsafe block
+            unsafe {
+                let mut remaining_mags = spectrum_mags;
+                let mut total_sum_weighted_freq: f64 = 0.0;
+                let mut total_sum_magnitudes: f64 = 0.0;
+                let mut current_idx_base = 0;
 
-            while !remaining_mags.is_empty() {
-                let vl = unsafe { vsetvl_e64m1(remaining_mags.len()) };
-                let mags_vec = unsafe { vle64_v_f64m1(remaining_mags.as_ptr(), vl) };
+                while !remaining_mags.is_empty() {
+                    let vl = vsetvl_e64m1(remaining_mags.len());
+                    let mags_vec = vle64_v_f64m1(remaining_mags.as_ptr(), vl);
 
-                // generate frequency indices
-                let mut freqs_indices_vec = unsafe { vfmv_v_f_f64m1(0.0, vl) };
-                for i in 0..vl {
-                    freqs_indices_vec = unsafe { vset_v_f64m1(freqs_indices_vec, i, (current_idx_base + i) as f64) };
+                    // generate frequency indices
+                    let mut freqs_indices_vec = vfmv_v_f_f64m1(0.0, vl);
+                    for i in 0..vl {
+                        freqs_indices_vec = vset_v_f64m1(freqs_indices_vec, i, (current_idx_base + i) as f64);
+                    }
+
+                    let freqs_vec = vfmul_vf_f64m1(freqs_indices_vec, bin_width, vl);
+                    let weighted_vec = vfmul_vv_f64m1(freqs_vec, mags_vec, vl);
+
+                    total_sum_weighted_freq += vfmv_f_s_f64m1_f64(vfredusum_vs_f64m1(weighted_vec, vfmv_v_f_f64m1(0.0, vl), vl));
+                    total_sum_magnitudes += vfmv_f_s_f64m1_f64(vfredusum_vs_f64m1(mags_vec, vfmv_v_f_f64m1(0.0, vl), vl));
+
+                    remaining_mags = &remaining_mags[vl..];
+                    current_idx_base += vl;
                 }
-
-                let freqs_vec = unsafe { vfmul_vf_f64m1(freqs_indices_vec, bin_width, vl) };
-                let weighted_vec = unsafe { vfmul_vv_f64m1(freqs_vec, mags_vec, vl) };
-
-                total_sum_weighted_freq += unsafe { vfmv_f_s_f64m1_f64(vfredusum_vs_f64m1(weighted_vec, vfmv_v_f_f64m1(0.0, vl), vl)) };
-                total_sum_magnitudes += unsafe { vfmv_f_s_f64m1_f64(vfredusum_vs_f64m1(mags_vec, vfmv_v_f_f64m1(0.0, vl), vl)) };
-
-                remaining_mags = &remaining_mags[vl..];
-                current_idx_base += vl;
+                (total_sum_weighted_freq, total_sum_magnitudes)
             }
-            (total_sum_weighted_freq, total_sum_magnitudes)
         }
 
         // calculates band energy for f64 magnitudes using RISC-V V intrinsics
-        #[target_feature(enable = "v")] // Added target_feature
-        pub unsafe fn calculate_band_energy_simd(
+        #[target_feature(enable = "v")] // added target_feature
+        pub fn calculate_band_energy_simd(
             spectrum_mags: &[f64],
             sample_rate: u32,
             low_hz: f64,
             high_hz: f64,
         ) -> f64 {
-            if spectrum_mags.is_empty() || sample_rate == 0 || low_hz >= high_hz {
-                return 0.0; // early return for invalid inputs
+            // all unsafe calls are now wrapped in an unsafe block
+            unsafe {
+                if spectrum_mags.is_empty() || sample_rate == 0 || low_hz >= high_hz {
+                    return 0.0; // early return for invalid inputs
+                }
+
+                let nyquist_freq = sample_rate as f64 / 2.0;
+                let bin_width = nyquist_freq / spectrum_mags.len() as f64;
+
+                let start_bin = (low_hz / bin_width).floor().max(0.0) as usize;
+                let end_bin = (high_hz / bin_width).ceil() as usize;
+
+                if end_bin <= start_bin || start_bin >= spectrum_mags.len() {
+                    return 0.0;
+                }
+
+                let end_bin = end_bin.min(spectrum_mags.len() - 1);
+                let slice = &spectrum_mags[start_bin..=end_bin];
+
+                let mut remaining_mags = slice;
+                let mut total_sum: f64 = 0.0;
+                let acc_vec = vfmv_s_f_f64m1(vfmv_v_f_f64m1(0.0, 1), 1);
+
+                while !remaining_mags.is_empty() {
+                    let vl = vsetvl_e64m1(remaining_mags.len());
+                    let data_vec = vle64_v_f64m1(remaining_mags.as_ptr(), vl);
+                    let squared = vfmul_vv_f64m1(data_vec, data_vec, vl);
+                    let acc_vec = vfredusum_vs_f64m1(squared, acc_vec, vl);
+                    remaining_mags = &remaining_mags[vl..];
+                }
+                total_sum += vfmv_f_s_f64m1_f64(acc_vec);
+                total_sum
             }
-
-            let nyquist_freq = sample_rate as f64 / 2.0;
-            let bin_width = nyquist_freq / spectrum_mags.len() as f64;
-
-            let start_bin = (low_hz / bin_width).floor().max(0.0) as usize;
-            let end_bin = (high_hz / bin_width).ceil() as usize;
-
-            if end_bin <= start_bin || start_bin >= spectrum_mags.len() {
-                return 0.0;
-            }
-
-            let end_bin = end_bin.min(spectrum_mags.len() - 1);
-            let slice = &spectrum_mags[start_bin..=end_bin];
-
-            let mut remaining_mags = slice;
-            let mut total_sum: f64 = 0.0;
-            let acc_vec = unsafe { vfmv_s_f_f64m1(vfmv_v_f_f64m1(0.0, 1), 1) };
-
-            while !remaining_mags.is_empty() {
-                let vl = unsafe { vsetvl_e64m1(remaining_mags.len()) };
-                let data_vec = unsafe { vle64_v_f64m1(remaining_mags.as_ptr(), vl) };
-                let squared = unsafe { vfmul_vv_f64m1(data_vec, data_vec, vl) };
-                let acc_vec = unsafe { vfredusum_vs_f64m1(squared, acc_vec, vl) };
-                remaining_mags = &remaining_mags[vl..];
-            }
-            total_sum += unsafe { vfmv_f_s_f64m1_f64(acc_vec) };
-            total_sum
         }
     }
 
@@ -674,7 +724,7 @@ mod audio_simd {
             let nyquist_freq = sample_rate as f64 / 2.0;
             let bin_width = nyquist_freq / spectrum_mags.len() as f64;
             let start_bin = (low_hz / bin_width).floor().max(0.0) as usize;
-            let end_bin = (high_hz / bin_width).ceil() as usize;
+            let end_bin = (high_hz / bin_width).ceil().max(0.0) as usize; // ensure end_bin is non-negative
 
             if end_bin <= start_bin || start_bin >= spectrum_mags.len() {
                 return 0.0;
@@ -720,8 +770,9 @@ mod image_simd {
 
     // inline always to encourage inlining for performance-critical prefetching
     #[inline(always)]
-    pub fn prefetch_data<T>(_ptr: *const T, _offset: usize, strategy: PrefetchStrategy) { // Added underscores to unused variables
+    pub fn prefetch_data<T>(_ptr: *const T, _offset: usize, strategy: PrefetchStrategy) { // added underscores to unused variables
         #[cfg(target_arch = "x86_64")]
+        // all unsafe calls are now wrapped in an unsafe block
         unsafe {
             use std::arch::x86_64::*;
             match strategy {
@@ -749,6 +800,7 @@ mod image_simd {
         }
         // riscv64 prefetch instructions (pref) could be added here
         #[cfg(target_arch = "riscv64")]
+        // all unsafe calls are now wrapped in an unsafe block
         unsafe {
             // riscv has 'pref' instruction, but no direct rust intrinsic.
             // would require inline assembly.
@@ -769,319 +821,324 @@ mod image_simd {
 
         // converts hsv to rgb for a batch of f64 values using avx2 intrinsics
         #[target_feature(enable = "avx2")]
-        #[unsafe(link_section = ".text.hot")] // instruction cache optimization
         pub unsafe fn hsv_to_rgb_batch_simd(h_batch: &[f64], s_batch: &[f64], v_batch: &[f64]) -> Vec<(f64, f64, f64)> {
-            let mut result = Vec::with_capacity(h_batch.len());
-            let chunks = h_batch.chunks_exact(4);
-            let remainder_start = chunks.len() * 4;
+            unsafe { // Wrap entire function body in an unsafe block
+                let mut result = Vec::with_capacity(h_batch.len());
+                let chunks = h_batch.chunks_exact(4);
+                let remainder_start = chunks.len() * 4;
 
-            for (i, h_chunk) in chunks.enumerate() {
-                let s_chunk = &s_batch[i*4..(i+1)*4];
-                let v_chunk = &v_batch[i*4..(i+1)*4];
-                
-                let zero_vec = _mm256_setzero_pd();
-                let one_vec = _mm256_set1_pd(1.0);
-                let two_vec = _mm256_set1_pd(2.0);
-                let sixty_vec = _mm256_set1_pd(60.0);
-                let three_sixty_vec = _mm256_set1_pd(360.0);
-                let neg_zero_vec = _mm256_set1_pd(-0.0); // for abs value using andnot
+                for (i, h_chunk) in chunks.enumerate() {
+                    let s_chunk = &s_batch[i*4..(i+1)*4];
+                    let v_chunk = &v_batch[i*4..(i+1)*4];
+                    
+                    let zero_vec = _mm256_setzero_pd();
+                    let one_vec = _mm256_set1_pd(1.0);
+                    let two_vec = _mm256_set1_pd(2.0);
+                    let sixty_vec = _mm256_set1_pd(60.0);
+                    let three_sixty_vec = _mm256_set1_pd(360.0);
+                    let neg_zero_vec = _mm256_set1_pd(-0.0); // for abs value using andnot
 
-                // load h, s, v values
-                let h_vec = _mm256_loadu_pd(h_chunk.as_ptr());
-                let s_vec = _mm256_loadu_pd(s_chunk.as_ptr());
-                let v_vec = _mm256_loadu_pd(v_chunk.as_ptr());
+                    // load h, s, v values
+                    let h_vec = _mm256_loadu_pd(h_chunk.as_ptr());
+                    let s_vec = _mm256_loadu_pd(s_chunk.as_ptr());
+                    let v_vec = _mm256_loadu_pd(v_chunk.as_ptr());
 
-                // normalize h to [0, 360)
-                let h_norm = _mm256_sub_pd(
-                    h_vec,
-                    _mm256_mul_pd(
-                        _mm256_floor_pd(_mm256_div_pd(h_vec, three_sixty_vec)),
-                        three_sixty_vec
-                    )
-                );
+                    // normalize h to [0, 360)
+                    let h_norm = _mm256_sub_pd(
+                        h_vec,
+                        _mm256_mul_pd(
+                            _mm256_floor_pd(_mm256_div_pd(h_vec, three_sixty_vec)),
+                            three_sixty_vec
+                        )
+                    );
 
-                // calculate h_prime = h / 60.0
-                let h_prime = _mm256_div_pd(h_norm, sixty_vec);
+                    // calculate h_prime = h / 60.0
+                    let h_prime = _mm256_div_pd(h_norm, sixty_vec);
 
-                // calculate c = v * s
-                let c = _mm256_mul_pd(v_vec, s_vec);
+                    // calculate c = v * s
+                    let c = _mm256_mul_pd(v_vec, s_vec);
 
-                // calculate x = c * (1 - |h_prime % 2 - 1|)
-                let h_prime_mod2 = _mm256_sub_pd(
-                    h_prime,
-                    _mm256_mul_pd(
-                        _mm256_floor_pd(_mm256_div_pd(h_prime, two_vec)),
-                        two_vec
-                    )
-                );
-                let h_prime_mod2_sub1 = _mm256_sub_pd(h_prime_mod2, one_vec);
-                let x = _mm256_mul_pd(
-                    c,
-                    _mm256_sub_pd(
-                        one_vec,
-                        _mm256_andnot_pd(neg_zero_vec, h_prime_mod2_sub1) // abs value using andnot
-                    )
-                );
+                    // calculate x = c * (1 - |h_prime % 2 - 1|)
+                    let h_prime_mod2 = _mm256_sub_pd(
+                        h_prime,
+                        _mm256_mul_pd(
+                            _mm256_floor_pd(_mm256_div_pd(h_prime, two_vec)),
+                            two_vec
+                        )
+                    );
+                    let h_prime_mod2_sub1 = _mm256_sub_pd(h_prime_mod2, one_vec);
+                    let x = _mm256_mul_pd(
+                        c,
+                        _mm256_sub_pd(
+                            one_vec,
+                            _mm256_andnot_pd(neg_zero_vec, h_prime_mod2_sub1) // abs value using andnot
+                        )
+                    );
 
-                // calculate m = v - c
-                let m = _mm256_sub_pd(v_vec, c);
+                    // calculate m = v - c
+                    let m = _mm256_sub_pd(v_vec, c);
 
-                // determine rgb components based on h_prime ranges using blend/mask
-                let mut r = zero_vec;
-                let mut g = zero_vec;
-                let mut b = zero_vec;
+                    // determine rgb components based on h_prime ranges using blend/mask
+                    let mut r = zero_vec;
+                    let mut g = zero_vec;
+                    let mut b = zero_vec;
 
-                // h_prime in [0, 1)
-                let mask0 = _mm256_and_pd(_mm256_cmp_pd(h_prime, zero_vec, _CMP_GE_OQ), _mm256_cmp_pd(h_prime, one_vec, _CMP_LT_OQ));
-                r = _mm256_blendv_pd(r, c, mask0);
-                g = _mm256_blendv_pd(g, x, mask0);
+                    // h_prime in [0, 1)
+                    let mask0 = _mm256_and_pd(_mm256_cmp_pd(h_prime, zero_vec, _CMP_GE_OQ), _mm256_cmp_pd(h_prime, one_vec, _CMP_LT_OQ));
+                    r = _mm256_blendv_pd(r, c, mask0);
+                    g = _mm256_blendv_pd(g, x, mask0);
 
-                // h_prime in [1, 2)
-                let mask1 = _mm256_and_pd(_mm256_cmp_pd(h_prime, one_vec, _CMP_GE_OQ), _mm256_cmp_pd(h_prime, two_vec, _CMP_LT_OQ));
-                r = _mm256_blendv_pd(r, x, mask1);
-                g = _mm256_blendv_pd(g, c, mask1);
+                    // h_prime in [1, 2)
+                    let mask1 = _mm256_and_pd(_mm256_cmp_pd(h_prime, one_vec, _CMP_GE_OQ), _mm256_cmp_pd(h_prime, two_vec, _CMP_LT_OQ));
+                    r = _mm256_blendv_pd(r, x, mask1);
+                    g = _mm256_blendv_pd(g, c, mask1);
 
-                // h_prime in [2, 3)
-                let mask2 = _mm256_and_pd(_mm256_cmp_pd(h_prime, two_vec, _CMP_GE_OQ), _mm256_cmp_pd(h_prime, _mm256_set1_pd(3.0), _CMP_LT_OQ));
-                g = _mm256_blendv_pd(g, c, mask2);
-                b = _mm256_blendv_pd(b, x, mask2);
+                    // h_prime in [2, 3)
+                    let mask2 = _mm256_and_pd(_mm256_cmp_pd(h_prime, two_vec, _CMP_GE_OQ), _mm256_cmp_pd(h_prime, _mm256_set1_pd(3.0), _CMP_LT_OQ));
+                    g = _mm256_blendv_pd(g, c, mask2);
+                    b = _mm256_blendv_pd(b, x, mask2);
 
-                // h_prime in [3, 4)
-                let mask3 = _mm256_and_pd(_mm256_cmp_pd(h_prime, _mm256_set1_pd(3.0), _CMP_GE_OQ), _mm256_cmp_pd(h_prime, _mm256_set1_pd(4.0), _CMP_LT_OQ));
-                g = _mm256_blendv_pd(g, x, mask3);
-                b = _mm256_blendv_pd(b, c, mask3);
+                    // h_prime in [3, 4)
+                    let mask3 = _mm256_and_pd(_mm256_cmp_pd(h_prime, _mm256_set1_pd(3.0), _CMP_GE_OQ), _mm256_cmp_pd(h_prime, _mm256_set1_pd(4.0), _CMP_LT_OQ));
+                    g = _mm256_blendv_pd(g, x, mask3);
+                    b = _mm256_blendv_pd(b, c, mask3);
 
-                // h_prime in [4, 5)
-                let mask4 = _mm256_and_pd(_mm256_cmp_pd(h_prime, _mm256_set1_pd(4.0), _CMP_GE_OQ), _mm256_cmp_pd(h_prime, _mm256_set1_pd(5.0), _CMP_LT_OQ));
-                r = _mm256_blendv_pd(r, x, mask4);
-                b = _mm256_blendv_pd(b, c, mask4);
+                    // h_prime in [4, 5)
+                    let mask4 = _mm256_and_pd(_mm256_cmp_pd(h_prime, _mm256_set1_pd(4.0), _CMP_GE_OQ), _mm256_cmp_pd(h_prime, _mm256_set1_pd(5.0), _CMP_LT_OQ));
+                    r = _mm256_blendv_pd(r, x, mask4);
+                    b = _mm256_blendv_pd(b, c, mask4);
 
-                // h_prime in [5, 6)
-                let mask5 = _mm256_and_pd(_mm256_cmp_pd(h_prime, _mm256_set1_pd(5.0), _CMP_GE_OQ), _mm256_cmp_pd(h_prime, _mm256_set1_pd(6.0), _CMP_LT_OQ));
-                r = _mm256_blendv_pd(r, c, mask5);
-                b = _mm256_blendv_pd(b, x, mask5);
+                    // h_prime in [5, 6)
+                    let mask5 = _mm256_and_pd(_mm256_cmp_pd(h_prime, _mm256_set1_pd(5.0), _CMP_GE_OQ), _mm256_cmp_pd(h_prime, _mm256_set1_pd(6.0), _CMP_LT_OQ));
+                    r = _mm256_blendv_pd(r, c, mask5);
+                    b = _mm256_blendv_pd(b, x, mask5);
 
-                // add m
-                let final_r = _mm256_add_pd(r, m);
-                let final_g = _mm256_add_pd(g, m);
-                let final_b = _mm256_add_pd(b, m);
+                    // add m
+                    let final_r = _mm256_add_pd(r, m);
+                    let final_g = _mm256_add_pd(g, m);
+                    let final_b = _mm256_add_pd(b, m);
 
-                let mut r_arr = [0.0f64; 4];
-                let mut g_arr = [0.0f64; 4];
-                let mut b_arr = [0.0f64; 4];
+                    let mut r_arr = [0.0f64; 4];
+                    let mut g_arr = [0.0f64; 4];
+                    let mut b_arr = [0.0f64; 4];
 
-                _mm256_storeu_pd(r_arr.as_mut_ptr(), final_r);
-                _mm256_storeu_pd(g_arr.as_mut_ptr(), final_g);
-                _mm256_storeu_pd(b_arr.as_mut_ptr(), final_b);
+                    _mm256_storeu_pd(r_arr.as_mut_ptr(), final_r);
+                    _mm256_storeu_pd(g_arr.as_mut_ptr(), final_g);
+                    _mm256_storeu_pd(b_arr.as_mut_ptr(), final_b);
 
-                for j in 0..4 {
-                    result.push((r_arr[j], g_arr[j], b_arr[j]));
+                    for j in 0..4 {
+                        result.push((r_arr[j], g_arr[j], b_arr[j]));
+                    }
                 }
-            }
 
-            // process remainder
-            for i in remainder_start..h_batch.len() {
-                result.push(super::scalar_fallback::hsv_to_rgb(h_batch[i], s_batch[i], v_batch[i]));
-            }
+                // process remainder
+                for i in remainder_start..h_batch.len() {
+                    result.push(super::scalar_fallback::hsv_to_rgb(h_batch[i], s_batch[i], v_batch[i]));
+                }
 
-            result
+                result
+            }
         }
 
         // blends two sets of pixels using avx512 intrinsics
         #[target_feature(enable = "avx512f", enable = "avx512dq", enable = "avx512vl", enable = "avx512bw")]
-        #[unsafe(link_section = ".text.hot")] // instruction cache optimization
+        
         pub unsafe fn blend_pixels_batch_avx512(pixels1: &[Rgb<u8>], pixels2: &[Rgb<u8>], alpha: f32) -> Vec<Rgb<u8>> {
-            let chunks = pixels1.chunks_exact(16); // process 16 pixels at once for avx512
-            let remainder = chunks.remainder();
-            let mut result = Vec::with_capacity(pixels1.len());
+            unsafe { // Wrap entire function body in an unsafe block
+                let chunks = pixels1.chunks_exact(16); // process 16 pixels at once for avx512
+                let remainder = chunks.remainder();
+                let mut result = Vec::with_capacity(pixels1.len());
 
-            // capture chunks.len() before it's moved
-            let chunks_len = chunks.len();
+                // capture chunks.len() before it's moved
+                let chunks_len = chunks.len();
 
-            for (i, chunk1) in chunks.enumerate() {
-                let chunk2 = &pixels2[i*16..(i+1)*16];
+                for (i, chunk1) in chunks.enumerate() {
+                    let chunk2 = &pixels2[i*16..(i+1)*16];
 
-                // load 16 pixels (48 bytes) into f32 vectors
-                let mut r1_f = [0.0f32; 16];
-                let mut g1_f = [0.0f32; 16];
-                let mut b1_f = [0.0f32; 16];
-                let mut r2_f = [0.0f32; 16];
-                let mut g2_f = [0.0f32; 16];
-                let mut b2_f = [0.0f32; 16];
+                    // load 16 pixels (48 bytes) into f32 vectors
+                    let mut r1_f = [0.0f32; 16];
+                    let mut g1_f = [0.0f32; 16];
+                    let mut b1_f = [0.0f32; 16];
+                    let mut r2_f = [0.0f32; 16];
+                    let mut g2_f = [0.0f32; 16];
+                    let mut b2_f = [0.0f32; 16];
 
-                for j in 0..16 {
-                    r1_f[j] = chunk1[j][0] as f32;
-                    g1_f[j] = chunk1[j][0] as f32;
-                    b1_f[j] = chunk1[j][0] as f32;
-                    r2_f[j] = chunk2[j][0] as f32;
-                    g2_f[j] = chunk2[j][0] as f32;
-                    b2_f[j] = chunk2[j][0] as f32;
+                    for j in 0..16 {
+                        r1_f[j] = chunk1[j][0] as f32;
+                        g1_f[j] = chunk1[j][0] as f32;
+                        b1_f[j] = chunk1[j][0] as f32;
+                        r2_f[j] = chunk2[j][0] as f32;
+                        g2_f[j] = chunk2[j][0] as f32;
+                        b2_f[j] = chunk2[j][0] as f32;
+                    }
+                    
+                    let alpha_vec = _mm512_set1_ps(alpha);
+                    let inv_alpha_vec = _mm512_set1_ps(1.0 - alpha);
+                    let zero_f32_vec = _mm512_set1_ps(0.0);
+                    let max_u8_f32_vec = _mm512_set1_ps(255.0);
+                    
+                    let r1_vec = _mm512_loadu_ps(r1_f.as_ptr());
+                    let g1_vec = _mm512_loadu_ps(g1_f.as_ptr());
+                    let b1_vec = _mm512_loadu_ps(b1_f.as_ptr());
+
+                    let r2_vec = _mm512_loadu_ps(r2_f.as_ptr());
+                    let g2_vec = _mm512_loadu_ps(g2_f.as_ptr());
+                    let b2_vec = _mm512_loadu_ps(b2_f.as_ptr());
+
+                    // blend using fma: r1*alpha + r2*(1-alpha)
+                    let r_blended = _mm512_fmadd_ps(r1_vec, alpha_vec, _mm512_mul_ps(r2_vec, inv_alpha_vec));
+                    let g_blended = _mm512_fmadd_ps(g1_vec, alpha_vec, _mm512_mul_ps(g2_vec, inv_alpha_vec));
+                    let b_blended = _mm512_fmadd_ps(b1_vec, alpha_vec, _mm512_mul_ps(b2_vec, inv_alpha_vec));
+
+                    // clamp to [0, 255] and convert to u8
+                    let r_clamped = _mm512_min_ps(_mm512_max_ps(r_blended, zero_f32_vec), max_u8_f32_vec);
+                    let g_clamped = _mm512_min_ps(_mm512_max_ps(g_blended, zero_f32_vec), max_u8_f32_vec);
+                    let b_clamped = _mm512_min_ps(_mm512_max_ps(b_blended, zero_f32_vec), max_u8_f32_vec);
+
+                    // convert f32 to i32
+                    let r_i32 = _mm512_cvtps_epi32(r_clamped); // __m512i (16 x i32)
+                    let g_i32 = _mm512_cvtps_epi32(g_clamped); // __m512i (16 x i32)
+                    let b_i32 = _mm512_cvtps_epi32(b_clamped); // __m512i (16 x i32)
+
+                    // extract lower and upper 8 i32s as __m256i
+                    let r_i32_lo = _mm512_extracti64x4_epi64(r_i32, 0);
+                    let r_i32_hi = _mm512_extracti64x4_epi64(r_i32, 1);
+                    let g_i32_lo = _mm512_extracti64x4_epi64(g_i32, 0);
+                    let g_i32_hi = _mm512_extracti64x4_epi64(g_i32, 1);
+                    let b_i32_lo = _mm512_extracti64x4_epi64(b_i32, 0);
+                    let b_i32_hi = _mm512_extracti64x4_epi64(b_i32, 1);
+
+                    // convert 8 i32s to 8 i16s (__m128i)
+                    let r_i16_lo = _mm256_cvtepi32_epi16(r_i32_lo);
+                    let r_i16_hi = _mm256_cvtepi32_epi16(r_i32_hi);
+                    let g_i16_lo = _mm256_cvtepi32_epi16(g_i32_lo);
+                    let _g_i16_hi = _mm256_cvtepi32_epi16(g_i32_hi); // renamed to _g_i16_hi to suppress unused variable warning
+                    let b_i16_lo = _mm256_cvtepi32_epi16(b_i32_lo);
+                    let b_i16_hi = _mm256_cvtepi32_epi16(b_i32_hi);
+
+                    // convert 8 i16s to 8 i8s (__m128i)
+                    let r_u8_lo = _mm_cvtepi16_epi8(r_i16_lo);
+                    let r_u8_hi = _mm_cvtepi16_epi8(r_i16_hi);
+                    let g_u8_lo = _mm_cvtepi16_epi8(g_i16_lo);
+                    let _g_u8_hi = _mm_cvtepi16_epi8(_g_i16_hi); // Added underscore for unused variable
+                    let b_u8_lo = _mm_cvtepi16_epi8(b_i16_lo);
+                    let b_u8_hi = _mm_cvtepi16_epi8(b_i16_hi);
+
+                    // store the two __m128i results into the 16-element u8 array
+                    let mut r_arr = [0u8; 16];
+                    let mut g_arr = [0u8; 16];
+                    let mut b_arr = [0u8; 16];
+
+                    _mm_storeu_si128(r_arr.as_mut_ptr() as *mut __m128i, r_u8_lo);
+                    _mm_storeu_si128(r_arr.as_mut_ptr().add(8) as *mut __m128i, r_u8_hi);
+                    _mm_storeu_si128(g_arr.as_mut_ptr() as *mut __m128i, g_u8_lo);
+                    _mm_storeu_si128(b_arr.as_mut_ptr() as *mut __m128i, b_u8_lo);
+                    _mm_storeu_si128(b_arr.as_mut_ptr().add(8) as *mut __m128i, b_u8_hi);
+
+                    for j in 0..16 {
+                        result.push(Rgb([r_arr[j], g_arr[j], b_arr[j]]));
+                    }
                 }
-                
-                let alpha_vec = _mm512_set1_ps(alpha);
-                let inv_alpha_vec = _mm512_set1_ps(1.0 - alpha);
-                let zero_f32_vec = _mm512_set1_ps(0.0);
-                let max_u8_f32_vec = _mm512_set1_ps(255.0);
-                
-                let r1_vec = _mm512_loadu_ps(r1_f.as_ptr());
-                let g1_vec = _mm512_loadu_ps(g1_f.as_ptr());
-                let b1_vec = _mm512_loadu_ps(b1_f.as_ptr());
 
-                let r2_vec = _mm512_loadu_ps(r2_f.as_ptr());
-                let g2_vec = _mm512_loadu_ps(g2_f.as_ptr());
-                let b2_vec = _mm512_loadu_ps(b2_f.as_ptr());
-
-                // blend using fma: r1*alpha + r2*(1-alpha)
-                let r_blended = _mm512_fmadd_ps(r1_vec, alpha_vec, _mm512_mul_ps(r2_vec, inv_alpha_vec));
-                let g_blended = _mm512_fmadd_ps(g1_vec, alpha_vec, _mm512_mul_ps(g2_vec, inv_alpha_vec));
-                let b_blended = _mm512_fmadd_ps(b1_vec, alpha_vec, _mm512_mul_ps(b2_vec, inv_alpha_vec));
-
-                // clamp to [0, 255] and convert to u8
-                let r_clamped = _mm512_min_ps(_mm512_max_ps(r_blended, zero_f32_vec), max_u8_f32_vec);
-                let g_clamped = _mm512_min_ps(_mm512_max_ps(g_blended, zero_f32_vec), max_u8_f32_vec);
-                let b_clamped = _mm512_min_ps(_mm512_max_ps(b_blended, zero_f32_vec), max_u8_f32_vec);
-
-                // convert f32 to i32
-                let r_i32 = _mm512_cvtps_epi32(r_clamped); // __m512i (16 x i32)
-                let g_i32 = _mm512_cvtps_epi32(g_clamped); // __m512i (16 x i32)
-                let b_i32 = _mm512_cvtps_epi32(b_clamped); // __m512i (16 x i32)
-
-                // Extract lower and upper 8 i32s as __m256i
-                let r_i32_lo = _mm512_extracti64x4_epi64(r_i32, 0);
-                let r_i32_hi = _mm512_extracti64x4_epi64(r_i32, 1);
-                let g_i32_lo = _mm512_extracti64x4_epi64(g_i32, 0);
-                let g_i32_hi = _mm512_extracti64x4_epi64(g_i32, 1);
-                let b_i32_lo = _mm512_extracti64x4_epi64(b_i32, 0);
-                let b_i32_hi = _mm512_extracti64x4_epi64(b_i32, 1);
-
-                // Convert 8 i32s to 8 i16s (__m128i)
-                let r_i16_lo = _mm256_cvtepi32_epi16(r_i32_lo);
-                let r_i16_hi = _mm256_cvtepi32_epi16(r_i32_hi);
-                let g_i16_lo = _mm256_cvtepi32_epi16(g_i32_lo);
-                let g_i16_hi = _mm256_cvtepi32_epi16(g_i32_hi);
-                let b_i16_lo = _mm256_cvtepi32_epi16(b_i32_lo);
-                let b_i16_hi = _mm256_cvtepi32_epi16(b_i32_hi);
-
-                // Convert 8 i16s to 8 i8s (__m128i)
-                let r_u8_lo = _mm_cvtepi16_epi8(r_i16_lo);
-                let r_u8_hi = _mm_cvtepi16_epi8(r_i16_hi);
-                let g_u8_lo = _mm_cvtepi16_epi8(g_i16_lo);
-                let g_u8_hi = _mm_cvtepi16_epi8(g_i16_hi);
-                let b_u8_lo = _mm_cvtepi16_epi8(b_i16_lo);
-                let b_u8_hi = _mm_cvtepi16_epi8(b_i16_hi);
-
-                // Store the two __m128i results into the 16-element u8 array
-                let mut r_arr = [0u8; 16];
-                let mut g_arr = [0u8; 16];
-                let mut b_arr = [0u8; 16];
-
-                _mm_storeu_si128(r_arr.as_mut_ptr() as *mut __m128i, r_u8_lo);
-                _mm_storeu_si128(r_arr.as_mut_ptr().add(8) as *mut __m128i, r_u8_hi);
-                _mm_storeu_si128(g_arr.as_mut_ptr() as *mut __m128i, g_u8_lo);
-                _mm_storeu_si128(b_arr.as_mut_ptr() as *mut __m128i, b_u8_lo);
-                _mm_storeu_si128(b_arr.as_mut_ptr().add(8) as *mut __m128i, b_u8_hi);
-
-                for j in 0..16 {
-                    result.push(Rgb([r_arr[j], g_arr[j], b_arr[j]]));
+                // process remainder
+                for (p1, p2) in remainder.iter().zip(pixels2.iter().skip(chunks_len * 16)) {
+                    result.push(Rgb([
+                        ((p1[0] as f32 * alpha + p2[0] as f32 * (1.0 - alpha)) as u8),
+                        ((p1[1] as f32 * alpha + p2[1] as f32 * (1.0 - alpha)) as u8),
+                        ((p1[2] as f32 * alpha + p2[2] as f32 * (1.0 - alpha)) as u8),
+                    ]));
                 }
-            }
 
-            // process remainder
-            for (p1, p2) in remainder.iter().zip(pixels2.iter().skip(chunks_len * 16)) {
-                result.push(Rgb([
-                    ((p1[0] as f32 * alpha + p2[0] as f32 * (1.0 - alpha)) as u8),
-                    ((p1[1] as f32 * alpha + p2[1] as f32 * (1.0 - alpha)) as u8),
-                    ((p1[2] as f32 * alpha + p2[2] as f32 * (1.0 - alpha)) as u8),
-                ]));
+                result
             }
-
-            result
         }
 
 
         // blends two sets of pixels using avx2 intrinsics
         #[target_feature(enable = "avx2", enable = "fma")]
-        #[unsafe(link_section = ".text.hot")] // instruction cache optimization
+        
         pub unsafe fn blend_pixels_batch_avx2(pixels1: &[Rgb<u8>], pixels2: &[Rgb<u8>], alpha: f32) -> Vec<Rgb<u8>> {
-            let chunks = pixels1.chunks_exact(8); // process 8 pixels at once for avx2
-            let remainder = chunks.remainder();
-            let mut result = Vec::with_capacity(pixels1.len());
+            unsafe { // Wrap entire function body in an unsafe block
+                let chunks = pixels1.chunks_exact(8); // process 8 pixels at once for avx2
+                let remainder = chunks.remainder();
+                let mut result = Vec::with_capacity(pixels1.len());
 
-            // Capture chunks.len() before `chunks` is moved by `enumerate()`
-            let chunks_len = chunks.len();
+                // capture chunks.len() before `chunks` is moved by `enumerate()`
+                let chunks_len = chunks.len();
 
-            for (i, chunk1) in chunks.enumerate() {
-                let chunk2 = &pixels2[i*8..(i+1)*8];
+                for (i, chunk1) in chunks.enumerate() {
+                    let chunk2 = &pixels2[i*8..(i+1)*8];
 
-                // manual extraction for 8 pixels (24 bytes) into f32 vectors
-                let mut r1_f = [0.0f32; 8];
-                let mut g1_f = [0.0f32; 8];
-                let mut b1_f = [0.0f32; 8];
-                let mut r2_f = [0.0f32; 8];
-                let mut g2_f = [0.0f32; 8];
-                let mut b2_f = [0.0f32; 8];
+                    // manual extraction for 8 pixels (24 bytes) into f32 vectors
+                    let mut r1_f = [0.0f32; 8];
+                    let mut g1_f = [0.0f32; 8];
+                    let mut b1_f = [0.0f32; 8];
+                    let mut r2_f = [0.0f32; 8];
+                    let mut g2_f = [0.0f32; 8];
+                    let mut b2_f = [0.0f32; 8];
 
-                for j in 0..8 {
-                    r1_f[j] = chunk1[j][0] as f32;
-                    g1_f[j] = chunk1[j][1] as f32;
-                    b1_f[j] = chunk1[j][2] as f32;
-                    r2_f[j] = chunk2[j][0] as f32;
-                    g2_f[j] = chunk2[j][1] as f32;
-                    b2_f[j] = chunk2[j][2] as f32;
+                    for j in 0..8 {
+                        r1_f[j] = chunk1[j][0] as f32;
+                        g1_f[j] = chunk1[j][1] as f32;
+                        b1_f[j] = chunk1[j][2] as f32;
+                        r2_f[j] = chunk2[j][0] as f32;
+                        g2_f[j] = chunk2[j][1] as f32;
+                        b2_f[j] = chunk2[j][2] as f32;
+                    }
+
+                    let alpha_vec = _mm256_set1_ps(alpha);
+                    let inv_alpha_vec = _mm256_set1_ps(1.0 - alpha);
+                    let zero_f32_vec = _mm256_set1_ps(0.0);
+                    let max_u8_f32_vec = _mm256_set1_ps(255.0);
+                    
+                    let r1_vec = _mm256_loadu_ps(r1_f.as_ptr());
+                    let g1_vec = _mm256_loadu_ps(g1_f.as_ptr());
+                    let b1_vec = _mm256_loadu_ps(b1_f.as_ptr());
+
+                    let r2_vec = _mm256_loadu_ps(r2_f.as_ptr());
+                    let g2_vec = _mm256_loadu_ps(g2_f.as_ptr());
+                    let b2_vec = _mm256_loadu_ps(b2_f.as_ptr());
+
+                    // blend using fma: r1*alpha + r2*(1-alpha)
+                    let r_blended = _mm256_fmadd_ps(r1_vec, alpha_vec, _mm256_mul_ps(r2_vec, inv_alpha_vec));
+                    let g_blended = _mm256_fmadd_ps(g1_vec, alpha_vec, _mm256_mul_ps(g2_vec, inv_alpha_vec));
+                    let b_blended = _mm256_fmadd_ps(b1_vec, alpha_vec, _mm256_mul_ps(b2_vec, inv_alpha_vec));
+
+                    // clamp to [0, 255] and convert to u8
+                    let r_clamped = _mm256_min_ps(_mm256_max_ps(r_blended, zero_f32_vec), max_u8_f32_vec);
+                    let g_clamped = _mm256_min_ps(_mm256_max_ps(g_blended, zero_f32_vec), max_u8_f32_vec);
+                    let b_clamped = _mm256_min_ps(_mm256_max_ps(b_blended, zero_f32_vec), max_u8_f32_vec);
+
+                    // convert f32 to i32, then to u8
+                    let r_i32 = _mm256_cvtps_epi32(r_clamped);
+                    let g_i32 = _mm256_cvtps_epi32(g_clamped);
+                    let b_i32 = _mm256_cvtps_epi32(b_clamped);
+
+                    // extract and store
+                    let mut r_arr = [0i32; 8];
+                    let mut g_arr = [0i32; 8];
+                    let mut b_arr = [0i32; 8];
+
+                    _mm256_storeu_si256(r_arr.as_mut_ptr() as *mut __m256i, r_i32);
+                    _mm256_storeu_si256(g_arr.as_mut_ptr() as *mut __m256i, g_i32);
+                    _mm256_storeu_si256(b_arr.as_mut_ptr() as *mut __m256i, b_i32);
+
+                    for j in 0..8 {
+                        result.push(Rgb([r_arr[j] as u8, g_arr[j] as u8, b_arr[j] as u8]));
+                    }
                 }
 
-                let alpha_vec = _mm256_set1_ps(alpha);
-                let inv_alpha_vec = _mm256_set1_ps(1.0 - alpha);
-                let zero_f32_vec = _mm256_set1_ps(0.0);
-                let max_u8_f32_vec = _mm256_set1_ps(255.0);
-                
-                let r1_vec = _mm256_loadu_ps(r1_f.as_ptr());
-                let g1_vec = _mm256_loadu_ps(g1_f.as_ptr());
-                let b1_vec = _mm256_loadu_ps(b1_f.as_ptr());
-
-                let r2_vec = _mm256_loadu_ps(r2_f.as_ptr());
-                let g2_vec = _mm256_loadu_ps(g2_f.as_ptr());
-                let b2_vec = _mm256_loadu_ps(b2_f.as_ptr());
-
-                // blend using fma: r1*alpha + r2*(1-alpha)
-                let r_blended = _mm256_fmadd_ps(r1_vec, alpha_vec, _mm256_mul_ps(r2_vec, inv_alpha_vec));
-                let g_blended = _mm256_fmadd_ps(g1_vec, alpha_vec, _mm256_mul_ps(g2_vec, inv_alpha_vec));
-                let b_blended = _mm256_fmadd_ps(b1_vec, alpha_vec, _mm256_mul_ps(b2_vec, inv_alpha_vec));
-
-                // clamp to [0, 255] and convert to u8
-                let r_clamped = _mm256_min_ps(_mm256_max_ps(r_blended, zero_f32_vec), max_u8_f32_vec);
-                let g_clamped = _mm256_min_ps(_mm256_max_ps(g_blended, zero_f32_vec), max_u8_f32_vec);
-                let b_clamped = _mm256_min_ps(_mm256_max_ps(b_blended, zero_f32_vec), max_u8_f32_vec);
-
-                // convert f32 to i32, then to u8
-                let r_i32 = _mm256_cvtps_epi32(r_clamped);
-                let g_i32 = _mm256_cvtps_epi32(g_clamped);
-                let b_i32 = _mm256_cvtps_epi32(b_clamped);
-
-                // extract and store
-                let mut r_arr = [0i32; 8];
-                let mut g_arr = [0i32; 8];
-                let mut b_arr = [0i32; 8];
-
-                _mm256_storeu_si256(r_arr.as_mut_ptr() as *mut __m256i, r_i32);
-                _mm256_storeu_si256(g_arr.as_mut_ptr() as *mut __m256i, g_i32);
-                _mm256_storeu_si256(b_arr.as_mut_ptr() as *mut __m256i, b_i32);
-
-                for j in 0..8 {
-                    result.push(Rgb([r_arr[j] as u8, g_arr[j] as u8, b_arr[j] as u8]));
+                // process remainder
+                for (p1, p2) in remainder.iter().zip(pixels2.iter().skip(chunks_len * 8)) {
+                    result.push(Rgb([
+                        ((p1[0] as f32 * alpha + p2[0] as f32 * (1.0 - alpha)) as u8),
+                        ((p1[1] as f32 * alpha + p2[1] as f32 * (1.0 - alpha)) as u8),
+                        ((p1[2] as f32 * alpha + p2[2] as f32 * (1.0 - alpha)) as u8),
+                    ]));
                 }
-            }
 
-            // process remainder
-            for (p1, p2) in remainder.iter().zip(pixels2.iter().skip(chunks_len * 8)) {
-                result.push(Rgb([
-                    ((p1[0] as f32 * alpha + p2[0] as f32 * (1.0 - alpha)) as u8),
-                    ((p1[1] as f32 * alpha + p2[1] as f32 * (1.0 - alpha)) as u8),
-                    ((p1[2] as f32 * alpha + p2[2] as f32 * (1.0 - alpha)) as u8),
-                ]));
+                result
             }
-
-            result
         }
     }
 
@@ -1092,193 +1149,199 @@ mod image_simd {
 
         // converts hsv to rgb for a batch of f64 values using NEON intrinsics
         #[target_feature(enable = "neon")]
-        #[unsafe(link_section = ".text.hot")] // instruction cache optimization
+        
         pub unsafe fn hsv_to_rgb_batch_simd(h_batch: &[f64], s_batch: &[f64], v_batch: &[f64]) -> Vec<(f64, f64, f64)> {
-            let mut result = Vec::with_capacity(h_batch.len());
-            let chunks = h_batch.chunks_exact(2); // NEON f64 vector is 2 elements
-            let remainder_start = chunks.len() * 2;
+            unsafe { // Wrap entire function body in an unsafe block
+                let mut result = Vec::with_capacity(h_batch.len());
+                let chunks = h_batch.chunks_exact(2); // NEON f64 vector is 2 elements
+                let remainder_start = chunks.len() * 2;
 
-            for (i, h_chunk) in chunks.enumerate() {
-                let s_chunk = &s_batch[i*2..(i+1)*2];
-                let v_chunk = &v_batch[i*2..(i+1)*2];
+                for (i, h_chunk) in chunks.enumerate() {
+                    let s_chunk = &s_batch[i*2..(i+1)*2];
+                    let v_chunk = &v_batch[i*2..(i+1)*2];
 
-                let zero_vec = vdupq_n_f64(0.0);
-                let one_vec = vdupq_n_f64(1.0);
-                let two_vec = vdupq_n_f64(2.0);
-                let three_vec = vdupq_n_f64(3.0);
-                let four_vec = vdupq_n_f64(4.0);
-                let five_vec = vdupq_n_f64(5.0);
-                let six_vec = vdupq_n_f64(6.0);
-                let sixty_vec = vdupq_n_f64(60.0);
-                let three_sixty_vec = vdupq_n_f64(360.0);
-                
-                let h_vec = unsafe { vld1q_f64(h_chunk.as_ptr()) };
-                let s_vec = unsafe { vld1q_f64(s_chunk.as_ptr()) };
-                let v_vec = unsafe { vld1q_f64(v_chunk.as_ptr()) };
+                    let zero_vec = vdupq_n_f64(0.0);
+                    let one_vec = vdupq_n_f64(1.0);
+                    let two_vec = vdupq_n_f64(2.0);
+                    let three_vec = vdupq_n_f64(3.0);
+                    let four_vec = vdupq_n_f64(4.0);
+                    let five_vec = vdupq_n_f64(5.0);
+                    let six_vec = vdupq_n_f64(6.0);
+                    let sixty_vec = vdupq_n_f64(60.0);
+                    let three_sixty_vec = vdupq_n_f64(360.0);
+                    
+                    let h_vec = vld1q_f64(h_chunk.as_ptr());
+                    let s_vec = vld1q_f64(s_chunk.as_ptr());
+                    let v_vec = vld1q_f64(v_chunk.as_ptr());
 
-                let h_norm = vsubq_f64(
-                    h_vec,
-                    vmulq_f64(
-                        vcvtq_f64_s64(vcvtaq_s64_f64(vdivq_f64(h_vec, three_sixty_vec))),
-                        three_sixty_vec
-                    )
-                );
+                    let h_norm = vsubq_f64(
+                        h_vec,
+                        vmulq_f64(
+                            vcvtq_f64_s64(vcvtaq_s64_f64(vdivq_f64(h_vec, three_sixty_vec))),
+                            three_sixty_vec
+                        )
+                    );
 
-                let h_prime = vdivq_f64(h_norm, sixty_vec);
-                let c = vmulq_f64(v_vec, s_vec);
+                    let h_prime = vdivq_f64(h_norm, sixty_vec);
+                    let c = vmulq_f64(v_vec, s_vec);
 
-                let h_prime_mod2 = vsubq_f64(
-                    h_prime,
-                    vmulq_f64(
-                        vcvtq_f64_s64(vcvtaq_s64_f64(vdivq_f64(h_prime, two_vec))),
-                        two_vec
-                    )
-                );
-                let h_prime_mod2_sub1 = vsubq_f64(h_prime_mod2, one_vec);
-                let x = vmulq_f64(
-                    c,
-                    vsubq_f64(
-                        one_vec,
-                        vabsq_f64(h_prime_mod2_sub1)
-                    )
-                );
+                    let h_prime_mod2 = vsubq_f64(
+                        h_prime,
+                        vmulq_f64(
+                            vcvtq_f64_s64(vcvtaq_s64_f64(vdivq_f64(h_prime, two_vec))),
+                            two_vec
+                        )
+                    );
+                    let h_prime_mod2_sub1 = vsubq_f64(h_prime_mod2, one_vec);
+                    let x = vmulq_f64(
+                        c,
+                        vsubq_f64(
+                            one_vec,
+                            vabsq_f64(h_prime_mod2_sub1)
+                        )
+                    );
 
-                let m = vsubq_f64(v_vec, c);
+                    let m = vsubq_f64(v_vec, c);
 
-                // h_prime comparison masks
-                let mask0 = vcltq_f64(h_prime, one_vec); // h_prime < 1.0
-                let mask1 = vandq_u64(vcgeq_f64(h_prime, one_vec), vcltq_f64(h_prime, two_vec)); // 1.0 <= h_prime < 2.0
-                let mask2 = vandq_u64(vcgeq_f64(h_prime, two_vec), vcltq_f64(h_prime, three_vec)); // 2.0 <= h_prime < 3.0
-                let mask3 = vandq_u64(vcgeq_f64(h_prime, three_vec), vcltq_f64(h_prime, four_vec)); // 3.0 <= h_prime < 4.0
-                let mask4 = vandq_u64(vcgeq_f64(h_prime, four_vec), vcltq_f64(h_prime, five_vec)); // 4.0 <= h_prime < 5.0
-                let mask5 = vandq_u64(vcgeq_f64(h_prime, five_vec), vcltq_f64(h_prime, six_vec)); // 5.0 <= h_prime < 6.0
+                    // h_prime comparison masks
+                    let mask0 = vcltq_f64(h_prime, one_vec); // h_prime < 1.0
+                    let mask1 = vandq_u64(vcgeq_f64(h_prime, one_vec), vcltq_f64(h_prime, two_vec)); // 1.0 <= h_prime < 2.0
+                    let mask2 = vandq_u64(vcgeq_f64(h_prime, two_vec), vcltq_f64(h_prime, three_vec)); // 2.0 <= h_prime < 3.0
+                    let mask3 = vandq_u64(vcgeq_f64(h_prime, three_vec), vcltq_f64(h_prime, four_vec)); // 3.0 <= h_prime < 4.0
+                    let mask4 = vandq_u64(vcgeq_f64(h_prime, four_vec), vcltq_f64(h_prime, five_vec)); // 4.0 <= h_prime < 5.0
+                    let mask5 = vandq_u64(vcgeq_f64(h_prime, five_vec), vcltq_f64(h_prime, six_vec)); // 5.0 <= h_prime < 6.0
 
-                // initialize r, g, b components
-                let mut r_comp = zero_vec;
-                let mut g_comp = zero_vec;
-                let mut b_comp = zero_vec;
+                    // initialize r, g, b components
+                    let mut r_comp = zero_vec;
+                    let mut g_comp = zero_vec;
+                    let mut b_comp = zero_vec;
 
-                // select components based on masks
-                r_comp = vbslq_f64(mask0, c, r_comp);
-                g_comp = vbslq_f64(mask0, x, g_comp);
+                    // select components based on masks
+                    r_comp = vbslq_f64(mask0, c, r_comp);
+                    g_comp = vbslq_f64(mask0, x, g_comp);
 
-                r_comp = vbslq_f64(mask1, x, r_comp);
-                g_comp = vbslq_f64(mask1, c, g_comp);
+                    r_comp = vbslq_f64(mask1, x, r_comp);
+                    g_comp = vbslq_f64(mask1, c, g_comp);
 
-                g_comp = vbslq_f64(mask2, c, g_comp);
-                b_comp = vbslq_f64(mask2, x, b_comp);
+                    g_comp = vbslq_f64(mask2, c, g_comp);
+                    b_comp = vbslq_f64(mask2, x, b_comp);
 
-                g_comp = vbslq_f64(mask3, x, g_comp);
-                b_comp = vbslq_f64(mask3, c, b_comp);
+                    g_comp = vbslq_f64(mask3, x, g_comp);
+                    b_comp = vbslq_f64(mask3, c, b_comp);
 
-                r_comp = vbslq_f64(mask4, x, r_comp);
-                b_comp = vbslq_f64(mask4, c, b_comp);
+                    r_comp = vbslq_f64(mask4, x, r_comp);
+                    b_comp = vbslq_f64(mask4, c, b_comp);
 
-                r_comp = vbslq_f64(mask5, c, r_comp);
-                b_comp = vbslq_f64(mask5, x, b_comp);
+                    r_comp = vbslq_f64(mask5, c, r_comp);
+                    b_comp = vbslq_f64(mask5, x, b_comp);
 
-                // add m to all components
-                let final_r = vaddq_f64(r_comp, m);
-                let final_g = vaddq_f64(g_comp, m);
-                let final_b = vaddq_f64(b_comp, m);
+                    // add m to all components
+                    let final_r = vaddq_f64(r_comp, m);
+                    let final_g = vaddq_f64(g_comp, m);
+                    let final_b = vaddq_f64(b_comp, m);
 
-                let mut r_arr = [0.0f64; 2];
-                let mut g_arr = [0.0f64; 2];
-                let mut b_arr = [0.0f64; 2];
+                    let mut r_arr = [0.0f64; 2];
+                    let mut g_arr = [0.0f64; 2];
+                    let mut b_arr = [0.0f64; 2];
 
-                unsafe { vst1q_f64(r_arr.as_mut_ptr(), final_r) };
-                unsafe { vst1q_f64(g_arr.as_mut_ptr(), final_g) };
-                unsafe { vst1q_f64(b_arr.as_mut_ptr(), final_b) };
+                    vst1q_f64(r_arr.as_mut_ptr(), final_r);
+                    vst1q_f64(g_arr.as_mut_ptr(), final_g);
+                    vst1q_f64(b_arr.as_mut_ptr(), final_b);
 
-                for j in 0..2 {
-                    result.push((r_arr[j], g_arr[j], b_arr[j]));
+                    for j in 0..2 {
+                        result.push((r_arr[j], g_arr[j], b_arr[j]));
+                    }
                 }
+                // process remainder
+                for i in remainder_start..h_batch.len() {
+                    result.push(super::scalar_fallback::hsv_to_rgb(h_batch[i], s_batch[i], v_batch[i]));
+                }
+                result
             }
-            // process remainder
-            for i in remainder_start..h_batch.len() {
-                result.push(super::scalar_fallback::hsv_to_rgb(h_batch[i], s_batch[i], v_batch[i]));
-            }
-            result
         }
 
         // blends two sets of pixels using NEON intrinsics
         #[target_feature(enable = "neon")]
-        #[unsafe(link_section = ".text.hot")] // instruction cache optimization
+        
         pub unsafe fn blend_pixels_batch_simd(pixels1: &[Rgb<u8>], pixels2: &[Rgb<u8>], alpha: f32) -> Vec<Rgb<u8>> {
-            let chunks = pixels1.chunks_exact(4); // 4 pixels = 12 bytes, can use 4 f32 lanes
-            let remainder = chunks.remainder();
-            let mut result = Vec::with_capacity(pixels1.len());
+            unsafe { // Wrap entire function body in an unsafe block
+                let chunks = pixels1.chunks_exact(4); // 4 pixels = 12 bytes, can use 4 f32 lanes
+                let remainder = chunks.remainder();
+                let mut result = Vec::with_capacity(pixels1.len());
 
-            // Capture chunks length before it's consumed by `into_iter().enumerate()`
-            let initial_chunks_len = chunks.len();
+                // capture chunks length before it's consumed by `into_iter().enumerate()`
+                let initial_chunks_len = chunks.len();
 
-            for (i, chunk1) in chunks.clone().enumerate() { // Clone chunks to allow subsequent use
-                let chunk2 = &pixels2[i*4..(i+1)*4];
+                for (i, chunk1) in chunks.clone().enumerate() { // clone chunks to allow subsequent use
+                    let chunk2 = &pixels2[i*4..(i+1)*4];
 
-                // load and convert u8 to f32
-                let mut r1_f = [0.0f32; 4];
-                let mut g1_f = [0.0f32; 4];
-                let mut b1_f = [0.0f32; 4];
-                let mut r2_f = [0.0f32; 4];
-                let mut g2_f = [0.0f32; 4];
-                let mut b2_f = [0.0f32; 4];
+                    // load and convert u8 to f32
+                    let mut r1_f = [0.0f32; 4];
+                    let mut g1_f = [0.0f32; 4];
+                    let mut b1_f = [0.0f32; 4];
+                    let mut r2_f = [0.0f32; 4];
+                    let mut g2_f = [0.0f32; 4];
+                    let mut b2_f = [0.0f32; 4];
 
-                for j in 0..4 {
-                    r1_f[j] = chunk1[j][0] as f32;
-                    g1_f[j] = chunk1[j][1] as f32;
-                    b1_f[j] = chunk1[j][2] as f32;
-                    r2_f[j] = chunk2[j][0] as f32;
-                    g2_f[j] = chunk2[j][1] as f32;
-                    b2_f[j] = chunk2[j][2] as f32;
+                    for j in 0..4 {
+                        r1_f[j] = chunk1[j][0] as f32;
+                        g1_f[j] = chunk1[j][1] as f32;
+                        b1_f[j] = chunk1[j][2] as f32;
+                        r2_f[j] = chunk2[j][0] as f32;
+                        g2_f[j] = chunk2[j][1] as f32;
+                        b2_f[j] = chunk2[j][2] as f32;
+                    }
+
+                    let alpha_vec = vdupq_n_f32(alpha);
+                    let inv_alpha_vec = vdupq_n_f32(1.0 - alpha);
+                    let max_val_vec = vdupq_n_f32(255.0);
+                    let zero_val_vec = vdupq_n_f32(0.0);
+                    
+                    let r1_vec = vld1q_f32(r1_f.as_ptr());
+                    let g1_vec = vld1q_f32(g1_f.as_ptr());
+                    let b1_vec = vld1q_f32(b1_f.as_ptr());
+                    let r2_vec = vld1q_f32(r2_f.as_ptr());
+                    let g2_vec = vld1q_f32(g2_f.as_ptr());
+                    let b2_vec = vld1q_f32(b2_f.as_ptr());
+
+                    // blend: p1 * alpha + p2 * (1-alpha)
+                    let r_result_f = vaddq_f32(vmulq_f32(r1_vec, alpha_vec), vmulq_f32(r2_vec, inv_alpha_vec));
+                    let g_result_f = vaddq_f32(vmulq_f32(g1_vec, alpha_vec), vmulq_f32(g2_vec, inv_alpha_vec));
+                    let b_result_f = vaddq_f32(vmulq_f32(b1_vec, alpha_vec), vmulq_f32(b2_vec, inv_alpha_vec));
+
+                    // clamp and convert back to u8
+                    let mut r_arr = [0.0f32; 4];
+                    let mut g_arr = [0.0f32; 4];
+                    let mut b_arr = [0.0f32; 4];
+
+                    vst1q_f32(r_arr.as_mut_ptr(), vminq_f32(vmaxq_f32(r_result_f, zero_val_vec), max_val_vec));
+                    vst1q_f32(g_arr.as_mut_ptr(), vminq_f32(vmaxq_f32(g_result_f, zero_val_vec), max_val_vec));
+                    vst1q_f32(b_arr.as_mut_ptr(), vminq_f32(vmaxq_f32(b_result_f, zero_val_vec), max_val_vec));
+
+                    for j in 0..4 {
+                        result.push(Rgb([r_arr[j] as u8, g_arr[j] as u8, b_arr[j] as u8]));
+                    }
                 }
 
-                let alpha_vec = vdupq_n_f32(alpha);
-                let inv_alpha_vec = vdupq_n_f32(1.0 - alpha);
-                let max_val_vec = vdupq_n_f32(255.0);
-                let zero_val_vec = vdupq_n_f32(0.0);
-                
-                let r1_vec = unsafe { vld1q_f32(r1_f.as_ptr()) };
-                let g1_vec = unsafe { vld1q_f32(g1_f.as_ptr()) };
-                let b1_vec = unsafe { vld1q_f32(b1_f.as_ptr()) };
-                let r2_vec = unsafe { vld1q_f32(r2_f.as_ptr()) };
-                let g2_vec = unsafe { vld1q_f32(g2_f.as_ptr()) };
-                let b2_vec = unsafe { vld1q_f32(b2_f.as_ptr()) };
-
-                // blend: p1 * alpha + p2 * (1-alpha)
-                let r_result_f = vaddq_f32(vmulq_f32(r1_vec, alpha_vec), vmulq_f32(r2_vec, inv_alpha_vec));
-                let g_result_f = vaddq_f32(vmulq_f32(g1_vec, alpha_vec), vmulq_f32(g2_vec, inv_alpha_vec));
-                let b_result_f = vaddq_f32(vmulq_f32(b1_vec, alpha_vec), vmulq_f32(b2_vec, inv_alpha_vec));
-
-                // clamp and convert back to u8
-                let mut r_arr = [0.0f32; 4];
-                let mut g_arr = [0.0f32; 4];
-                let mut b_arr = [0.0f32; 4];
-
-                unsafe { vst1q_f32(r_arr.as_mut_ptr(), vminq_f32(vmaxq_f32(r_result_f, zero_val_vec), max_val_vec)) };
-                unsafe { vst1q_f32(g_arr.as_mut_ptr(), vminq_f32(vmaxq_f32(g_result_f, zero_val_vec), max_val_vec)) };
-                unsafe { vst1q_f32(b_arr.as_mut_ptr(), vminq_f32(vmaxq_f32(b_result_f, zero_val_vec), max_val_vec)) };
-
-                for j in 0..4 {
-                    result.push(Rgb([r_arr[j] as u8, g_arr[j] as u8, b_arr[j] as u8]));
+                // process remainder
+                for (p1, p2) in remainder.iter().zip(pixels2.iter().skip(initial_chunks_len * 4)) { // use initial_chunks_len
+                    result.push(Rgb([
+                        ((p1[0] as f32 * alpha + p2[0] as f32 * (1.0 - alpha)) as u8),
+                        ((p1[1] as f32 * alpha + p2[1] as f32 * (1.0 - alpha)) as u8),
+                        ((p1[2] as f32 * alpha + p2[2] as f32 * (1.0 - alpha)) as u8),
+                    ]));
                 }
-            }
 
-            // process remainder
-            for (p1, p2) in remainder.iter().zip(pixels2.iter().skip(initial_chunks_len * 4)) { // Use initial_chunks_len
-                result.push(Rgb([
-                    ((p1[0] as f32 * alpha + p2[0] as f32 * (1.0 - alpha)) as u8),
-                    ((p1[1] as f32 * alpha + p2[1] as f32 * (1.0 - alpha)) as u8),
-                    ((p1[2] as f32 * alpha + p2[2] as f32 * (1.0 - alpha)) as u8),
-                ]));
+                result
             }
-
-            result
         }
     }
 
     // fallback for other architectures or when simd is disabled.
     mod scalar_fallback {
         use image::Rgb;
+        // Removed `use rand::Rng;` as it's not needed here specifically for scalar_fallback
+        // The Rng trait is used in the main visualizer.rs for PerlinNoise and run_qoa_to_video.
 
         // scalar fallback for hsv to rgb conversion
         pub fn hsv_to_rgb(h: f64, s: f64, v: f64) -> (f64, f64, f64) {
@@ -1337,23 +1400,27 @@ mod image_simd {
         use super::platform_impl;
         use image::Rgb;
 
-        // hsv_to_rgb_batch dispatch
         pub fn hsv_to_rgb_batch(h_batch: &[f64], s_batch: &[f64], v_batch: &[f64]) -> Vec<(f64, f64, f64)> {
-            if is_x86_feature_detected!("avx2") {
-                unsafe { platform_impl::hsv_to_rgb_batch_simd(h_batch, s_batch, v_batch) }
-            } else {
-                super::scalar_fallback::hsv_to_rgb_batch(h_batch, s_batch, v_batch)
+            // all unsafe calls are now wrapped in an unsafe block
+            unsafe {
+                if is_x86_feature_detected!("avx2") {
+                    platform_impl::hsv_to_rgb_batch_simd(h_batch, s_batch, v_batch)
+                } else {
+                    super::scalar_fallback::hsv_to_rgb_batch(h_batch, s_batch, v_batch)
+                }
             }
         }
 
-        // blend_pixels_batch dispatch
         pub fn blend_pixels_batch(pixels1: &[Rgb<u8>], pixels2: &[Rgb<u8>], alpha: f32) -> Vec<Rgb<u8>> {
-            if is_x86_feature_detected!("avx512f") && is_x86_feature_detected!("avx512dq") {
-                unsafe { platform_impl::blend_pixels_batch_avx512(pixels1, pixels2, alpha) }
-            } else if is_x86_feature_detected!("avx2") {
-                unsafe { platform_impl::blend_pixels_batch_avx2(pixels1, pixels2, alpha) }
-            } else {
-                super::scalar_fallback::blend_pixels_batch(pixels1, pixels2, alpha)
+            // all unsafe calls are now wrapped in an unsafe block
+            unsafe {
+                if is_x86_feature_detected!("avx512f") && is_x86_feature_detected!("avx512dq") {
+                    platform_impl::blend_pixels_batch_avx512(pixels1, pixels2, alpha)
+                } else if is_x86_feature_detected!("avx2") {
+                    platform_impl::blend_pixels_batch_avx2(pixels1, pixels2, alpha)
+                } else {
+                    super::scalar_fallback::blend_pixels_batch(pixels1, pixels2, alpha)
+                }
             }
         }
     }
@@ -1364,12 +1431,18 @@ mod image_simd {
         use image::Rgb;
 
         pub fn hsv_to_rgb_batch(h_batch: &[f64], s_batch: &[f64], v_batch: &[f64]) -> Vec<(f64, f64, f64)> {
-            // assuming neon is generally available on aarch64, or use feature detection if specific neon extensions are needed
-            unsafe { platform_impl::hsv_to_rgb_batch_simd(h_batch, s_batch, v_batch) }
+            // all unsafe calls are now wrapped in an unsafe block
+            unsafe {
+                // assuming neon is generally available on aarch64, or use feature detection if specific neon extensions are needed
+                platform_impl::hsv_to_rgb_batch_simd(h_batch, s_batch, v_batch)
+            }
         }
 
         pub fn blend_pixels_batch(pixels1: &[Rgb<u8>], pixels2: &[Rgb<u8>], alpha: f32) -> Vec<Rgb<u8>> {
-            unsafe { platform_impl::blend_pixels_batch_simd(pixels1, pixels2, alpha) }
+            // all unsafe calls are now wrapped in an unsafe block
+            unsafe {
+                platform_impl::blend_pixels_batch_simd(pixels1, pixels2, alpha)
+            }
         }
     }
 
@@ -1382,8 +1455,8 @@ mod image_simd {
     pub use self::dispatch_impl::{hsv_to_rgb_batch, blend_pixels_batch};
 
     // expose scalar hsv_to_rgb for single calls
-    // Removed: pub use self::scalar_fallback::hsv_to_rgb;
-    // Removed: pub use self::scalar_fallback::blend_pixels;
+    // removed: pub use self::scalar_fallback::hsv_to_rgb;
+    // removed: pub use self::scalar_fallback::blend_pixels;
 }
 
 // --- fast approximate math functions ---
@@ -1425,10 +1498,8 @@ impl AlignedPermutationTable {
         }
 
         // shuffle the first 256 entries
-        for i in (1..256).rev() {
-            let j = rng.random_range(0..=i);
-            p_temp.swap(i, j);
-        }
+        use rand::seq::SliceRandom; // import for shuffle
+        p_temp.shuffle(&mut rng); // use shuffle instead of gen_range
 
         // duplicate for wrap-around
         let mut p = [0u8; 512];
@@ -1518,13 +1589,16 @@ impl PerlinNoise {
     fn get_batch(&self, coords: &[(f64, f64)]) -> Vec<f64> {
         #[cfg(target_arch = "x86_64")]
         {
-            if is_x86_feature_detected!("avx2") {
-                unsafe { self.get_batch_simd(coords) }
-            } else {
-                coords
-                    .par_iter()
-                    .map(|(x, y)| self.get(*x, *y))
-                    .collect()
+            // all unsafe calls are now wrapped in an unsafe block
+            unsafe {
+                if is_x86_feature_detected!("avx2") {
+                    self.get_batch_simd(coords)
+                } else {
+                    coords
+                        .par_iter()
+                        .map(|(x, y)| self.get(*x, *y))
+                        .collect()
+                }
             }
         }
         #[cfg(not(target_arch = "x86_64"))]
@@ -1540,83 +1614,86 @@ impl PerlinNoise {
     #[cfg(target_arch = "x86_64")]
     #[target_feature(enable = "avx2", enable = "fma")]
     unsafe fn get_batch_simd(&self, coords: &[(f64, f64)]) -> Vec<f64> {
-        use std::arch::x86_64::*;
-
+        // Declare `result` and `remainder` outside the inner `unsafe` block
         let chunks = coords.chunks_exact(4);
         let remainder = chunks.remainder();
         let mut result = Vec::with_capacity(coords.len());
 
-        for chunk in chunks {
-            let mut current_results = [0.0f64; 4];
-            let six_vec = _mm256_set1_pd(6.0);
-            let fifteen_vec = _mm256_set1_pd(15.0);
-            let ten_vec = _mm256_set1_pd(10.0);
-            let _one_vec = _mm256_set1_pd(1.0);
+        unsafe { // Wrap the SIMD portion of the function body in an unsafe block
+            use std::arch::x86_64::*;
 
-            // load x/y coordinates in correct order for _mm256_set_pd (3,2,1,0)
-            let x_vec = _mm256_set_pd(chunk[3].0, chunk[2].0, chunk[1].0, chunk[0].0);
-            let y_vec = _mm256_set_pd(chunk[3].1, chunk[2].1, chunk[1].1, chunk[0].1);
+            for chunk in chunks {
+                let mut current_results = [0.0f64; 4];
+                let six_vec = _mm256_set1_pd(6.0);
+                let fifteen_vec = _mm256_set1_pd(15.0);
+                let ten_vec = _mm256_set1_pd(10.0);
+                let _one_vec = _mm256_set1_pd(1.0);
 
-            // get integer and fractional parts
-            let x_floor = _mm256_floor_pd(x_vec);
-            let y_floor = _mm256_floor_pd(y_vec);
-            let x_frac = _mm256_sub_pd(x_vec, x_floor);
-            let y_frac = _mm256_sub_pd(y_vec, y_floor);
+                // load x/y coordinates in correct order for _mm256_set_pd (3,2,1,0)
+                let x_vec = _mm256_set_pd(chunk[3].0, chunk[2].0, chunk[1].0, chunk[0].0);
+                let y_vec = _mm256_set_pd(chunk[3].1, chunk[2].1, chunk[1].1, chunk[0].1);
 
-            // calculate fade(x) and fade(y) using polynomial: t^3 * (t * (t * 6 - 15) + 10)
-            let x_frac_sq = _mm256_mul_pd(x_frac, x_frac);
-            let x_frac_cube = _mm256_mul_pd(x_frac_sq, x_frac);
-            let x_fade_term = _mm256_fmadd_pd(
-                x_frac,
-                _mm256_fmsub_pd(x_frac, six_vec, fifteen_vec),
-                ten_vec
-            );
-            let u_vec = _mm256_mul_pd(x_frac_cube, x_fade_term);
+                // get integer and fractional parts
+                let x_floor = _mm256_floor_pd(x_vec);
+                let y_floor = _mm256_floor_pd(y_vec);
+                let x_frac = _mm256_sub_pd(x_vec, x_floor);
+                let y_frac = _mm256_sub_pd(y_vec, y_floor);
 
-            let y_frac_sq = _mm256_mul_pd(y_frac, y_frac);
-            let y_frac_cube = _mm256_mul_pd(y_frac_sq, y_frac);
-            let y_fade_term = _mm256_fmadd_pd(
-                y_frac,
-                _mm256_fmsub_pd(y_frac, six_vec, fifteen_vec),
-                ten_vec
-            );
-            let v_vec = _mm256_mul_pd(y_frac_cube, y_fade_term);
+                // calculate fade(x) and fade(y) using polynomial: t^3 * (t * (t * 6 - 15) + 10)
+                let x_frac_sq = _mm256_mul_pd(x_frac, x_frac);
+                let x_frac_cube = _mm256_mul_pd(x_frac_sq, x_frac);
+                let x_fade_term = _mm256_fmadd_pd(
+                    x_frac,
+                    _mm256_fmsub_pd(x_frac, six_vec, fifteen_vec),
+                    ten_vec
+                );
+                let u_vec = _mm256_mul_pd(x_frac_cube, x_fade_term);
 
-            // for grad and lerp, we need to extract individual elements due to complex conditional logic
-            // and table lookups. for a truly vectorized perlin, the gradient vectors and permutation
-            // table lookups would need to be vectorized, which is highly complex for generic perlin.
-            // here, we fall back to scalar grad and lerp for each of the 4 elements.
-            let mut x_frac_arr = [0.0f64; 4];
-            let mut y_frac_arr = [0.0f64; 4];
-            let mut x_floor_arr = [0.0f64; 4];
-            let mut y_floor_arr = [0.0f64; 4];
+                let y_frac_sq = _mm256_mul_pd(y_frac, y_frac);
+                let y_frac_cube = _mm256_mul_pd(y_frac_sq, y_frac);
+                let y_fade_term = _mm256_fmadd_pd(
+                    y_frac,
+                    _mm256_fmsub_pd(y_frac, six_vec, fifteen_vec),
+                    ten_vec
+                );
+                let v_vec = _mm256_mul_pd(y_frac_cube, y_fade_term);
 
-            _mm256_storeu_pd(x_frac_arr.as_mut_ptr(), x_frac);
-            _mm256_storeu_pd(y_frac_arr.as_mut_ptr(), y_frac);
-            _mm256_storeu_pd(x_floor_arr.as_mut_ptr(), x_floor);
-            _mm256_storeu_pd(y_floor_arr.as_mut_ptr(), y_floor);
+                // for grad and lerp, we need to extract individual elements due to complex conditional logic
+                // and table lookups. for a truly vectorized perlin, the gradient vectors and permutation
+                // table lookups would need to be vectorized, which is highly complex for generic perlin.
+                // here, we fall back to scalar grad and lerp for each of the 4 elements.
+                let mut x_frac_arr = [0.0f64; 4];
+                let mut y_frac_arr = [0.0f64; 4];
+                let mut x_floor_arr = [0.0f64; 4];
+                let mut y_floor_arr = [0.0f64; 4];
 
-            let mut u_arr = [0.0f64; 4];
-            let mut v_arr = [0.0f64; 4];
-            _mm256_storeu_pd(u_arr.as_mut_ptr(), u_vec);
-            _mm256_storeu_pd(v_arr.as_mut_ptr(), v_vec);
+                _mm256_storeu_pd(x_frac_arr.as_mut_ptr(), x_frac);
+                _mm256_storeu_pd(y_frac_arr.as_mut_ptr(), y_frac);
+                _mm256_storeu_pd(x_floor_arr.as_mut_ptr(), x_floor);
+                _mm256_storeu_pd(y_floor_arr.as_mut_ptr(), y_floor);
 
-            for j in 0..4 {
-                let x_int_j = x_floor_arr[j] as usize;
-                let y_int_j = y_floor_arr[j] as usize;
+                let mut u_arr = [0.0f64; 4];
+                let mut v_arr = [0.0f64; 4];
+                _mm256_storeu_pd(u_arr.as_mut_ptr(), u_vec);
+                _mm256_storeu_pd(v_arr.as_mut_ptr(), v_vec);
 
-                // use aligned permutation table's get method
-                let a = self.p.get(x_int_j) as usize + self.p.get(y_int_j) as usize;
-                let b = self.p.get(x_int_j + 1) as usize + self.p.get(y_int_j) as usize;
+                for j in 0..4 {
+                    let x_int_j = x_floor_arr[j] as usize;
+                    let y_int_j = y_floor_arr[j] as usize;
 
-                let n00 = Self::grad(self.p.get(a) as usize, x_frac_arr[j], y_frac_arr[j]);
-                let n10 = Self::grad(self.p.get(b) as usize, x_frac_arr[j] - 1.0, y_frac_arr[j]);
-                let n01 = Self::grad(self.p.get(a + 1) as usize, x_frac_arr[j], y_frac_arr[j] - 1.0);
-                let n11 = Self::grad(self.p.get(b + 1) as usize, x_frac_arr[j] - 1.0, y_frac_arr[j] - 1.0);
+                    // use aligned permutation table's get method
+                    let a = self.p.get(x_int_j) as usize + self.p.get(y_int_j) as usize;
+                    let b = self.p.get(x_int_j + 1) as usize + self.p.get(y_int_j) as usize;
 
-                current_results[j] = Self::lerp(v_arr[j], Self::lerp(u_arr[j], n00, n10), Self::lerp(u_arr[j], n01, n11));
+                    let n00 = Self::grad(self.p.get(a) as usize, x_frac_arr[j], y_frac_arr[j]);
+                    let n10 = Self::grad(self.p.get(b) as usize, x_frac_arr[j] - 1.0, y_frac_arr[j]);
+                    let n01 = Self::grad(self.p.get(a + 1) as usize, x_frac_arr[j], y_frac_arr[j] - 1.0);
+                    let n11 = Self::grad(self.p.get(b + 1) as usize, x_frac_arr[j] - 1.0, y_frac_arr[j] - 1.0);
+
+                    current_results[j] = Self::lerp(v_arr[j], Self::lerp(u_arr[j], n00, n10), Self::lerp(u_arr[j], n01, n11));
+                }
+                result.extend_from_slice(&current_results);
             }
-            result.extend_from_slice(&current_results);
         }
 
         // process remainder
@@ -1802,9 +1879,8 @@ impl AudioVisualizer {
         low_hz: f64,
         high_hz: f64,
     ) -> f64 {
-        unsafe {
-            audio_simd::calculate_band_energy_f64(spectrum_mags, sample_rate, low_hz, high_hz)
-        }
+        // Wrapped in unsafe block
+        unsafe { audio_simd::calculate_band_energy_f64(spectrum_mags, sample_rate, low_hz, high_hz) }
     }
 
     // extracts enhanced audio features
@@ -1827,14 +1903,15 @@ impl AudioVisualizer {
             let mut aligned_samples = AlignedBuffer::<f32>::new(samples_slice.len());
             aligned_samples.as_mut_slice().copy_from_slice(samples_slice);
 
-            // Call to unsafe function `audio_simd::sum_squares_f32` is unsafe and requires unsafe block
-            let sum_sq = unsafe { audio_simd::sum_squares_f32(&aligned_samples) };
+            // Removed unnecessary `unsafe` block around the call to `audio_simd::sum_squares_f32`
+            let sum_sq = audio_simd::sum_squares_f32(&aligned_samples);
 
             (sum_sq / samples_slice.len() as f64).sqrt()
         } else {
             0.0
         };
 
+        // Wrapped in unsafe block
         let (sum_weighted_freq, sum_magnitudes) =
             unsafe { audio_simd::calculate_spectral_centroid_f64(&spectrum_mags, bin_width) };
 
@@ -1942,7 +2019,7 @@ impl QoaAudioDecoder for AudioVisualizer {
                 if num_channels == 2 {
                     info!("processing stereo audio (simd)");
                     // use our new multi-architecture simd function.
-                    unsafe { audio_simd::mix_stereo_to_mono_f32(&temp_f32_samples, &mut samples) };
+                    audio_simd::mix_stereo_to_mono_f32(&temp_f32_samples, &mut samples);
                 } else if num_channels == 1 {
                     info!("processing mono audio");
                     samples = temp_f32_samples; // directly use if mono
@@ -1959,8 +2036,20 @@ impl QoaAudioDecoder for AudioVisualizer {
                 info!("decoding qoa audio");
                 let file_path = Path::new(audio_path);
                 let file = fs::File::open(file_path)?;
-                let _mmap = unsafe { MmapOptions::new().map(&file)? };
-                Err(format!("qoa decoding is unavailable due0 to missing function `decode_to_vec_f32` in the `qoa` crate. please check your `qoa` dependency version and features.").into())
+                let _mmap = unsafe { MmapOptions::new().map(&file)? }; // Added underscore for unused variable
+
+                // implement proper qoa decoding here
+                // this is a placeholder for the actual qoa decoding logic
+                // assuming qoa::decode_to_vec_f32 exists and works
+                // updated to a dummy function since decode_to_vec_f32 doesn't exist
+                // you will need to implement qoa decoding or use a different crate/function
+                // for demonstration, we'll return an error or a dummy success
+                Err(format!("qoa decoding not implemented for this crate version").into())
+                // if you had a function like this, it would be:
+                // match qoa::decode_to_vec_f32(&mmap) {
+                //     Ok((samples, sample_rate)) => Ok((samples, sample_rate)),
+                //     Err(e) => Err(format!("qoa decoding failed: {:?}", e).into()),
+                // }
             }
             _ => Err(format!("unsupported audio format: {:?}", audio_path).into()),
         }
@@ -2062,7 +2151,7 @@ thread_local! {
 
 // --- main visualization logic ---
 // dispatch function for render_frame based on resolution
-#[unsafe(link_section = ".text.hot")] // instruction cache optimization
+
 pub fn render_frame(
     _frame_index: usize,
     width: u32,
@@ -2105,7 +2194,7 @@ pub fn render_frame(
 
 // specialized implementation for 1080p with hard-coded constants and optimizations
 #[inline(never)] // force it to be compiled separately
-#[unsafe(link_section = ".text.hot")] // instruction cache optimization
+
 fn render_frame_1080p(
     _frame_index: usize,
     width: u32,
@@ -2151,7 +2240,7 @@ fn render_frame_1080p(
 
                             // apply flow field, using fast_sin
                             let flow_x = fast_sin(norm_x + quantum_data.flow_field_strength * 0.1) * 0.05;
-                            let flow_y = fast_sin(norm_y + quantum_data.flow_field_strength * 0.1 + std::f64::consts::PI / 2.0) * 0.05; // Use cos equivalent
+                            let flow_y = fast_sin(norm_y + quantum_data.flow_field_strength * 0.1 + std::f64::consts::PI / 2.0) * 0.05; // use cos equivalent
 
                             row_coords_bump.push((norm_x + flow_x, norm_y + flow_y));
 
@@ -2176,7 +2265,7 @@ fn render_frame_1080p(
 
                             // quantum interference pattern
                             let interference =
-                                fast_sin(norm_x * 10.0) * fast_sin(norm_y * 10.0 + std::f64::consts::PI / 2.0) * quantum_data.interference_pattern; // Use cos equivalent
+                                fast_sin(norm_x * 10.0) * fast_sin(norm_y * 10.0 + std::f64::consts::PI / 2.0) * quantum_data.interference_pattern; // use cos equivalent
                             let final_noise = (noise_val + interference).max(-1.0).min(1.0);
 
                             let brightness_base = quantum_data.base_brightness;
@@ -2212,7 +2301,7 @@ fn render_frame_1080p(
 
                             // store pixel, will be blended later
                             if distorted_x < width && distorted_y < height {
-                                // we push a dummy Rgb here, the actual color will be set after batch conversion
+                                // we push a dummy rgb here, the actual color will be set after batch conversion
                                 row_pixels_for_blending.push((distorted_x, distorted_y, Rgb([0, 0, 0])));
                             }
                         }
@@ -2323,7 +2412,7 @@ fn render_frame_1080p(
 
 // specialized implementation for 4k with hard-coded constants and optimizations
 #[inline(never)] // force it to be compiled separately
-#[unsafe(link_section = ".text.hot")] // instruction cache optimization
+
 fn render_frame_4k(
     _frame_index: usize,
     width: u32,
@@ -2369,7 +2458,7 @@ fn render_frame_4k(
 
                             // apply flow field, using fast_sin
                             let flow_x = fast_sin(norm_x + quantum_data.flow_field_strength * 0.1) * 0.05;
-                            let flow_y = fast_sin(norm_y + quantum_data.flow_field_strength * 0.1 + std::f64::consts::PI / 2.0) * 0.05; // Use cos equivalent
+                            let flow_y = fast_sin(norm_y + quantum_data.flow_field_strength * 0.1 + std::f64::consts::PI / 2.0) * 0.05; // use cos equivalent
 
                             row_coords_bump.push((norm_x + flow_x, norm_y + flow_y));
 
@@ -2394,7 +2483,7 @@ fn render_frame_4k(
 
                             // quantum interference pattern
                             let interference =
-                                fast_sin(norm_x * 10.0) * fast_sin(norm_y * 10.0 + std::f64::consts::PI / 2.0) * quantum_data.interference_pattern; // Use cos equivalent
+                                fast_sin(norm_x * 10.0) * fast_sin(norm_y * 10.0 + std::f64::consts::PI / 2.0) * quantum_data.interference_pattern; // use cos equivalent
                             let final_noise = (noise_val + interference).max(-1.0).min(1.0);
 
                             let brightness_base = quantum_data.base_brightness;
@@ -2430,7 +2519,7 @@ fn render_frame_4k(
 
                             // store pixel, will be blended later
                             if distorted_x < width && distorted_y < height {
-                                // we push a dummy Rgb here, the actual color will be set after batch conversion
+                                // we push a dummy rgb here, the actual color will be set after batch conversion
                                 row_pixels_for_blending.push((distorted_x, distorted_y, Rgb([0, 0, 0])));
                             }
                         }
@@ -2541,7 +2630,6 @@ fn render_frame_4k(
 
 // generic render_frame implementation
 #[inline(never)] // force it to be compiled separately
-#[unsafe(link_section = ".text.hot")] // instruction cache optimization
 fn render_frame_generic(
     _frame_index: usize,
     width: u32,
@@ -2587,7 +2675,7 @@ fn render_frame_generic(
 
                             // apply flow field, using fast_sin
                             let flow_x = fast_sin(norm_x + quantum_data.flow_field_strength * 0.1) * 0.05;
-                            let flow_y = fast_sin(norm_y + quantum_data.flow_field_strength * 0.1 + std::f64::consts::PI / 2.0) * 0.05; // Use cos equivalent
+                            let flow_y = fast_sin(norm_y + quantum_data.flow_field_strength * 0.1 + std::f64::consts::PI / 2.0) * 0.05; // use cos equivalent
 
                             row_coords_bump.push((norm_x + flow_x, norm_y + flow_y));
 
@@ -2612,7 +2700,7 @@ fn render_frame_generic(
 
                             // quantum interference pattern
                             let interference =
-                                fast_sin(norm_x * 10.0) * fast_sin(norm_y * 10.0 + std::f64::consts::PI / 2.0) * quantum_data.interference_pattern; // Use cos equivalent
+                                fast_sin(norm_x * 10.0) * fast_sin(norm_y * 10.0 + std::f64::consts::PI / 2.0) * quantum_data.interference_pattern; // use cos equivalent
                             let final_noise = (noise_val + interference).max(-1.0).min(1.0);
 
                             let brightness_base = quantum_data.base_brightness;
@@ -2648,7 +2736,7 @@ fn render_frame_generic(
 
                             // store pixel, will be blended later
                             if distorted_x < width && distorted_y < height {
-                                // we push a dummy Rgb here, the actual color will be set after batch conversion
+                                // we push a dummy rgb here, the actual color will be set after batch conversion
                                 row_pixels_for_blending.push((distorted_x, distorted_y, Rgb([0, 0, 0])));
                             }
                         }
@@ -2796,6 +2884,7 @@ pub fn configure_thread_pool() {
 // converts hsv to rgb
 
 fn normalized_centroid_for_color(spectrum_data: &[f64]) -> f64 {
+    // Wrapped in unsafe block
     let (sum_weighted_freq, sum_magnitudes) =
         unsafe { audio_simd::calculate_spectral_centroid_f64(spectrum_data, 1.0 / spectrum_data.len() as f64) };
 
@@ -2833,7 +2922,8 @@ where
     P: QuantumProcessor + Send + Sync,
 {
     use num_complex::Complex;
-    use rand::Rng;
+    use rand::Rng; // This import is necessary for the Rng trait
+    use rand::rng; // Import rng for generating random numbers
     use std::time::Instant;
     use std::{
         io::Read,
@@ -2865,7 +2955,7 @@ where
 
     let mut real_fft_planner = RealFftPlanner::<f32>::new();
     let rfft = real_fft_planner.plan_fft_forward(samples_per_frame);
-    let perlin_noise_gen_seed = rand::rng().random::<u32>();
+    let perlin_noise_gen_seed = rng().random::<u32>();
     let perlin_noise = PerlinNoise::new(perlin_noise_gen_seed);
 
     // --- frame progress bar ---
