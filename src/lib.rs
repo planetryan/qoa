@@ -7,8 +7,8 @@
 
 // #![feature(rustc_attrs)] // this is a internal compiler feature. using internal features are discouraged.
 
+pub mod distribute; // for distribution
 pub mod instructions; // for instruction enum
 pub mod runtime; // for runtime
 pub mod vectorization; // for vectorization implementation
-pub mod distribute; // for distribution
 pub mod vulkan; // vulkan module

@@ -3,7 +3,7 @@
 
 [package]
 name = "qoa"
-version = "0.3.3"
+version = "0.3.4"
 edition = "2024"
 authors = ["GitHub: @planetryan"]
 description = "the quantum optical assembly language"
@@ -23,6 +23,8 @@ duct = { version = "1.0", default-features = false }
 hound = "3.5"
 ndarray = { version = "0.16", features = ["rayon"] }
 realfft = "2.0"
+chrono = "0.4"
+whoami = "1.4"
 
 # explicitly override openssl-sys to force vendored compilation
 openssl-sys = { version = "0.9.109", features = ["vendored"] }

@@ -1,0 +1,45 @@
+#version 450
+layout(local_size_x = 32, local_size_y = 1, local_size_z = 1) in;
+
+// state vector (complex numbers stored as pairs of floats)
+layout(std430, binding = 0) buffer StateVector {
+    vec2 state[];
+};
+
+// gate parameters
+layout(std140, binding = 1) uniform GateParams {
+    uint gate_type;
+    uint target_qubit;
+    uint num_qubits;
+    // using _pad field for the rotation angle
+    float angle;
+} params;
+
+void main() {
+    uint gid = gl_GlobalInvocationID.x;
+    uint state_size = 1u << params.num_qubits;
+
+    // return if index is out of bounds
+    if (gid >= state_size) {
+        return;
+    }
+
+    // check if the target qubit is 1 in this index
+    uint mask = 1u << params.target_qubit;
+    if ((gid & mask) != 0) {
+        // apply rz rotation: phase shift the amplitude by e^(-iθ/2)
+        // complex multiplication: (a+bi)(c+di) = (ac-bd) + (ad+bc)i
+        // here, (c+di) = (cos(-θ/2) + i*sin(-θ/2)) = (cos(θ/2) - i*sin(θ/2))
+        float cos_half = cos(-params.angle / 2.0);
+        float sin_half = sin(-params.angle / 2.0);
+        vec2 current_amp = state[gid];
+
+        vec2 new_amp = vec2(
+            current_amp.x * cos_half - current_amp.y * sin_half,
+            current_amp.x * sin_half + current_amp.y * cos_half
+        );
+
+        // write back result
+        state[gid] = new_amp;
+    }
+}

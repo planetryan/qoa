@@ -1,0 +1,332 @@
+[Vulkan Loader] INFO:           Vulkan Loader Version 1.4.309
+[INFO  qoa] running GPU benchmark with 27 qubits
+Quantum state size: 2048.00 MB (2.0000 GB)
+[INFO  qoa] Initializing GPU benchmark...
+[INFO  qoa] Creating quantum state with 27 qubits...
+[INFO  qoa] Quantum state created successfully.
+[Vulkan Loader] INFO:           No valid vk_loader_settings.json file found, no loader settings will be active
+[Vulkan Loader] LAYER:          Searching for implicit layer manifest files
+[Vulkan Loader] LAYER:             In following locations:
+[Vulkan Loader] LAYER:                /home/rayan/.config/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:                /home/rayan/.config/kdedefaults/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:                /etc/xdg/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:                /usr/share/desktop-base/kf5-settings/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:                /etc/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:                /home/rayan/.local/share/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:                /home/rayan/.local/share/flatpak/exports/share/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:                /var/lib/flatpak/exports/share/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:                /usr/local/share/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:                /usr/share/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:             Found the following files:
+[Vulkan Loader] LAYER:                /home/rayan/.local/share/vulkan/implicit_layer.d/steamfossilize_i386.json
+[Vulkan Loader] LAYER:                /home/rayan/.local/share/vulkan/implicit_layer.d/steamfossilize_x86_64.json
+[Vulkan Loader] LAYER:                /home/rayan/.local/share/vulkan/implicit_layer.d/steamoverlay_x86_64.json
+[Vulkan Loader] LAYER:                /home/rayan/.local/share/vulkan/implicit_layer.d/steamoverlay_i386.json
+[Vulkan Loader] LAYER:                /usr/local/share/vulkan/implicit_layer.d/VkLayer_hdr_wsi.x86_64.json
+[Vulkan Loader] LAYER:                /usr/share/vulkan/implicit_layer.d/VkLayer_MESA_device_select.json
+[Vulkan Loader] INFO:           Found manifest file /home/rayan/.local/share/vulkan/implicit_layer.d/steamfossilize_i386.json (file version 1.0.0)
+[Vulkan Loader] INFO:           Found manifest file /home/rayan/.local/share/vulkan/implicit_layer.d/steamfossilize_x86_64.json (file version 1.0.0)
+[Vulkan Loader] INFO:           Found manifest file /home/rayan/.local/share/vulkan/implicit_layer.d/steamoverlay_x86_64.json (file version 1.0.0)
+[Vulkan Loader] INFO:           Found manifest file /home/rayan/.local/share/vulkan/implicit_layer.d/steamoverlay_i386.json (file version 1.0.0)
+[Vulkan Loader] INFO:           Found manifest file /usr/local/share/vulkan/implicit_layer.d/VkLayer_hdr_wsi.x86_64.json (file version 1.0.0)
+[Vulkan Loader] INFO:           Found manifest file /usr/share/vulkan/implicit_layer.d/VkLayer_MESA_device_select.json (file version 1.0.0)
+[Vulkan Loader] LAYER:          Searching for explicit layer manifest files
+[Vulkan Loader] LAYER:             In following locations:
+[Vulkan Loader] LAYER:                /home/rayan/.config/vulkan/explicit_layer.d
+[Vulkan Loader] LAYER:                /home/rayan/.config/kdedefaults/vulkan/explicit_layer.d
+[Vulkan Loader] LAYER:                /etc/xdg/vulkan/explicit_layer.d
+[Vulkan Loader] LAYER:                /usr/share/desktop-base/kf5-settings/vulkan/explicit_layer.d
+[Vulkan Loader] LAYER:                /etc/vulkan/explicit_layer.d
+[Vulkan Loader] LAYER:                /home/rayan/.local/share/vulkan/explicit_layer.d
+[Vulkan Loader] LAYER:                /home/rayan/.local/share/flatpak/exports/share/vulkan/explicit_layer.d
+[Vulkan Loader] LAYER:                /var/lib/flatpak/exports/share/vulkan/explicit_layer.d
+[Vulkan Loader] LAYER:                /usr/local/share/vulkan/explicit_layer.d
+[Vulkan Loader] LAYER:                /usr/share/vulkan/explicit_layer.d
+[Vulkan Loader] LAYER:             Found the following files:
+[Vulkan Loader] LAYER:                /usr/share/vulkan/explicit_layer.d/VkLayer_MESA_overlay.json
+[Vulkan Loader] LAYER:                /usr/share/vulkan/explicit_layer.d/VkLayer_INTEL_nullhw.json
+[Vulkan Loader] INFO:           Found manifest file /usr/share/vulkan/explicit_layer.d/VkLayer_MESA_overlay.json (file version 1.0.0)
+[Vulkan Loader] INFO:           Found manifest file /usr/share/vulkan/explicit_layer.d/VkLayer_INTEL_nullhw.json (file version 1.0.0)
+[Vulkan Loader] DRIVER:         Searching for driver manifest files
+[Vulkan Loader] DRIVER:            In following locations:
+[Vulkan Loader] DRIVER:               /home/rayan/.config/vulkan/icd.d
+[Vulkan Loader] DRIVER:               /home/rayan/.config/kdedefaults/vulkan/icd.d
+[Vulkan Loader] DRIVER:               /etc/xdg/vulkan/icd.d
+[Vulkan Loader] DRIVER:               /usr/share/desktop-base/kf5-settings/vulkan/icd.d
+[Vulkan Loader] DRIVER:               /etc/vulkan/icd.d
+[Vulkan Loader] DRIVER:               /home/rayan/.local/share/vulkan/icd.d
+[Vulkan Loader] DRIVER:               /home/rayan/.local/share/flatpak/exports/share/vulkan/icd.d
+[Vulkan Loader] DRIVER:               /var/lib/flatpak/exports/share/vulkan/icd.d
+[Vulkan Loader] DRIVER:               /usr/local/share/vulkan/icd.d
+[Vulkan Loader] DRIVER:               /usr/share/vulkan/icd.d
+[Vulkan Loader] DRIVER:            Found the following files:
+[Vulkan Loader] DRIVER:               /usr/share/vulkan/icd.d/intel_icd.json
+[Vulkan Loader] DRIVER:               /usr/share/vulkan/icd.d/lvp_icd.json
+[Vulkan Loader] DRIVER:               /usr/share/vulkan/icd.d/intel_hasvk_icd.json
+[Vulkan Loader] DRIVER:               /usr/share/vulkan/icd.d/virtio_icd.json
+[Vulkan Loader] DRIVER:               /usr/share/vulkan/icd.d/nouveau_icd.json
+[Vulkan Loader] DRIVER:               /usr/share/vulkan/icd.d/gfxstream_vk_icd.json
+[Vulkan Loader] DRIVER:               /usr/share/vulkan/icd.d/radeon_icd.json
+[Vulkan Loader] DRIVER:         Found ICD manifest file /usr/share/vulkan/icd.d/intel_icd.json, version 1.0.0
+[Vulkan Loader] DEBUG | DRIVER: Searching for ICD drivers named libvulkan_intel.so
+[Vulkan Loader] DRIVER:         Found ICD manifest file /usr/share/vulkan/icd.d/lvp_icd.json, version 1.0.0
+[Vulkan Loader] DEBUG | DRIVER: Searching for ICD drivers named libvulkan_lvp.so
+[Vulkan Loader] DRIVER:         Found ICD manifest file /usr/share/vulkan/icd.d/intel_hasvk_icd.json, version 1.0.0
+[Vulkan Loader] DEBUG | DRIVER: Searching for ICD drivers named libvulkan_intel_hasvk.so
+[Vulkan Loader] DRIVER:         Found ICD manifest file /usr/share/vulkan/icd.d/virtio_icd.json, version 1.0.0
+[Vulkan Loader] DEBUG | DRIVER: Searching for ICD drivers named libvulkan_virtio.so
+[Vulkan Loader] DRIVER:         Found ICD manifest file /usr/share/vulkan/icd.d/nouveau_icd.json, version 1.0.0
+[Vulkan Loader] DEBUG | DRIVER: Searching for ICD drivers named libvulkan_nouveau.so
+[Vulkan Loader] DRIVER:         Found ICD manifest file /usr/share/vulkan/icd.d/gfxstream_vk_icd.json, version 1.0.0
+[Vulkan Loader] DEBUG | DRIVER: Searching for ICD drivers named libvulkan_gfxstream.so
+[Vulkan Loader] DRIVER:         Found ICD manifest file /usr/share/vulkan/icd.d/radeon_icd.json, version 1.0.0
+[Vulkan Loader] DEBUG | DRIVER: Searching for ICD drivers named libvulkan_radeon.so
+[Vulkan Loader] WARNING | LAYER: env var 'VK_INSTANCE_LAYERS' defined and adding layers "VK_LAYER_KHRONOS_validation"
+[Vulkan Loader] ERROR | LAYER:  Layer "VK_LAYER_KHRONOS_validation" was not found but was requested by env var VK_INSTANCE_LAYERS!
+[Vulkan Loader] WARNING | LAYER: env var 'VK_INSTANCE_LAYERS' defined and adding layers "VK_LAYER_KHRONOS_validation"
+[Vulkan Loader] ERROR | LAYER:  Layer "VK_LAYER_KHRONOS_validation" was not found but was requested by env var VK_INSTANCE_LAYERS!
+[Vulkan Loader] DEBUG | LAYER:  Loading layer library libVkLayer_MESA_device_select.so
+[Vulkan Loader] INFO | LAYER:   Insert instance layer "VK_LAYER_MESA_device_select" (libVkLayer_MESA_device_select.so)
+[Vulkan Loader] LAYER:          vkCreateInstance layer callstack setup to:
+[Vulkan Loader] LAYER:             <Application>
+[Vulkan Loader] LAYER:               ||
+[Vulkan Loader] LAYER:             <Loader>
+[Vulkan Loader] LAYER:               ||
+[Vulkan Loader] LAYER:             VK_LAYER_MESA_device_select
+[Vulkan Loader] LAYER:                     Type: Implicit
+[Vulkan Loader] LAYER:                     Enabled By: Implicit Layer
+[Vulkan Loader] LAYER:                         Disable Env Var:  NODEVICE_SELECT
+[Vulkan Loader] LAYER:                     Manifest: /usr/share/vulkan/implicit_layer.d/VkLayer_MESA_device_select.json
+[Vulkan Loader] LAYER:                     Library:  libVkLayer_MESA_device_select.so
+[Vulkan Loader] LAYER:               ||
+[Vulkan Loader] LAYER:             <Drivers>
+[Vulkan Loader] DEBUG | DRIVER: terminator_CreateInstance: ICD "libvulkan_gfxstream.so" vkEnumerateInstanceVersion returned error. The ICD will be treated as a 1.0 ICD
+[Vulkan Loader] INFO | DRIVER:  linux_read_sorted_physical_devices:
+[Vulkan Loader] INFO | DRIVER:       Original order:
+[Vulkan Loader] INFO | DRIVER:             [0] AMD Radeon Graphics (RADV RAPHAEL_MENDOCINO)
+[Vulkan Loader] INFO | DRIVER:             [1] AMD Radeon VII (RADV VEGA20)
+[Vulkan Loader] INFO | DRIVER:             [2] AMD Radeon RX 7900 XTX (RADV NAVI31)
+[Vulkan Loader] INFO | DRIVER:             [3] llvmpipe (LLVM 19.1.7, 256 bits)
+[Vulkan Loader] INFO | DRIVER:       Sorted order:
+[Vulkan Loader] INFO | DRIVER:             [0] AMD Radeon RX 7900 XTX (RADV NAVI31)  
+[Vulkan Loader] INFO | DRIVER:             [1] AMD Radeon VII (RADV VEGA20)  
+[Vulkan Loader] INFO | DRIVER:             [2] AMD Radeon Graphics (RADV RAPHAEL_MENDOCINO)  
+[Vulkan Loader] INFO | DRIVER:             [3] llvmpipe (LLVM 19.1.7, 256 bits)  
+[Vulkan Loader] INFO | DRIVER:  linux_read_sorted_physical_devices:
+[Vulkan Loader] INFO | DRIVER:       Original order:
+[Vulkan Loader] INFO | DRIVER:             [0] AMD Radeon Graphics (RADV RAPHAEL_MENDOCINO)
+[Vulkan Loader] INFO | DRIVER:             [1] AMD Radeon VII (RADV VEGA20)
+[Vulkan Loader] INFO | DRIVER:             [2] AMD Radeon RX 7900 XTX (RADV NAVI31)
+[Vulkan Loader] INFO | DRIVER:             [3] llvmpipe (LLVM 19.1.7, 256 bits)
+[Vulkan Loader] INFO | DRIVER:       Sorted order:
+[Vulkan Loader] INFO | DRIVER:             [0] AMD Radeon RX 7900 XTX (RADV NAVI31)  
+[Vulkan Loader] INFO | DRIVER:             [1] AMD Radeon VII (RADV VEGA20)  
+[Vulkan Loader] INFO | DRIVER:             [2] AMD Radeon Graphics (RADV RAPHAEL_MENDOCINO)  
+[Vulkan Loader] INFO | DRIVER:             [3] llvmpipe (LLVM 19.1.7, 256 bits)  
+[Vulkan Loader] DEBUG | DRIVER: Copying old device 0 into new device 0
+[Vulkan Loader] DEBUG | DRIVER: Copying old device 1 into new device 1
+[Vulkan Loader] DEBUG | DRIVER: Copying old device 2 into new device 2
+[Vulkan Loader] DEBUG | DRIVER: Copying old device 3 into new device 3
+[Vulkan Loader] INFO | DRIVER:  linux_read_sorted_physical_devices:
+[Vulkan Loader] INFO | DRIVER:       Original order:
+[Vulkan Loader] INFO | DRIVER:             [0] AMD Radeon Graphics (RADV RAPHAEL_MENDOCINO)
+[Vulkan Loader] INFO | DRIVER:             [1] AMD Radeon VII (RADV VEGA20)
+[Vulkan Loader] INFO | DRIVER:             [2] AMD Radeon RX 7900 XTX (RADV NAVI31)
+[Vulkan Loader] INFO | DRIVER:             [3] llvmpipe (LLVM 19.1.7, 256 bits)
+[Vulkan Loader] INFO | DRIVER:       Sorted order:
+[Vulkan Loader] INFO | DRIVER:             [0] AMD Radeon RX 7900 XTX (RADV NAVI31)  
+[Vulkan Loader] INFO | DRIVER:             [1] AMD Radeon VII (RADV VEGA20)  
+[Vulkan Loader] INFO | DRIVER:             [2] AMD Radeon Graphics (RADV RAPHAEL_MENDOCINO)  
+[Vulkan Loader] INFO | DRIVER:             [3] llvmpipe (LLVM 19.1.7, 256 bits)  
+[Vulkan Loader] DEBUG | DRIVER: Copying old device 0 into new device 0
+[Vulkan Loader] DEBUG | DRIVER: Copying old device 1 into new device 1
+[Vulkan Loader] DEBUG | DRIVER: Copying old device 2 into new device 2
+[Vulkan Loader] DEBUG | DRIVER: Copying old device 3 into new device 3
+[Vulkan Loader] INFO | DRIVER:  linux_read_sorted_physical_devices:
+[Vulkan Loader] INFO | DRIVER:       Original order:
+[Vulkan Loader] INFO | DRIVER:             [0] AMD Radeon Graphics (RADV RAPHAEL_MENDOCINO)
+[Vulkan Loader] INFO | DRIVER:             [1] AMD Radeon VII (RADV VEGA20)
+[Vulkan Loader] INFO | DRIVER:             [2] AMD Radeon RX 7900 XTX (RADV NAVI31)
+[Vulkan Loader] INFO | DRIVER:             [3] llvmpipe (LLVM 19.1.7, 256 bits)
+[Vulkan Loader] INFO | DRIVER:       Sorted order:
+[Vulkan Loader] INFO | DRIVER:             [0] AMD Radeon RX 7900 XTX (RADV NAVI31)  
+[Vulkan Loader] INFO | DRIVER:             [1] AMD Radeon VII (RADV VEGA20)  
+[Vulkan Loader] INFO | DRIVER:             [2] AMD Radeon Graphics (RADV RAPHAEL_MENDOCINO)  
+[Vulkan Loader] INFO | DRIVER:             [3] llvmpipe (LLVM 19.1.7, 256 bits)  
+[Vulkan Loader] DEBUG | DRIVER: Copying old device 0 into new device 0
+[Vulkan Loader] DEBUG | DRIVER: Copying old device 1 into new device 1
+[Vulkan Loader] DEBUG | DRIVER: Copying old device 2 into new device 2
+[Vulkan Loader] DEBUG | DRIVER: Copying old device 3 into new device 3
+[Vulkan Loader] INFO | DRIVER:  Removing driver libvulkan_gfxstream.so due to not having any physical devices
+[Vulkan Loader] INFO | DRIVER:  Removing driver libvulkan_nouveau.so due to not having any physical devices
+[Vulkan Loader] INFO | DRIVER:  Removing driver libvulkan_virtio.so due to not having any physical devices
+[Vulkan Loader] INFO | DRIVER:  Removing driver libvulkan_intel_hasvk.so due to not having any physical devices
+[Vulkan Loader] INFO | DRIVER:  Removing driver libvulkan_intel.so due to not having any physical devices
+[Vulkan Loader] DEBUG | LAYER:  Unloading layer library libVkLayer_MESA_device_select.so
+[INFO  qoa] GPU Device: AMD Radeon RX 7900 XTX (RADV NAVI31)
+[Vulkan Loader] INFO:           No valid vk_loader_settings.json file found, no loader settings will be active
+[Vulkan Loader] LAYER:          Searching for implicit layer manifest files
+[Vulkan Loader] LAYER:             In following locations:
+[Vulkan Loader] LAYER:                /home/rayan/.config/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:                /home/rayan/.config/kdedefaults/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:                /etc/xdg/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:                /usr/share/desktop-base/kf5-settings/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:                /etc/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:                /home/rayan/.local/share/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:                /home/rayan/.local/share/flatpak/exports/share/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:                /var/lib/flatpak/exports/share/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:                /usr/local/share/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:                /usr/share/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:             Found the following files:
+[Vulkan Loader] LAYER:                /home/rayan/.local/share/vulkan/implicit_layer.d/steamfossilize_i386.json
+[Vulkan Loader] LAYER:                /home/rayan/.local/share/vulkan/implicit_layer.d/steamfossilize_x86_64.json
+[Vulkan Loader] LAYER:                /home/rayan/.local/share/vulkan/implicit_layer.d/steamoverlay_x86_64.json
+[Vulkan Loader] LAYER:                /home/rayan/.local/share/vulkan/implicit_layer.d/steamoverlay_i386.json
+[Vulkan Loader] LAYER:                /usr/local/share/vulkan/implicit_layer.d/VkLayer_hdr_wsi.x86_64.json
+[Vulkan Loader] LAYER:                /usr/share/vulkan/implicit_layer.d/VkLayer_MESA_device_select.json
+[Vulkan Loader] INFO:           Found manifest file /home/rayan/.local/share/vulkan/implicit_layer.d/steamfossilize_i386.json (file version 1.0.0)
+[Vulkan Loader] INFO:           Found manifest file /home/rayan/.local/share/vulkan/implicit_layer.d/steamfossilize_x86_64.json (file version 1.0.0)
+[Vulkan Loader] INFO:           Found manifest file /home/rayan/.local/share/vulkan/implicit_layer.d/steamoverlay_x86_64.json (file version 1.0.0)
+[Vulkan Loader] INFO:           Found manifest file /home/rayan/.local/share/vulkan/implicit_layer.d/steamoverlay_i386.json (file version 1.0.0)
+[Vulkan Loader] INFO:           Found manifest file /usr/local/share/vulkan/implicit_layer.d/VkLayer_hdr_wsi.x86_64.json (file version 1.0.0)
+[Vulkan Loader] INFO:           Found manifest file /usr/share/vulkan/implicit_layer.d/VkLayer_MESA_device_select.json (file version 1.0.0)
+[Vulkan Loader] LAYER:          Searching for explicit layer manifest files
+[Vulkan Loader] LAYER:             In following locations:
+[Vulkan Loader] LAYER:                /home/rayan/.config/vulkan/explicit_layer.d
+[Vulkan Loader] LAYER:                /home/rayan/.config/kdedefaults/vulkan/explicit_layer.d
+[Vulkan Loader] LAYER:                /etc/xdg/vulkan/explicit_layer.d
+[Vulkan Loader] LAYER:                /usr/share/desktop-base/kf5-settings/vulkan/explicit_layer.d
+[Vulkan Loader] LAYER:                /etc/vulkan/explicit_layer.d
+[Vulkan Loader] LAYER:                /home/rayan/.local/share/vulkan/explicit_layer.d
+[Vulkan Loader] LAYER:                /home/rayan/.local/share/flatpak/exports/share/vulkan/explicit_layer.d
+[Vulkan Loader] LAYER:                /var/lib/flatpak/exports/share/vulkan/explicit_layer.d
+[Vulkan Loader] LAYER:                /usr/local/share/vulkan/explicit_layer.d
+[Vulkan Loader] LAYER:                /usr/share/vulkan/explicit_layer.d
+[Vulkan Loader] LAYER:             Found the following files:
+[Vulkan Loader] LAYER:                /usr/share/vulkan/explicit_layer.d/VkLayer_MESA_overlay.json
+[Vulkan Loader] LAYER:                /usr/share/vulkan/explicit_layer.d/VkLayer_INTEL_nullhw.json
+[Vulkan Loader] INFO:           Found manifest file /usr/share/vulkan/explicit_layer.d/VkLayer_MESA_overlay.json (file version 1.0.0)
+[Vulkan Loader] INFO:           Found manifest file /usr/share/vulkan/explicit_layer.d/VkLayer_INTEL_nullhw.json (file version 1.0.0)
+[Vulkan Loader] DRIVER:         Searching for driver manifest files
+[Vulkan Loader] DRIVER:            In following locations:
+[Vulkan Loader] DRIVER:               /home/rayan/.config/vulkan/icd.d
+[Vulkan Loader] DRIVER:               /home/rayan/.config/kdedefaults/vulkan/icd.d
+[Vulkan Loader] DRIVER:               /etc/xdg/vulkan/icd.d
+[Vulkan Loader] DRIVER:               /usr/share/desktop-base/kf5-settings/vulkan/icd.d
+[Vulkan Loader] DRIVER:               /etc/vulkan/icd.d
+[Vulkan Loader] DRIVER:               /home/rayan/.local/share/vulkan/icd.d
+[Vulkan Loader] DRIVER:               /home/rayan/.local/share/flatpak/exports/share/vulkan/icd.d
+[Vulkan Loader] DRIVER:               /var/lib/flatpak/exports/share/vulkan/icd.d
+[Vulkan Loader] DRIVER:               /usr/local/share/vulkan/icd.d
+[Vulkan Loader] DRIVER:               /usr/share/vulkan/icd.d
+[Vulkan Loader] DRIVER:            Found the following files:
+[Vulkan Loader] DRIVER:               /usr/share/vulkan/icd.d/intel_icd.json
+[Vulkan Loader] DRIVER:               /usr/share/vulkan/icd.d/lvp_icd.json
+[Vulkan Loader] DRIVER:               /usr/share/vulkan/icd.d/intel_hasvk_icd.json
+[Vulkan Loader] DRIVER:               /usr/share/vulkan/icd.d/virtio_icd.json
+[Vulkan Loader] DRIVER:               /usr/share/vulkan/icd.d/nouveau_icd.json
+[Vulkan Loader] DRIVER:               /usr/share/vulkan/icd.d/gfxstream_vk_icd.json
+[Vulkan Loader] DRIVER:               /usr/share/vulkan/icd.d/radeon_icd.json
+[Vulkan Loader] DRIVER:         Found ICD manifest file /usr/share/vulkan/icd.d/intel_icd.json, version 1.0.0
+[Vulkan Loader] DEBUG | DRIVER: Searching for ICD drivers named libvulkan_intel.so
+[Vulkan Loader] DRIVER:         Found ICD manifest file /usr/share/vulkan/icd.d/lvp_icd.json, version 1.0.0
+[Vulkan Loader] DEBUG | DRIVER: Searching for ICD drivers named libvulkan_lvp.so
+[Vulkan Loader] DRIVER:         Found ICD manifest file /usr/share/vulkan/icd.d/intel_hasvk_icd.json, version 1.0.0
+[Vulkan Loader] DEBUG | DRIVER: Searching for ICD drivers named libvulkan_intel_hasvk.so
+[Vulkan Loader] DRIVER:         Found ICD manifest file /usr/share/vulkan/icd.d/virtio_icd.json, version 1.0.0
+[Vulkan Loader] DEBUG | DRIVER: Searching for ICD drivers named libvulkan_virtio.so
+[Vulkan Loader] DRIVER:         Found ICD manifest file /usr/share/vulkan/icd.d/nouveau_icd.json, version 1.0.0
+[Vulkan Loader] DEBUG | DRIVER: Searching for ICD drivers named libvulkan_nouveau.so
+[Vulkan Loader] DRIVER:         Found ICD manifest file /usr/share/vulkan/icd.d/gfxstream_vk_icd.json, version 1.0.0
+[Vulkan Loader] DEBUG | DRIVER: Searching for ICD drivers named libvulkan_gfxstream.so
+[Vulkan Loader] DRIVER:         Found ICD manifest file /usr/share/vulkan/icd.d/radeon_icd.json, version 1.0.0
+[Vulkan Loader] DEBUG | DRIVER: Searching for ICD drivers named libvulkan_radeon.so
+[Vulkan Loader] WARNING | LAYER: env var 'VK_INSTANCE_LAYERS' defined and adding layers "VK_LAYER_KHRONOS_validation"
+[Vulkan Loader] ERROR | LAYER:  Layer "VK_LAYER_KHRONOS_validation" was not found but was requested by env var VK_INSTANCE_LAYERS!
+[Vulkan Loader] WARNING | LAYER: env var 'VK_INSTANCE_LAYERS' defined and adding layers "VK_LAYER_KHRONOS_validation"
+[Vulkan Loader] ERROR | LAYER:  Layer "VK_LAYER_KHRONOS_validation" was not found but was requested by env var VK_INSTANCE_LAYERS!
+[Vulkan Loader] DEBUG | LAYER:  Loading layer library libVkLayer_MESA_device_select.so
+[Vulkan Loader] INFO | LAYER:   Insert instance layer "VK_LAYER_MESA_device_select" (libVkLayer_MESA_device_select.so)
+[Vulkan Loader] LAYER:          vkCreateInstance layer callstack setup to:
+[Vulkan Loader] LAYER:             <Application>
+[Vulkan Loader] LAYER:               ||
+[Vulkan Loader] LAYER:             <Loader>
+[Vulkan Loader] LAYER:               ||
+[Vulkan Loader] LAYER:             VK_LAYER_MESA_device_select
+[Vulkan Loader] LAYER:                     Type: Implicit
+[Vulkan Loader] LAYER:                     Enabled By: Implicit Layer
+[Vulkan Loader] LAYER:                         Disable Env Var:  NODEVICE_SELECT
+[Vulkan Loader] LAYER:                     Manifest: /usr/share/vulkan/implicit_layer.d/VkLayer_MESA_device_select.json
+[Vulkan Loader] LAYER:                     Library:  libVkLayer_MESA_device_select.so
+[Vulkan Loader] LAYER:               ||
+[Vulkan Loader] LAYER:             <Drivers>
+[Vulkan Loader] DEBUG | DRIVER: terminator_CreateInstance: ICD "libvulkan_gfxstream.so" vkEnumerateInstanceVersion returned error. The ICD will be treated as a 1.0 ICD
+[Vulkan Loader] INFO | DRIVER:  linux_read_sorted_physical_devices:
+[Vulkan Loader] INFO | DRIVER:       Original order:
+[Vulkan Loader] INFO | DRIVER:             [0] AMD Radeon Graphics (RADV RAPHAEL_MENDOCINO)
+[Vulkan Loader] INFO | DRIVER:             [1] AMD Radeon VII (RADV VEGA20)
+[Vulkan Loader] INFO | DRIVER:             [2] AMD Radeon RX 7900 XTX (RADV NAVI31)
+[Vulkan Loader] INFO | DRIVER:             [3] llvmpipe (LLVM 19.1.7, 256 bits)
+[Vulkan Loader] INFO | DRIVER:       Sorted order:
+[Vulkan Loader] INFO | DRIVER:             [0] AMD Radeon RX 7900 XTX (RADV NAVI31)  
+[Vulkan Loader] INFO | DRIVER:             [1] AMD Radeon VII (RADV VEGA20)  
+[Vulkan Loader] INFO | DRIVER:             [2] AMD Radeon Graphics (RADV RAPHAEL_MENDOCINO)  
+[Vulkan Loader] INFO | DRIVER:             [3] llvmpipe (LLVM 19.1.7, 256 bits)  
+[Vulkan Loader] INFO | DRIVER:  linux_read_sorted_physical_devices:
+[Vulkan Loader] INFO | DRIVER:       Original order:
+[Vulkan Loader] INFO | DRIVER:             [0] AMD Radeon Graphics (RADV RAPHAEL_MENDOCINO)
+[Vulkan Loader] INFO | DRIVER:             [1] AMD Radeon VII (RADV VEGA20)
+[Vulkan Loader] INFO | DRIVER:             [2] AMD Radeon RX 7900 XTX (RADV NAVI31)
+[Vulkan Loader] INFO | DRIVER:             [3] llvmpipe (LLVM 19.1.7, 256 bits)
+[Vulkan Loader] INFO | DRIVER:       Sorted order:
+[Vulkan Loader] INFO | DRIVER:             [0] AMD Radeon RX 7900 XTX (RADV NAVI31)  
+[Vulkan Loader] INFO | DRIVER:             [1] AMD Radeon VII (RADV VEGA20)  
+[Vulkan Loader] INFO | DRIVER:             [2] AMD Radeon Graphics (RADV RAPHAEL_MENDOCINO)  
+[Vulkan Loader] INFO | DRIVER:             [3] llvmpipe (LLVM 19.1.7, 256 bits)  
+[Vulkan Loader] DEBUG | DRIVER: Copying old device 0 into new device 0
+[Vulkan Loader] DEBUG | DRIVER: Copying old device 1 into new device 1
+[Vulkan Loader] DEBUG | DRIVER: Copying old device 2 into new device 2
+[Vulkan Loader] DEBUG | DRIVER: Copying old device 3 into new device 3
+[Vulkan Loader] INFO | DRIVER:  linux_read_sorted_physical_devices:
+[Vulkan Loader] INFO | DRIVER:       Original order:
+[Vulkan Loader] INFO | DRIVER:             [0] AMD Radeon Graphics (RADV RAPHAEL_MENDOCINO)
+[Vulkan Loader] INFO | DRIVER:             [1] AMD Radeon VII (RADV VEGA20)
+[Vulkan Loader] INFO | DRIVER:             [2] AMD Radeon RX 7900 XTX (RADV NAVI31)
+[Vulkan Loader] INFO | DRIVER:             [3] llvmpipe (LLVM 19.1.7, 256 bits)
+[Vulkan Loader] INFO | DRIVER:       Sorted order:
+[Vulkan Loader] INFO | DRIVER:             [0] AMD Radeon RX 7900 XTX (RADV NAVI31)  
+[Vulkan Loader] INFO | DRIVER:             [1] AMD Radeon VII (RADV VEGA20)  
+[Vulkan Loader] INFO | DRIVER:             [2] AMD Radeon Graphics (RADV RAPHAEL_MENDOCINO)  
+[Vulkan Loader] INFO | DRIVER:             [3] llvmpipe (LLVM 19.1.7, 256 bits)  
+[Vulkan Loader] DEBUG | DRIVER: Copying old device 0 into new device 0
+[Vulkan Loader] DEBUG | DRIVER: Copying old device 1 into new device 1
+[Vulkan Loader] DEBUG | DRIVER: Copying old device 2 into new device 2
+[Vulkan Loader] DEBUG | DRIVER: Copying old device 3 into new device 3
+[Vulkan Loader] INFO | DRIVER:  linux_read_sorted_physical_devices:
+[Vulkan Loader] INFO | DRIVER:       Original order:
+[Vulkan Loader] INFO | DRIVER:             [0] AMD Radeon Graphics (RADV RAPHAEL_MENDOCINO)
+[Vulkan Loader] INFO | DRIVER:             [1] AMD Radeon VII (RADV VEGA20)
+[Vulkan Loader] INFO | DRIVER:             [2] AMD Radeon RX 7900 XTX (RADV NAVI31)
+[Vulkan Loader] INFO | DRIVER:             [3] llvmpipe (LLVM 19.1.7, 256 bits)
+[Vulkan Loader] INFO | DRIVER:       Sorted order:
+[Vulkan Loader] INFO | DRIVER:             [0] AMD Radeon RX 7900 XTX (RADV NAVI31)  
+[Vulkan Loader] INFO | DRIVER:             [1] AMD Radeon VII (RADV VEGA20)  
+[Vulkan Loader] INFO | DRIVER:             [2] AMD Radeon Graphics (RADV RAPHAEL_MENDOCINO)  
+[Vulkan Loader] INFO | DRIVER:             [3] llvmpipe (LLVM 19.1.7, 256 bits)  
+[Vulkan Loader] DEBUG | DRIVER: Copying old device 0 into new device 0
+[Vulkan Loader] DEBUG | DRIVER: Copying old device 1 into new device 1
+[Vulkan Loader] DEBUG | DRIVER: Copying old device 2 into new device 2
+[Vulkan Loader] DEBUG | DRIVER: Copying old device 3 into new device 3
+[Vulkan Loader] INFO | DRIVER:  Removing driver libvulkan_gfxstream.so due to not having any physical devices
+[Vulkan Loader] INFO | DRIVER:  Removing driver libvulkan_nouveau.so due to not having any physical devices
+[Vulkan Loader] INFO | DRIVER:  Removing driver libvulkan_virtio.so due to not having any physical devices
+[Vulkan Loader] INFO | DRIVER:  Removing driver libvulkan_intel_hasvk.so due to not having any physical devices
+[Vulkan Loader] INFO | DRIVER:  Removing driver libvulkan_intel.so due to not having any physical devices
+[Vulkan Loader] INFO | LAYER:   Failed to find vkGetDeviceProcAddr in layer "libVkLayer_MESA_device_select.so"
+[Vulkan Loader] DRIVER:         vkCreateDevice layer callstack setup to:
+[Vulkan Loader] DRIVER:            <Application>
+[Vulkan Loader] DRIVER:              ||
+[Vulkan Loader] DRIVER:            <Loader>
+[Vulkan Loader] DRIVER:              ||
+[Vulkan Loader] DRIVER:            <Device>
+[Vulkan Loader] DRIVER:                Using "AMD Radeon RX 7900 XTX (RADV NAVI31)" with driver: "libvulkan_radeon.so"

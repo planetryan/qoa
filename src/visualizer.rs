@@ -1,5 +1,5 @@
+use bumpalo::Bump;
 #[allow(unused_imports)] // for conditional imports
-
 use clap::Parser;
 use image::{ImageBuffer, ImageFormat, Rgb};
 use indicatif::{ProgressBar, ProgressStyle};
@@ -8,16 +8,15 @@ use memmap2::MmapOptions;
 use num_complex::Complex;
 use parking_lot::{Mutex, RwLock};
 use qoa::runtime::quantum_state::{NoiseConfig, QuantumState};
-use rand::SeedableRng; 
+use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
 use rayon::prelude::*;
 use realfft::RealFftPlanner;
 use std::cell::RefCell;
 use std::fs;
 use std::path::Path;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use bumpalo::Bump;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 // --- aligned buffer for cache-line alignment ---
 
@@ -36,7 +35,9 @@ impl<T: Copy + Default> AlignedBuffer<T> {
         let mut data = Vec::with_capacity(capacity);
         // safety: set_len is unsafe but used here to pre-allocate and initialize memory
         // it's safe because we immediately fill it with default values
-        unsafe { data.set_len(capacity); }
+        unsafe {
+            data.set_len(capacity);
+        }
         Self {
             data,
             _phantom: std::marker::PhantomData,
@@ -57,7 +58,9 @@ impl<T: Copy + Default> AlignedBuffer<T> {
     #[allow(dead_code)] // this method is not directly used in visualizer.rs but might be externally
     fn set(&mut self, idx: usize, val: T) {
         // safety: unchecked access is safe assuming idx is within bounds
-        unsafe { *self.data.get_unchecked_mut(idx) = val; }
+        unsafe {
+            *self.data.get_unchecked_mut(idx) = val;
+        }
     }
 
     // returns a mutable slice of the buffer's data
@@ -86,13 +89,13 @@ impl<T: Copy + Default> AlignedBuffer<T> {
 
 // --- simd audio module ---
 mod audio_simd {
-    use super::AlignedBuffer; 
+    use super::AlignedBuffer;
 
     // on x86_64, we use runtime detection for avx512, avx2, and sse.
     #[cfg(target_arch = "x86_64")]
     mod platform_impl {
-        use std::arch::x86_64::*;
         use super::AlignedBuffer;
+        use std::arch::x86_64::*;
 
         // public api for sum_squares_f32, dispatches to appropriate simd or scalar fallback
         pub fn sum_squares_f32(samples: &AlignedBuffer<f32>) -> f64 {
@@ -128,20 +131,20 @@ mod audio_simd {
 
         // public api for calculate_spectral_centroid_f64, dispatches to appropriate simd or scalar fallback
         #[target_feature(enable = "avx2")] // added target_feature
-        pub fn calculate_spectral_centroid_f64( // marked as unsafe fn
+        pub fn calculate_spectral_centroid_f64(
+            // marked as unsafe fn
             spectrum_mags: &[f64],
             bin_width: f64,
         ) -> (f64, f64) {
             // all unsafe calls are now wrapped in an unsafe block
-            unsafe {
-                calculate_spectral_centroid_avx2(spectrum_mags, bin_width)
-            }
+            unsafe { calculate_spectral_centroid_avx2(spectrum_mags, bin_width) }
         }
 
         // calculates sum of squares for f32 samples using avx512 intrinsics
         #[target_feature(enable = "avx512f")]
         unsafe fn sum_squares_avx512(samples: &AlignedBuffer<f32>) -> f64 {
-            unsafe { // Wrap entire function body in an unsafe block
+            unsafe {
+                // Wrap entire function body in an unsafe block
                 let samples_slice = samples.as_slice();
                 let chunks = samples_slice.chunks_exact(16);
                 let remainder = chunks.remainder();
@@ -161,7 +164,8 @@ mod audio_simd {
         // calculates sum of squares for f32 samples using avx2 intrinsics
         #[target_feature(enable = "avx2", enable = "fma")]
         unsafe fn sum_squares_avx2(samples: &AlignedBuffer<f32>) -> f64 {
-            unsafe { // Wrap entire function body in an unsafe block
+            unsafe {
+                // Wrap entire function body in an unsafe block
                 let samples_slice = samples.as_slice();
                 let chunks = samples_slice.chunks_exact(8);
                 let remainder = chunks.remainder();
@@ -181,7 +185,8 @@ mod audio_simd {
         // calculates sum of squares for f32 samples using sse intrinsics
         #[target_feature(enable = "sse")]
         unsafe fn sum_squares_sse(samples: &AlignedBuffer<f32>) -> f64 {
-            unsafe { // Wrap entire function body in an unsafe block
+            unsafe {
+                // Wrap entire function body in an unsafe block
                 let samples_slice = samples.as_slice();
                 let chunks = samples_slice.chunks_exact(4);
                 let remainder = chunks.remainder();
@@ -207,7 +212,8 @@ mod audio_simd {
         // mixes stereo f32 samples to mono using avx512 intrinsics
         #[target_feature(enable = "avx512f")]
         unsafe fn mix_stereo_to_mono_avx512(samples: &[f32], output: &mut Vec<f32>) {
-            unsafe { // Wrap entire function body in an unsafe block
+            unsafe {
+                // Wrap entire function body in an unsafe block
                 let chunks = samples.chunks_exact(32); // 16 stereo pairs
                 let remainder = chunks.remainder();
                 output.reserve(samples.len() / 2);
@@ -232,7 +238,8 @@ mod audio_simd {
         // mixes stereo f32 samples to mono using avx2 intrinsics
         #[target_feature(enable = "avx2")]
         unsafe fn mix_stereo_to_mono_avx2(samples: &[f32], output: &mut Vec<f32>) {
-            unsafe { // Wrap entire function body in an unsafe block
+            unsafe {
+                // Wrap entire function body in an unsafe block
                 let chunks = samples.chunks_exact(16); // 8 stereo pairs
                 let remainder = chunks.remainder();
                 let half_vec = _mm256_set1_ps(0.5);
@@ -255,7 +262,8 @@ mod audio_simd {
         // mixes stereo f32 samples to mono using sse3 intrinsics
         #[target_feature(enable = "sse3")]
         unsafe fn mix_stereo_to_mono_sse(samples: &[f32], output: &mut Vec<f32>) {
-            unsafe { // Wrap entire function body in an unsafe block
+            unsafe {
+                // Wrap entire function body in an unsafe block
                 let chunks = samples.chunks_exact(8); // 4 stereo pairs
                 let remainder = chunks.remainder();
                 let half_vec = _mm_set1_ps(0.5);
@@ -281,7 +289,8 @@ mod audio_simd {
             spectrum_mags: &[f64],
             bin_width: f64,
         ) -> (f64, f64) {
-            unsafe { // Wrap entire function body in an unsafe block
+            unsafe {
+                // Wrap entire function body in an unsafe block
                 let chunks = spectrum_mags.chunks_exact(4);
                 let chunks_len = chunks.len();
                 let remainder = chunks.remainder();
@@ -295,7 +304,8 @@ mod audio_simd {
                     let magnitudes = _mm256_loadu_pd(chunk.as_ptr());
                     let freqs_base = _mm256_set1_pd((i * 4) as f64);
                     let freqs_offset = _mm256_set_pd(3.0, 2.0, 1.0, 0.0); // reversed for correct order
-                    let freqs = _mm256_mul_pd(_mm256_add_pd(freqs_base, freqs_offset), bin_width_vec);
+                    let freqs =
+                        _mm256_mul_pd(_mm256_add_pd(freqs_base, freqs_offset), bin_width_vec);
 
                     let weighted = _mm256_mul_pd(freqs, magnitudes);
 
@@ -327,7 +337,8 @@ mod audio_simd {
             low_hz: f64,
             high_hz: f64,
         ) -> f64 {
-            unsafe { // Wrap entire function body in an unsafe block
+            unsafe {
+                // Wrap entire function body in an unsafe block
                 if spectrum_mags.is_empty() || sample_rate == 0 || low_hz >= high_hz {
                     return 0.0; // early return for invalid inputs
                 }
@@ -368,10 +379,7 @@ mod audio_simd {
         // performs a horizontal sum of a __m256d vector (4 f64 elements)
         #[target_feature(enable = "sse2", enable = "avx")] // ensure required features are enabled for this function
         unsafe fn horizontal_sum_pd(vec: __m256d) -> f64 {
-            let sum = _mm_add_pd(
-                _mm256_castpd256_pd128(vec),
-                _mm256_extractf128_pd(vec, 1)
-            );
+            let sum = _mm_add_pd(_mm256_castpd256_pd128(vec), _mm256_extractf128_pd(vec, 1));
             let sum = _mm_add_sd(sum, _mm_unpackhi_pd(sum, sum));
             _mm_cvtsd_f64(sum)
         }
@@ -391,9 +399,9 @@ mod audio_simd {
     // on aarch64, we assume neon is available.
     #[cfg(target_arch = "aarch64")]
     mod platform_impl {
+        use super::AlignedBuffer;
         #[allow(unused_imports)] // this import is conditionally used
         use std::arch::aarch64::*;
-        use super::AlignedBuffer;
 
         // public api for sum_squares_f32, dispatches to appropriate simd or scalar fallback
         #[target_feature(enable = "neon")]
@@ -406,7 +414,11 @@ mod audio_simd {
                 let mut sum_vec = vdupq_n_f32(0.0);
                 for chunk in chunks {
                     // load data and perform fused multiply-accumulate
-                    sum_vec = vfmaq_f32(sum_vec, vld1q_f32(chunk.as_ptr()), vld1q_f32(chunk.as_ptr()));
+                    sum_vec = vfmaq_f32(
+                        sum_vec,
+                        vld1q_f32(chunk.as_ptr()),
+                        vld1q_f32(chunk.as_ptr()),
+                    );
                 }
                 // horizontal add
                 let mut total_sum = vaddvq_f32(sum_vec) as f64;
@@ -439,7 +451,8 @@ mod audio_simd {
 
         // public api for calculate_spectral_centroid_f64, dispatches to appropriate simd or scalar fallback
         #[target_feature(enable = "neon")] // added target_feature
-        pub fn calculate_spectral_centroid_f64( // marked as unsafe fn
+        pub fn calculate_spectral_centroid_f64(
+            // marked as unsafe fn
             spectrum_mags: &[f64],
             bin_width: f64,
         ) -> (f64, f64) {
@@ -456,7 +469,8 @@ mod audio_simd {
                 // capture chunks length before it's consumed by `into_iter().enumerate()`
                 let initial_chunks_len = chunks.len();
 
-                for (i, chunk) in chunks.clone().enumerate() { // clone chunks to allow subsequent use
+                for (i, chunk) in chunks.clone().enumerate() {
+                    // clone chunks to allow subsequent use
                     let magnitudes = vld1q_f64(chunk.as_ptr());
                     let freqs_base = vdupq_n_f64((i * 2) as f64);
                     let freqs_offset = vsetq_lane_f64(1.0, vdupq_n_f64(0.0), 0);
@@ -535,8 +549,8 @@ mod audio_simd {
     // on riscv64, we use conditional compilation for the 'v' extension.
     #[cfg(target_arch = "riscv64")]
     mod platform_impl {
-        use core::arch::riscv64::*;
         use super::AlignedBuffer;
+        use core::arch::riscv64::*;
 
         // public api for sum_squares_f32, dispatches to appropriate simd or scalar fallback
         #[target_feature(enable = "v")]
@@ -599,7 +613,8 @@ mod audio_simd {
 
         // public api for calculate_spectral_centroid_f64, dispatches to appropriate simd or scalar fallback
         #[target_feature(enable = "v")] // added target_feature
-        pub fn calculate_spectral_centroid_f64( // marked as unsafe fn
+        pub fn calculate_spectral_centroid_f64(
+            // marked as unsafe fn
             spectrum_mags: &[f64],
             bin_width: f64,
         ) -> (f64, f64) {
@@ -617,14 +632,23 @@ mod audio_simd {
                     // generate frequency indices
                     let mut freqs_indices_vec = vfmv_v_f_f64m1(0.0, vl);
                     for i in 0..vl {
-                        freqs_indices_vec = vset_v_f64m1(freqs_indices_vec, i, (current_idx_base + i) as f64);
+                        freqs_indices_vec =
+                            vset_v_f64m1(freqs_indices_vec, i, (current_idx_base + i) as f64);
                     }
 
                     let freqs_vec = vfmul_vf_f64m1(freqs_indices_vec, bin_width, vl);
                     let weighted_vec = vfmul_vv_f64m1(freqs_vec, mags_vec, vl);
 
-                    total_sum_weighted_freq += vfmv_f_s_f64m1_f64(vfredusum_vs_f64m1(weighted_vec, vfmv_v_f_f64m1(0.0, vl), vl));
-                    total_sum_magnitudes += vfmv_f_s_f64m1_f64(vfredusum_vs_f64m1(mags_vec, vfmv_v_f_f64m1(0.0, vl), vl));
+                    total_sum_weighted_freq += vfmv_f_s_f64m1_f64(vfredusum_vs_f64m1(
+                        weighted_vec,
+                        vfmv_v_f_f64m1(0.0, vl),
+                        vl,
+                    ));
+                    total_sum_magnitudes += vfmv_f_s_f64m1_f64(vfredusum_vs_f64m1(
+                        mags_vec,
+                        vfmv_v_f_f64m1(0.0, vl),
+                        vl,
+                    ));
 
                     remaining_mags = &remaining_mags[vl..];
                     current_idx_base += vl;
@@ -738,23 +762,32 @@ mod audio_simd {
     }
 
     // public api for the audio_simd module
-    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64", target_arch = "riscv64"))]
+    #[cfg(any(
+        target_arch = "x86_64",
+        target_arch = "aarch64",
+        target_arch = "riscv64"
+    ))]
     pub use self::platform_impl::{
-        calculate_band_energy_simd as calculate_band_energy_f64,
-        calculate_spectral_centroid_f64, mix_stereo_to_mono_f32, sum_squares_f32,
+        calculate_band_energy_simd as calculate_band_energy_f64, calculate_spectral_centroid_f64,
+        mix_stereo_to_mono_f32, sum_squares_f32,
     };
 
     // provide scalar fallback if no simd architecture is targeted
-    #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64", target_arch = "riscv64")))]
+    #[cfg(not(any(
+        target_arch = "x86_64",
+        target_arch = "aarch64",
+        target_arch = "riscv64"
+    )))]
     pub use self::scalar_fallback::{
-        calculate_band_energy_f64, calculate_spectral_centroid_f64, mix_stereo_to_mono_f32, sum_squares_f32,
+        calculate_band_energy_f64, calculate_spectral_centroid_f64, mix_stereo_to_mono_f32,
+        sum_squares_f32,
     };
 }
 
 // --- image simd module ---
 mod image_simd {
     #[allow(unused_imports)] // keep this import, it's used by Rgb<u8>
-    use image::Rgb; 
+    use image::Rgb;
 
     // define prefetch strategy for hardware-specific memory prefetching
     #[allow(dead_code)] // variants L2, L3, NonTemporal are not currently used
@@ -770,7 +803,8 @@ mod image_simd {
 
     // inline always to encourage inlining for performance-critical prefetching
     #[inline(always)]
-    pub fn prefetch_data<T>(_ptr: *const T, _offset: usize, strategy: PrefetchStrategy) { // added underscores to unused variables
+    pub fn prefetch_data<T>(_ptr: *const T, _offset: usize, strategy: PrefetchStrategy) {
+        // added underscores to unused variables
         #[cfg(target_arch = "x86_64")]
         // all unsafe calls are now wrapped in an unsafe block
         unsafe {
@@ -779,12 +813,15 @@ mod image_simd {
                 PrefetchStrategy::L1 => _mm_prefetch(_ptr.add(_offset) as *const i8, _MM_HINT_T0),
                 PrefetchStrategy::L2 => _mm_prefetch(_ptr.add(_offset) as *const i8, _MM_HINT_T1),
                 PrefetchStrategy::L3 => _mm_prefetch(_ptr.add(_offset) as *const i8, _MM_HINT_T2),
-                PrefetchStrategy::NonTemporal => _mm_prefetch(_ptr.add(_offset) as *const i8, _MM_HINT_NTA),
+                PrefetchStrategy::NonTemporal => {
+                    _mm_prefetch(_ptr.add(_offset) as *const i8, _MM_HINT_NTA)
+                }
             }
         }
         // aarch64 prefetch instructions (prfm) could be added here
         #[cfg(target_arch = "aarch64")]
-        { // removed unnecessary unsafe block
+        {
+            // removed unnecessary unsafe block
             #[allow(unused_imports)] // this import is conditionally used
             use std::arch::aarch64::*;
             // prfm instructions are typically like prfm pldl1keep, [x0, #offset]
@@ -792,10 +829,10 @@ mod image_simd {
             // this would require inline assembly or specific compiler support.
             // for now, we'll keep it as a placeholder.
             match strategy {
-                PrefetchStrategy::L1 => { /* prfm pldl1keep, [ptr.add(offset)] */ },
-                PrefetchStrategy::L2 => { /* prfm pldl2keep, [ptr.add(offset)] */ },
-                PrefetchStrategy::L3 => { /* prfm pldl3keep, [ptr.add(offset)] */ },
-                PrefetchStrategy::NonTemporal => { /* prfm pldl1strm, [ptr.add(offset)] */ },
+                PrefetchStrategy::L1 => { /* prfm pldl1keep, [ptr.add(offset)] */ }
+                PrefetchStrategy::L2 => { /* prfm pldl2keep, [ptr.add(offset)] */ }
+                PrefetchStrategy::L3 => { /* prfm pldl3keep, [ptr.add(offset)] */ }
+                PrefetchStrategy::NonTemporal => { /* prfm pldl1strm, [ptr.add(offset)] */ }
             }
         }
         // riscv64 prefetch instructions (pref) could be added here
@@ -805,32 +842,36 @@ mod image_simd {
             // riscv has 'pref' instruction, but no direct rust intrinsic.
             // would require inline assembly.
             match strategy {
-                PrefetchStrategy::L1 => { /* pref 0, (ptr.add(offset)) */ },
-                PrefetchStrategy::L2 => { /* pref 1, (ptr.add(offset)) */ },
-                PrefetchStrategy::L3 => { /* pref 2, (ptr.add(offset)) */ },
-                PrefetchStrategy::NonTemporal => { /* pref 3, (ptr.add(offset)) */ },
+                PrefetchStrategy::L1 => { /* pref 0, (ptr.add(offset)) */ }
+                PrefetchStrategy::L2 => { /* pref 1, (ptr.add(offset)) */ }
+                PrefetchStrategy::L3 => { /* pref 2, (ptr.add(offset)) */ }
+                PrefetchStrategy::NonTemporal => { /* pref 3, (ptr.add(offset)) */ }
             }
         }
     }
 
-
     #[cfg(target_arch = "x86_64")]
     mod platform_impl {
-        use std::arch::x86_64::*;
         use image::Rgb;
+        use std::arch::x86_64::*;
 
         // converts hsv to rgb for a batch of f64 values using avx2 intrinsics
         #[target_feature(enable = "avx2")]
-        pub unsafe fn hsv_to_rgb_batch_simd(h_batch: &[f64], s_batch: &[f64], v_batch: &[f64]) -> Vec<(f64, f64, f64)> {
-            unsafe { // Wrap entire function body in an unsafe block
+        pub unsafe fn hsv_to_rgb_batch_simd(
+            h_batch: &[f64],
+            s_batch: &[f64],
+            v_batch: &[f64],
+        ) -> Vec<(f64, f64, f64)> {
+            unsafe {
+                // Wrap entire function body in an unsafe block
                 let mut result = Vec::with_capacity(h_batch.len());
                 let chunks = h_batch.chunks_exact(4);
                 let remainder_start = chunks.len() * 4;
 
                 for (i, h_chunk) in chunks.enumerate() {
-                    let s_chunk = &s_batch[i*4..(i+1)*4];
-                    let v_chunk = &v_batch[i*4..(i+1)*4];
-                    
+                    let s_chunk = &s_batch[i * 4..(i + 1) * 4];
+                    let v_chunk = &v_batch[i * 4..(i + 1) * 4];
+
                     let zero_vec = _mm256_setzero_pd();
                     let one_vec = _mm256_set1_pd(1.0);
                     let two_vec = _mm256_set1_pd(2.0);
@@ -848,8 +889,8 @@ mod image_simd {
                         h_vec,
                         _mm256_mul_pd(
                             _mm256_floor_pd(_mm256_div_pd(h_vec, three_sixty_vec)),
-                            three_sixty_vec
-                        )
+                            three_sixty_vec,
+                        ),
                     );
 
                     // calculate h_prime = h / 60.0
@@ -861,18 +902,15 @@ mod image_simd {
                     // calculate x = c * (1 - |h_prime % 2 - 1|)
                     let h_prime_mod2 = _mm256_sub_pd(
                         h_prime,
-                        _mm256_mul_pd(
-                            _mm256_floor_pd(_mm256_div_pd(h_prime, two_vec)),
-                            two_vec
-                        )
+                        _mm256_mul_pd(_mm256_floor_pd(_mm256_div_pd(h_prime, two_vec)), two_vec),
                     );
                     let h_prime_mod2_sub1 = _mm256_sub_pd(h_prime_mod2, one_vec);
                     let x = _mm256_mul_pd(
                         c,
                         _mm256_sub_pd(
                             one_vec,
-                            _mm256_andnot_pd(neg_zero_vec, h_prime_mod2_sub1) // abs value using andnot
-                        )
+                            _mm256_andnot_pd(neg_zero_vec, h_prime_mod2_sub1), // abs value using andnot
+                        ),
                     );
 
                     // calculate m = v - c
@@ -884,32 +922,50 @@ mod image_simd {
                     let mut b = zero_vec;
 
                     // h_prime in [0, 1)
-                    let mask0 = _mm256_and_pd(_mm256_cmp_pd(h_prime, zero_vec, _CMP_GE_OQ), _mm256_cmp_pd(h_prime, one_vec, _CMP_LT_OQ));
+                    let mask0 = _mm256_and_pd(
+                        _mm256_cmp_pd(h_prime, zero_vec, _CMP_GE_OQ),
+                        _mm256_cmp_pd(h_prime, one_vec, _CMP_LT_OQ),
+                    );
                     r = _mm256_blendv_pd(r, c, mask0);
                     g = _mm256_blendv_pd(g, x, mask0);
 
                     // h_prime in [1, 2)
-                    let mask1 = _mm256_and_pd(_mm256_cmp_pd(h_prime, one_vec, _CMP_GE_OQ), _mm256_cmp_pd(h_prime, two_vec, _CMP_LT_OQ));
+                    let mask1 = _mm256_and_pd(
+                        _mm256_cmp_pd(h_prime, one_vec, _CMP_GE_OQ),
+                        _mm256_cmp_pd(h_prime, two_vec, _CMP_LT_OQ),
+                    );
                     r = _mm256_blendv_pd(r, x, mask1);
                     g = _mm256_blendv_pd(g, c, mask1);
 
                     // h_prime in [2, 3)
-                    let mask2 = _mm256_and_pd(_mm256_cmp_pd(h_prime, two_vec, _CMP_GE_OQ), _mm256_cmp_pd(h_prime, _mm256_set1_pd(3.0), _CMP_LT_OQ));
+                    let mask2 = _mm256_and_pd(
+                        _mm256_cmp_pd(h_prime, two_vec, _CMP_GE_OQ),
+                        _mm256_cmp_pd(h_prime, _mm256_set1_pd(3.0), _CMP_LT_OQ),
+                    );
                     g = _mm256_blendv_pd(g, c, mask2);
                     b = _mm256_blendv_pd(b, x, mask2);
 
                     // h_prime in [3, 4)
-                    let mask3 = _mm256_and_pd(_mm256_cmp_pd(h_prime, _mm256_set1_pd(3.0), _CMP_GE_OQ), _mm256_cmp_pd(h_prime, _mm256_set1_pd(4.0), _CMP_LT_OQ));
+                    let mask3 = _mm256_and_pd(
+                        _mm256_cmp_pd(h_prime, _mm256_set1_pd(3.0), _CMP_GE_OQ),
+                        _mm256_cmp_pd(h_prime, _mm256_set1_pd(4.0), _CMP_LT_OQ),
+                    );
                     g = _mm256_blendv_pd(g, x, mask3);
                     b = _mm256_blendv_pd(b, c, mask3);
 
                     // h_prime in [4, 5)
-                    let mask4 = _mm256_and_pd(_mm256_cmp_pd(h_prime, _mm256_set1_pd(4.0), _CMP_GE_OQ), _mm256_cmp_pd(h_prime, _mm256_set1_pd(5.0), _CMP_LT_OQ));
+                    let mask4 = _mm256_and_pd(
+                        _mm256_cmp_pd(h_prime, _mm256_set1_pd(4.0), _CMP_GE_OQ),
+                        _mm256_cmp_pd(h_prime, _mm256_set1_pd(5.0), _CMP_LT_OQ),
+                    );
                     r = _mm256_blendv_pd(r, x, mask4);
                     b = _mm256_blendv_pd(b, c, mask4);
 
                     // h_prime in [5, 6)
-                    let mask5 = _mm256_and_pd(_mm256_cmp_pd(h_prime, _mm256_set1_pd(5.0), _CMP_GE_OQ), _mm256_cmp_pd(h_prime, _mm256_set1_pd(6.0), _CMP_LT_OQ));
+                    let mask5 = _mm256_and_pd(
+                        _mm256_cmp_pd(h_prime, _mm256_set1_pd(5.0), _CMP_GE_OQ),
+                        _mm256_cmp_pd(h_prime, _mm256_set1_pd(6.0), _CMP_LT_OQ),
+                    );
                     r = _mm256_blendv_pd(r, c, mask5);
                     b = _mm256_blendv_pd(b, x, mask5);
 
@@ -933,7 +989,9 @@ mod image_simd {
 
                 // process remainder
                 for i in remainder_start..h_batch.len() {
-                    result.push(super::scalar_fallback::hsv_to_rgb(h_batch[i], s_batch[i], v_batch[i]));
+                    result.push(super::scalar_fallback::hsv_to_rgb(
+                        h_batch[i], s_batch[i], v_batch[i],
+                    ));
                 }
 
                 result
@@ -941,10 +999,20 @@ mod image_simd {
         }
 
         // blends two sets of pixels using avx512 intrinsics
-        #[target_feature(enable = "avx512f", enable = "avx512dq", enable = "avx512vl", enable = "avx512bw")]
-        
-        pub unsafe fn blend_pixels_batch_avx512(pixels1: &[Rgb<u8>], pixels2: &[Rgb<u8>], alpha: f32) -> Vec<Rgb<u8>> {
-            unsafe { // Wrap entire function body in an unsafe block
+        #[target_feature(
+            enable = "avx512f",
+            enable = "avx512dq",
+            enable = "avx512vl",
+            enable = "avx512bw"
+        )]
+
+        pub unsafe fn blend_pixels_batch_avx512(
+            pixels1: &[Rgb<u8>],
+            pixels2: &[Rgb<u8>],
+            alpha: f32,
+        ) -> Vec<Rgb<u8>> {
+            unsafe {
+                // Wrap entire function body in an unsafe block
                 let chunks = pixels1.chunks_exact(16); // process 16 pixels at once for avx512
                 let remainder = chunks.remainder();
                 let mut result = Vec::with_capacity(pixels1.len());
@@ -953,7 +1021,7 @@ mod image_simd {
                 let chunks_len = chunks.len();
 
                 for (i, chunk1) in chunks.enumerate() {
-                    let chunk2 = &pixels2[i*16..(i+1)*16];
+                    let chunk2 = &pixels2[i * 16..(i + 1) * 16];
 
                     // load 16 pixels (48 bytes) into f32 vectors
                     let mut r1_f = [0.0f32; 16];
@@ -971,12 +1039,12 @@ mod image_simd {
                         g2_f[j] = chunk2[j][0] as f32;
                         b2_f[j] = chunk2[j][0] as f32;
                     }
-                    
+
                     let alpha_vec = _mm512_set1_ps(alpha);
                     let inv_alpha_vec = _mm512_set1_ps(1.0 - alpha);
                     let zero_f32_vec = _mm512_set1_ps(0.0);
                     let max_u8_f32_vec = _mm512_set1_ps(255.0);
-                    
+
                     let r1_vec = _mm512_loadu_ps(r1_f.as_ptr());
                     let g1_vec = _mm512_loadu_ps(g1_f.as_ptr());
                     let b1_vec = _mm512_loadu_ps(b1_f.as_ptr());
@@ -986,14 +1054,20 @@ mod image_simd {
                     let b2_vec = _mm512_loadu_ps(b2_f.as_ptr());
 
                     // blend using fma: r1*alpha + r2*(1-alpha)
-                    let r_blended = _mm512_fmadd_ps(r1_vec, alpha_vec, _mm512_mul_ps(r2_vec, inv_alpha_vec));
-                    let g_blended = _mm512_fmadd_ps(g1_vec, alpha_vec, _mm512_mul_ps(g2_vec, inv_alpha_vec));
-                    let b_blended = _mm512_fmadd_ps(b1_vec, alpha_vec, _mm512_mul_ps(b2_vec, inv_alpha_vec));
+                    let r_blended =
+                        _mm512_fmadd_ps(r1_vec, alpha_vec, _mm512_mul_ps(r2_vec, inv_alpha_vec));
+                    let g_blended =
+                        _mm512_fmadd_ps(g1_vec, alpha_vec, _mm512_mul_ps(g2_vec, inv_alpha_vec));
+                    let b_blended =
+                        _mm512_fmadd_ps(b1_vec, alpha_vec, _mm512_mul_ps(b2_vec, inv_alpha_vec));
 
                     // clamp to [0, 255] and convert to u8
-                    let r_clamped = _mm512_min_ps(_mm512_max_ps(r_blended, zero_f32_vec), max_u8_f32_vec);
-                    let g_clamped = _mm512_min_ps(_mm512_max_ps(g_blended, zero_f32_vec), max_u8_f32_vec);
-                    let b_clamped = _mm512_min_ps(_mm512_max_ps(b_blended, zero_f32_vec), max_u8_f32_vec);
+                    let r_clamped =
+                        _mm512_min_ps(_mm512_max_ps(r_blended, zero_f32_vec), max_u8_f32_vec);
+                    let g_clamped =
+                        _mm512_min_ps(_mm512_max_ps(g_blended, zero_f32_vec), max_u8_f32_vec);
+                    let b_clamped =
+                        _mm512_min_ps(_mm512_max_ps(b_blended, zero_f32_vec), max_u8_f32_vec);
 
                     // convert f32 to i32
                     let r_i32 = _mm512_cvtps_epi32(r_clamped); // __m512i (16 x i32)
@@ -1053,12 +1127,16 @@ mod image_simd {
             }
         }
 
-
         // blends two sets of pixels using avx2 intrinsics
         #[target_feature(enable = "avx2", enable = "fma")]
-        
-        pub unsafe fn blend_pixels_batch_avx2(pixels1: &[Rgb<u8>], pixels2: &[Rgb<u8>], alpha: f32) -> Vec<Rgb<u8>> {
-            unsafe { // Wrap entire function body in an unsafe block
+
+        pub unsafe fn blend_pixels_batch_avx2(
+            pixels1: &[Rgb<u8>],
+            pixels2: &[Rgb<u8>],
+            alpha: f32,
+        ) -> Vec<Rgb<u8>> {
+            unsafe {
+                // Wrap entire function body in an unsafe block
                 let chunks = pixels1.chunks_exact(8); // process 8 pixels at once for avx2
                 let remainder = chunks.remainder();
                 let mut result = Vec::with_capacity(pixels1.len());
@@ -1067,7 +1145,7 @@ mod image_simd {
                 let chunks_len = chunks.len();
 
                 for (i, chunk1) in chunks.enumerate() {
-                    let chunk2 = &pixels2[i*8..(i+1)*8];
+                    let chunk2 = &pixels2[i * 8..(i + 1) * 8];
 
                     // manual extraction for 8 pixels (24 bytes) into f32 vectors
                     let mut r1_f = [0.0f32; 8];
@@ -1090,7 +1168,7 @@ mod image_simd {
                     let inv_alpha_vec = _mm256_set1_ps(1.0 - alpha);
                     let zero_f32_vec = _mm256_set1_ps(0.0);
                     let max_u8_f32_vec = _mm256_set1_ps(255.0);
-                    
+
                     let r1_vec = _mm256_loadu_ps(r1_f.as_ptr());
                     let g1_vec = _mm256_loadu_ps(g1_f.as_ptr());
                     let b1_vec = _mm256_loadu_ps(b1_f.as_ptr());
@@ -1100,14 +1178,20 @@ mod image_simd {
                     let b2_vec = _mm256_loadu_ps(b2_f.as_ptr());
 
                     // blend using fma: r1*alpha + r2*(1-alpha)
-                    let r_blended = _mm256_fmadd_ps(r1_vec, alpha_vec, _mm256_mul_ps(r2_vec, inv_alpha_vec));
-                    let g_blended = _mm256_fmadd_ps(g1_vec, alpha_vec, _mm256_mul_ps(g2_vec, inv_alpha_vec));
-                    let b_blended = _mm256_fmadd_ps(b1_vec, alpha_vec, _mm256_mul_ps(b2_vec, inv_alpha_vec));
+                    let r_blended =
+                        _mm256_fmadd_ps(r1_vec, alpha_vec, _mm256_mul_ps(r2_vec, inv_alpha_vec));
+                    let g_blended =
+                        _mm256_fmadd_ps(g1_vec, alpha_vec, _mm256_mul_ps(g2_vec, inv_alpha_vec));
+                    let b_blended =
+                        _mm256_fmadd_ps(b1_vec, alpha_vec, _mm256_mul_ps(b2_vec, inv_alpha_vec));
 
                     // clamp to [0, 255] and convert to u8
-                    let r_clamped = _mm256_min_ps(_mm256_max_ps(r_blended, zero_f32_vec), max_u8_f32_vec);
-                    let g_clamped = _mm256_min_ps(_mm256_max_ps(g_blended, zero_f32_vec), max_u8_f32_vec);
-                    let b_clamped = _mm256_min_ps(_mm256_max_ps(b_blended, zero_f32_vec), max_u8_f32_vec);
+                    let r_clamped =
+                        _mm256_min_ps(_mm256_max_ps(r_blended, zero_f32_vec), max_u8_f32_vec);
+                    let g_clamped =
+                        _mm256_min_ps(_mm256_max_ps(g_blended, zero_f32_vec), max_u8_f32_vec);
+                    let b_clamped =
+                        _mm256_min_ps(_mm256_max_ps(b_blended, zero_f32_vec), max_u8_f32_vec);
 
                     // convert f32 to i32, then to u8
                     let r_i32 = _mm256_cvtps_epi32(r_clamped);
@@ -1144,21 +1228,26 @@ mod image_simd {
 
     #[cfg(target_arch = "aarch64")]
     mod platform_impl {
-        use std::arch::aarch64::*;
         use image::Rgb;
+        use std::arch::aarch64::*;
 
         // converts hsv to rgb for a batch of f64 values using NEON intrinsics
         #[target_feature(enable = "neon")]
-        
-        pub unsafe fn hsv_to_rgb_batch_simd(h_batch: &[f64], s_batch: &[f64], v_batch: &[f64]) -> Vec<(f64, f64, f64)> {
-            unsafe { // Wrap entire function body in an unsafe block
+
+        pub unsafe fn hsv_to_rgb_batch_simd(
+            h_batch: &[f64],
+            s_batch: &[f64],
+            v_batch: &[f64],
+        ) -> Vec<(f64, f64, f64)> {
+            unsafe {
+                // Wrap entire function body in an unsafe block
                 let mut result = Vec::with_capacity(h_batch.len());
                 let chunks = h_batch.chunks_exact(2); // NEON f64 vector is 2 elements
                 let remainder_start = chunks.len() * 2;
 
                 for (i, h_chunk) in chunks.enumerate() {
-                    let s_chunk = &s_batch[i*2..(i+1)*2];
-                    let v_chunk = &v_batch[i*2..(i+1)*2];
+                    let s_chunk = &s_batch[i * 2..(i + 1) * 2];
+                    let v_chunk = &v_batch[i * 2..(i + 1) * 2];
 
                     let zero_vec = vdupq_n_f64(0.0);
                     let one_vec = vdupq_n_f64(1.0);
@@ -1169,7 +1258,7 @@ mod image_simd {
                     let six_vec = vdupq_n_f64(6.0);
                     let sixty_vec = vdupq_n_f64(60.0);
                     let three_sixty_vec = vdupq_n_f64(360.0);
-                    
+
                     let h_vec = vld1q_f64(h_chunk.as_ptr());
                     let s_vec = vld1q_f64(s_chunk.as_ptr());
                     let v_vec = vld1q_f64(v_chunk.as_ptr());
@@ -1178,8 +1267,8 @@ mod image_simd {
                         h_vec,
                         vmulq_f64(
                             vcvtq_f64_s64(vcvtaq_s64_f64(vdivq_f64(h_vec, three_sixty_vec))),
-                            three_sixty_vec
-                        )
+                            three_sixty_vec,
+                        ),
                     );
 
                     let h_prime = vdivq_f64(h_norm, sixty_vec);
@@ -1189,27 +1278,25 @@ mod image_simd {
                         h_prime,
                         vmulq_f64(
                             vcvtq_f64_s64(vcvtaq_s64_f64(vdivq_f64(h_prime, two_vec))),
-                            two_vec
-                        )
+                            two_vec,
+                        ),
                     );
                     let h_prime_mod2_sub1 = vsubq_f64(h_prime_mod2, one_vec);
-                    let x = vmulq_f64(
-                        c,
-                        vsubq_f64(
-                            one_vec,
-                            vabsq_f64(h_prime_mod2_sub1)
-                        )
-                    );
+                    let x = vmulq_f64(c, vsubq_f64(one_vec, vabsq_f64(h_prime_mod2_sub1)));
 
                     let m = vsubq_f64(v_vec, c);
 
                     // h_prime comparison masks
                     let mask0 = vcltq_f64(h_prime, one_vec); // h_prime < 1.0
                     let mask1 = vandq_u64(vcgeq_f64(h_prime, one_vec), vcltq_f64(h_prime, two_vec)); // 1.0 <= h_prime < 2.0
-                    let mask2 = vandq_u64(vcgeq_f64(h_prime, two_vec), vcltq_f64(h_prime, three_vec)); // 2.0 <= h_prime < 3.0
-                    let mask3 = vandq_u64(vcgeq_f64(h_prime, three_vec), vcltq_f64(h_prime, four_vec)); // 3.0 <= h_prime < 4.0
-                    let mask4 = vandq_u64(vcgeq_f64(h_prime, four_vec), vcltq_f64(h_prime, five_vec)); // 4.0 <= h_prime < 5.0
-                    let mask5 = vandq_u64(vcgeq_f64(h_prime, five_vec), vcltq_f64(h_prime, six_vec)); // 5.0 <= h_prime < 6.0
+                    let mask2 =
+                        vandq_u64(vcgeq_f64(h_prime, two_vec), vcltq_f64(h_prime, three_vec)); // 2.0 <= h_prime < 3.0
+                    let mask3 =
+                        vandq_u64(vcgeq_f64(h_prime, three_vec), vcltq_f64(h_prime, four_vec)); // 3.0 <= h_prime < 4.0
+                    let mask4 =
+                        vandq_u64(vcgeq_f64(h_prime, four_vec), vcltq_f64(h_prime, five_vec)); // 4.0 <= h_prime < 5.0
+                    let mask5 =
+                        vandq_u64(vcgeq_f64(h_prime, five_vec), vcltq_f64(h_prime, six_vec)); // 5.0 <= h_prime < 6.0
 
                     // initialize r, g, b components
                     let mut r_comp = zero_vec;
@@ -1254,7 +1341,9 @@ mod image_simd {
                 }
                 // process remainder
                 for i in remainder_start..h_batch.len() {
-                    result.push(super::scalar_fallback::hsv_to_rgb(h_batch[i], s_batch[i], v_batch[i]));
+                    result.push(super::scalar_fallback::hsv_to_rgb(
+                        h_batch[i], s_batch[i], v_batch[i],
+                    ));
                 }
                 result
             }
@@ -1262,9 +1351,14 @@ mod image_simd {
 
         // blends two sets of pixels using NEON intrinsics
         #[target_feature(enable = "neon")]
-        
-        pub unsafe fn blend_pixels_batch_simd(pixels1: &[Rgb<u8>], pixels2: &[Rgb<u8>], alpha: f32) -> Vec<Rgb<u8>> {
-            unsafe { // Wrap entire function body in an unsafe block
+
+        pub unsafe fn blend_pixels_batch_simd(
+            pixels1: &[Rgb<u8>],
+            pixels2: &[Rgb<u8>],
+            alpha: f32,
+        ) -> Vec<Rgb<u8>> {
+            unsafe {
+                // Wrap entire function body in an unsafe block
                 let chunks = pixels1.chunks_exact(4); // 4 pixels = 12 bytes, can use 4 f32 lanes
                 let remainder = chunks.remainder();
                 let mut result = Vec::with_capacity(pixels1.len());
@@ -1272,8 +1366,9 @@ mod image_simd {
                 // capture chunks length before it's consumed by `into_iter().enumerate()`
                 let initial_chunks_len = chunks.len();
 
-                for (i, chunk1) in chunks.clone().enumerate() { // clone chunks to allow subsequent use
-                    let chunk2 = &pixels2[i*4..(i+1)*4];
+                for (i, chunk1) in chunks.clone().enumerate() {
+                    // clone chunks to allow subsequent use
+                    let chunk2 = &pixels2[i * 4..(i + 1) * 4];
 
                     // load and convert u8 to f32
                     let mut r1_f = [0.0f32; 4];
@@ -1296,7 +1391,7 @@ mod image_simd {
                     let inv_alpha_vec = vdupq_n_f32(1.0 - alpha);
                     let max_val_vec = vdupq_n_f32(255.0);
                     let zero_val_vec = vdupq_n_f32(0.0);
-                    
+
                     let r1_vec = vld1q_f32(r1_f.as_ptr());
                     let g1_vec = vld1q_f32(g1_f.as_ptr());
                     let b1_vec = vld1q_f32(b1_f.as_ptr());
@@ -1305,18 +1400,36 @@ mod image_simd {
                     let b2_vec = vld1q_f32(b2_f.as_ptr());
 
                     // blend: p1 * alpha + p2 * (1-alpha)
-                    let r_result_f = vaddq_f32(vmulq_f32(r1_vec, alpha_vec), vmulq_f32(r2_vec, inv_alpha_vec));
-                    let g_result_f = vaddq_f32(vmulq_f32(g1_vec, alpha_vec), vmulq_f32(g2_vec, inv_alpha_vec));
-                    let b_result_f = vaddq_f32(vmulq_f32(b1_vec, alpha_vec), vmulq_f32(b2_vec, inv_alpha_vec));
+                    let r_result_f = vaddq_f32(
+                        vmulq_f32(r1_vec, alpha_vec),
+                        vmulq_f32(r2_vec, inv_alpha_vec),
+                    );
+                    let g_result_f = vaddq_f32(
+                        vmulq_f32(g1_vec, alpha_vec),
+                        vmulq_f32(g2_vec, inv_alpha_vec),
+                    );
+                    let b_result_f = vaddq_f32(
+                        vmulq_f32(b1_vec, alpha_vec),
+                        vmulq_f32(b2_vec, inv_alpha_vec),
+                    );
 
                     // clamp and convert back to u8
                     let mut r_arr = [0.0f32; 4];
                     let mut g_arr = [0.0f32; 4];
                     let mut b_arr = [0.0f32; 4];
 
-                    vst1q_f32(r_arr.as_mut_ptr(), vminq_f32(vmaxq_f32(r_result_f, zero_val_vec), max_val_vec));
-                    vst1q_f32(g_arr.as_mut_ptr(), vminq_f32(vmaxq_f32(g_result_f, zero_val_vec), max_val_vec));
-                    vst1q_f32(b_arr.as_mut_ptr(), vminq_f32(vmaxq_f32(b_result_f, zero_val_vec), max_val_vec));
+                    vst1q_f32(
+                        r_arr.as_mut_ptr(),
+                        vminq_f32(vmaxq_f32(r_result_f, zero_val_vec), max_val_vec),
+                    );
+                    vst1q_f32(
+                        g_arr.as_mut_ptr(),
+                        vminq_f32(vmaxq_f32(g_result_f, zero_val_vec), max_val_vec),
+                    );
+                    vst1q_f32(
+                        b_arr.as_mut_ptr(),
+                        vminq_f32(vmaxq_f32(b_result_f, zero_val_vec), max_val_vec),
+                    );
 
                     for j in 0..4 {
                         result.push(Rgb([r_arr[j] as u8, g_arr[j] as u8, b_arr[j] as u8]));
@@ -1324,7 +1437,11 @@ mod image_simd {
                 }
 
                 // process remainder
-                for (p1, p2) in remainder.iter().zip(pixels2.iter().skip(initial_chunks_len * 4)) { // use initial_chunks_len
+                for (p1, p2) in remainder
+                    .iter()
+                    .zip(pixels2.iter().skip(initial_chunks_len * 4))
+                {
+                    // use initial_chunks_len
                     result.push(Rgb([
                         ((p1[0] as f32 * alpha + p2[0] as f32 * (1.0 - alpha)) as u8),
                         ((p1[1] as f32 * alpha + p2[1] as f32 * (1.0 - alpha)) as u8),
@@ -1381,16 +1498,31 @@ mod image_simd {
 
         // scalar fallback for hsv to rgb batch conversion
         #[allow(dead_code)] // this function is used conditionally
-        pub fn hsv_to_rgb_batch(h_batch: &[f64], s_batch: &[f64], v_batch: &[f64]) -> Vec<(f64, f64, f64)> {
-            h_batch.iter().zip(s_batch).zip(v_batch)
+        pub fn hsv_to_rgb_batch(
+            h_batch: &[f64],
+            s_batch: &[f64],
+            v_batch: &[f64],
+        ) -> Vec<(f64, f64, f64)> {
+            h_batch
+                .iter()
+                .zip(s_batch)
+                .zip(v_batch)
                 .map(|((&h, &s), &v)| hsv_to_rgb(h, s, v))
                 .collect()
         }
 
         // scalar fallback for pixel blending batch
         #[allow(dead_code)] // this function is used conditionally
-        pub fn blend_pixels_batch(pixels1: &[Rgb<u8>], pixels2: &[Rgb<u8>], alpha: f32) -> Vec<Rgb<u8>> {
-            pixels1.iter().zip(pixels2).map(|(p1, p2)| blend_pixels(p1, p2, alpha)).collect()
+        pub fn blend_pixels_batch(
+            pixels1: &[Rgb<u8>],
+            pixels2: &[Rgb<u8>],
+            alpha: f32,
+        ) -> Vec<Rgb<u8>> {
+            pixels1
+                .iter()
+                .zip(pixels2)
+                .map(|(p1, p2)| blend_pixels(p1, p2, alpha))
+                .collect()
         }
     }
 
@@ -1400,7 +1532,11 @@ mod image_simd {
         use super::platform_impl;
         use image::Rgb;
 
-        pub fn hsv_to_rgb_batch(h_batch: &[f64], s_batch: &[f64], v_batch: &[f64]) -> Vec<(f64, f64, f64)> {
+        pub fn hsv_to_rgb_batch(
+            h_batch: &[f64],
+            s_batch: &[f64],
+            v_batch: &[f64],
+        ) -> Vec<(f64, f64, f64)> {
             // all unsafe calls are now wrapped in an unsafe block
             unsafe {
                 if is_x86_feature_detected!("avx2") {
@@ -1411,7 +1547,11 @@ mod image_simd {
             }
         }
 
-        pub fn blend_pixels_batch(pixels1: &[Rgb<u8>], pixels2: &[Rgb<u8>], alpha: f32) -> Vec<Rgb<u8>> {
+        pub fn blend_pixels_batch(
+            pixels1: &[Rgb<u8>],
+            pixels2: &[Rgb<u8>],
+            alpha: f32,
+        ) -> Vec<Rgb<u8>> {
             // all unsafe calls are now wrapped in an unsafe block
             unsafe {
                 if is_x86_feature_detected!("avx512f") && is_x86_feature_detected!("avx512dq") {
@@ -1430,7 +1570,11 @@ mod image_simd {
         use super::platform_impl;
         use image::Rgb;
 
-        pub fn hsv_to_rgb_batch(h_batch: &[f64], s_batch: &[f64], v_batch: &[f64]) -> Vec<(f64, f64, f64)> {
+        pub fn hsv_to_rgb_batch(
+            h_batch: &[f64],
+            s_batch: &[f64],
+            v_batch: &[f64],
+        ) -> Vec<(f64, f64, f64)> {
             // all unsafe calls are now wrapped in an unsafe block
             unsafe {
                 // assuming neon is generally available on aarch64, or use feature detection if specific neon extensions are needed
@@ -1438,21 +1582,22 @@ mod image_simd {
             }
         }
 
-        pub fn blend_pixels_batch(pixels1: &[Rgb<u8>], pixels2: &[Rgb<u8>], alpha: f32) -> Vec<Rgb<u8>> {
+        pub fn blend_pixels_batch(
+            pixels1: &[Rgb<u8>],
+            pixels2: &[Rgb<u8>],
+            alpha: f32,
+        ) -> Vec<Rgb<u8>> {
             // all unsafe calls are now wrapped in an unsafe block
-            unsafe {
-                platform_impl::blend_pixels_batch_simd(pixels1, pixels2, alpha)
-            }
+            unsafe { platform_impl::blend_pixels_batch_simd(pixels1, pixels2, alpha) }
         }
     }
 
-
     // provide scalar fallback if no simd architecture is targeted or for other architectures
     #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
-    pub use self::scalar_fallback::{hsv_to_rgb_batch, blend_pixels_batch};
+    pub use self::scalar_fallback::{blend_pixels_batch, hsv_to_rgb_batch};
 
     #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
-    pub use self::dispatch_impl::{hsv_to_rgb_batch, blend_pixels_batch};
+    pub use self::dispatch_impl::{blend_pixels_batch, hsv_to_rgb_batch};
 
     // expose scalar hsv_to_rgb for single calls
     // removed: pub use self::scalar_fallback::hsv_to_rgb;
@@ -1472,10 +1617,9 @@ fn fast_sin(x: f64) -> f64 {
         x
     };
 
-    (16.0 * y * (std::f64::consts::PI - y)) /
-    (5.0 * std::f64::consts::PI * std::f64::consts::PI - 4.0 * y * (std::f64::consts::PI - y))
+    (16.0 * y * (std::f64::consts::PI - y))
+        / (5.0 * std::f64::consts::PI * std::f64::consts::PI - 4.0 * y * (std::f64::consts::PI - y))
 }
-
 
 // --- quantum noise implementation ---
 
@@ -1594,19 +1738,13 @@ impl PerlinNoise {
                 if is_x86_feature_detected!("avx2") {
                     self.get_batch_simd(coords)
                 } else {
-                    coords
-                        .par_iter()
-                        .map(|(x, y)| self.get(*x, *y))
-                        .collect()
+                    coords.par_iter().map(|(x, y)| self.get(*x, *y)).collect()
                 }
             }
         }
         #[cfg(not(target_arch = "x86_64"))]
         {
-            coords
-                .par_iter()
-                .map(|(x, y)| self.get(*x, *y))
-                .collect()
+            coords.par_iter().map(|(x, y)| self.get(*x, *y)).collect()
         }
     }
 
@@ -1619,7 +1757,8 @@ impl PerlinNoise {
         let remainder = chunks.remainder();
         let mut result = Vec::with_capacity(coords.len());
 
-        unsafe { // Wrap the SIMD portion of the function body in an unsafe block
+        unsafe {
+            // Wrap the SIMD portion of the function body in an unsafe block
             use std::arch::x86_64::*;
 
             for chunk in chunks {
@@ -1645,7 +1784,7 @@ impl PerlinNoise {
                 let x_fade_term = _mm256_fmadd_pd(
                     x_frac,
                     _mm256_fmsub_pd(x_frac, six_vec, fifteen_vec),
-                    ten_vec
+                    ten_vec,
                 );
                 let u_vec = _mm256_mul_pd(x_frac_cube, x_fade_term);
 
@@ -1654,7 +1793,7 @@ impl PerlinNoise {
                 let y_fade_term = _mm256_fmadd_pd(
                     y_frac,
                     _mm256_fmsub_pd(y_frac, six_vec, fifteen_vec),
-                    ten_vec
+                    ten_vec,
                 );
                 let v_vec = _mm256_mul_pd(y_frac_cube, y_fade_term);
 
@@ -1686,11 +1825,24 @@ impl PerlinNoise {
                     let b = self.p.get(x_int_j + 1) as usize + self.p.get(y_int_j) as usize;
 
                     let n00 = Self::grad(self.p.get(a) as usize, x_frac_arr[j], y_frac_arr[j]);
-                    let n10 = Self::grad(self.p.get(b) as usize, x_frac_arr[j] - 1.0, y_frac_arr[j]);
-                    let n01 = Self::grad(self.p.get(a + 1) as usize, x_frac_arr[j], y_frac_arr[j] - 1.0);
-                    let n11 = Self::grad(self.p.get(b + 1) as usize, x_frac_arr[j] - 1.0, y_frac_arr[j] - 1.0);
+                    let n10 =
+                        Self::grad(self.p.get(b) as usize, x_frac_arr[j] - 1.0, y_frac_arr[j]);
+                    let n01 = Self::grad(
+                        self.p.get(a + 1) as usize,
+                        x_frac_arr[j],
+                        y_frac_arr[j] - 1.0,
+                    );
+                    let n11 = Self::grad(
+                        self.p.get(b + 1) as usize,
+                        x_frac_arr[j] - 1.0,
+                        y_frac_arr[j] - 1.0,
+                    );
 
-                    current_results[j] = Self::lerp(v_arr[j], Self::lerp(u_arr[j], n00, n10), Self::lerp(u_arr[j], n01, n11));
+                    current_results[j] = Self::lerp(
+                        v_arr[j],
+                        Self::lerp(u_arr[j], n00, n10),
+                        Self::lerp(u_arr[j], n01, n11),
+                    );
                 }
                 result.extend_from_slice(&current_results);
             }
@@ -1880,7 +2032,9 @@ impl AudioVisualizer {
         high_hz: f64,
     ) -> f64 {
         // Wrapped in unsafe block
-        unsafe { audio_simd::calculate_band_energy_f64(spectrum_mags, sample_rate, low_hz, high_hz) }
+        unsafe {
+            audio_simd::calculate_band_energy_f64(spectrum_mags, sample_rate, low_hz, high_hz)
+        }
     }
 
     // extracts enhanced audio features
@@ -1898,10 +2052,12 @@ impl AudioVisualizer {
         let rms_loudness = if window_samples > 0 {
             let end_idx = (start_idx + window_samples).min(audio_samples.len());
             let samples_slice = &audio_samples[start_idx..end_idx];
-            
+
             // use alignedbuffer for sum_squares_f32
             let mut aligned_samples = AlignedBuffer::<f32>::new(samples_slice.len());
-            aligned_samples.as_mut_slice().copy_from_slice(samples_slice);
+            aligned_samples
+                .as_mut_slice()
+                .copy_from_slice(samples_slice);
 
             // Removed unnecessary `unsafe` block around the call to `audio_simd::sum_squares_f32`
             let sum_sq = audio_simd::sum_squares_f32(&aligned_samples);
@@ -2227,20 +2383,45 @@ fn render_frame_1080p(
                         let allocator = &mut *allocator_cell.borrow_mut();
                         allocator.reset(); // reset allocator for each thread's work unit
 
-                        let mut h_values: bumpalo::collections::Vec<'_, f64> = bumpalo::collections::Vec::with_capacity_in((x_block_end - x_block_start) as usize, allocator);
-                        let mut s_values: bumpalo::collections::Vec<'_, f64> = bumpalo::collections::Vec::with_capacity_in((x_block_end - x_block_start) as usize, allocator);
-                        let mut v_values: bumpalo::collections::Vec<'_, f64> = bumpalo::collections::Vec::with_capacity_in((x_block_end - x_block_start) as usize, allocator);
+                        let mut h_values: bumpalo::collections::Vec<'_, f64> =
+                            bumpalo::collections::Vec::with_capacity_in(
+                                (x_block_end - x_block_start) as usize,
+                                allocator,
+                            );
+                        let mut s_values: bumpalo::collections::Vec<'_, f64> =
+                            bumpalo::collections::Vec::with_capacity_in(
+                                (x_block_end - x_block_start) as usize,
+                                allocator,
+                            );
+                        let mut v_values: bumpalo::collections::Vec<'_, f64> =
+                            bumpalo::collections::Vec::with_capacity_in(
+                                (x_block_end - x_block_start) as usize,
+                                allocator,
+                            );
 
-                        let mut row_coords_bump: bumpalo::collections::Vec<'_, (f64, f64)> = bumpalo::collections::Vec::with_capacity_in((x_block_end - x_block_start) as usize, allocator);
-                        let mut noise_coords_bump: bumpalo::collections::Vec<'_, (f64, f64)> = bumpalo::collections::Vec::with_capacity_in((x_block_end - x_block_start) as usize, allocator);
+                        let mut row_coords_bump: bumpalo::collections::Vec<'_, (f64, f64)> =
+                            bumpalo::collections::Vec::with_capacity_in(
+                                (x_block_end - x_block_start) as usize,
+                                allocator,
+                            );
+                        let mut noise_coords_bump: bumpalo::collections::Vec<'_, (f64, f64)> =
+                            bumpalo::collections::Vec::with_capacity_in(
+                                (x_block_end - x_block_start) as usize,
+                                allocator,
+                            );
 
                         for x in x_block_start..x_block_end {
                             let norm_x = (x as f64 - CENTER_X) / WIDTH_F64;
                             let norm_y = (y as f64 - CENTER_Y) / HEIGHT_F64;
 
                             // apply flow field, using fast_sin
-                            let flow_x = fast_sin(norm_x + quantum_data.flow_field_strength * 0.1) * 0.05;
-                            let flow_y = fast_sin(norm_y + quantum_data.flow_field_strength * 0.1 + std::f64::consts::PI / 2.0) * 0.05; // use cos equivalent
+                            let flow_x =
+                                fast_sin(norm_x + quantum_data.flow_field_strength * 0.1) * 0.05;
+                            let flow_y = fast_sin(
+                                norm_y
+                                    + quantum_data.flow_field_strength * 0.1
+                                    + std::f64::consts::PI / 2.0,
+                            ) * 0.05; // use cos equivalent
 
                             row_coords_bump.push((norm_x + flow_x, norm_y + flow_y));
 
@@ -2256,7 +2437,13 @@ fn render_frame_1080p(
 
                         let noise_values = perlin_noise.get_batch(&row_coords_bump);
 
-                        let mut row_pixels_for_blending: bumpalo::collections::Vec<'_, (u32, u32, Rgb<u8>)> = bumpalo::collections::Vec::with_capacity_in((x_block_end - x_block_start) as usize, allocator);
+                        let mut row_pixels_for_blending: bumpalo::collections::Vec<
+                            '_,
+                            (u32, u32, Rgb<u8>),
+                        > = bumpalo::collections::Vec::with_capacity_in(
+                            (x_block_end - x_block_start) as usize,
+                            allocator,
+                        );
 
                         // process each pixel in the row
                         for (x_idx, x) in (x_block_start..x_block_end).enumerate() {
@@ -2264,24 +2451,27 @@ fn render_frame_1080p(
                             let noise_val = noise_values[x_idx];
 
                             // quantum interference pattern
-                            let interference =
-                                fast_sin(norm_x * 10.0) * fast_sin(norm_y * 10.0 + std::f64::consts::PI / 2.0) * quantum_data.interference_pattern; // use cos equivalent
+                            let interference = fast_sin(norm_x * 10.0)
+                                * fast_sin(norm_y * 10.0 + std::f64::consts::PI / 2.0)
+                                * quantum_data.interference_pattern; // use cos equivalent
                             let final_noise = (noise_val + interference).max(-1.0).min(1.0);
 
                             let brightness_base = quantum_data.base_brightness;
                             let brightness_noise = (final_noise + 1.0) / 2.0; // scale noise from -1..1 to 0..1
-                            let final_brightness =
-                                (brightness_base * brightness_noise * (1.0 - quantum_data.flicker_intensity)
-                                    + quantum_data.flicker_intensity * rand::random::<f64>())
-                                .max(0.0)
-                                .min(1.0);
+                            let final_brightness = (brightness_base
+                                * brightness_noise
+                                * (1.0 - quantum_data.flicker_intensity)
+                                + quantum_data.flicker_intensity * rand::random::<f64>())
+                            .max(0.0)
+                            .min(1.0);
 
                             // color mapping with hue based on audio features and quantum state
                             let hue = (quantum_data.color_hue
                                 + normalized_centroid_for_color(&spectrum_data) * 180.0
                                 + quantum_data.quantum_coherence * 90.0)
                                 % 360.0;
-                            let saturation = (0.7 + quantum_data.quantum_entanglement * 0.3).min(1.0);
+                            let saturation =
+                                (0.7 + quantum_data.quantum_entanglement * 0.3).min(1.0);
                             let value = final_brightness;
 
                             h_values.push(hue);
@@ -2295,31 +2485,42 @@ fn render_frame_1080p(
                                 + quantum_data.depth_modulation * 20.0 * fast_sin(noise_val * 2.0))
                                 as u32;
                             let distorted_y = (y as f64
-                                + fast_sin(norm_y * quantum_data.distortion_magnitude * 50.0 + std::f64::consts::PI / 2.0)
-                                + quantum_data.depth_modulation * 20.0 * fast_sin(noise_val * 2.0 + std::f64::consts::PI / 2.0))
+                                + fast_sin(
+                                    norm_y * quantum_data.distortion_magnitude * 50.0
+                                        + std::f64::consts::PI / 2.0,
+                                )
+                                + quantum_data.depth_modulation
+                                    * 20.0
+                                    * fast_sin(noise_val * 2.0 + std::f64::consts::PI / 2.0))
                                 as u32;
 
                             // store pixel, will be blended later
                             if distorted_x < width && distorted_y < height {
                                 // we push a dummy rgb here, the actual color will be set after batch conversion
-                                row_pixels_for_blending.push((distorted_x, distorted_y, Rgb([0, 0, 0])));
+                                row_pixels_for_blending.push((
+                                    distorted_x,
+                                    distorted_y,
+                                    Rgb([0, 0, 0]),
+                                ));
                             }
                         }
 
                         // batch hsv to rgb conversion
-                        let rgb_colors = image_simd::hsv_to_rgb_batch(&h_values, &s_values, &v_values);
+                        let rgb_colors =
+                            image_simd::hsv_to_rgb_batch(&h_values, &s_values, &v_values);
 
                         // update the stored pixels with actual colors
-                        let mut final_row_pixels: Vec<(u32, u32, Rgb<u8>)> = Vec::with_capacity(row_pixels_for_blending.len());
+                        let mut final_row_pixels: Vec<(u32, u32, Rgb<u8>)> =
+                            Vec::with_capacity(row_pixels_for_blending.len());
                         let mut color_idx = 0;
                         for (_idx, (dx, dy, _)) in row_pixels_for_blending.into_iter().enumerate() {
                             if color_idx < rgb_colors.len() {
                                 let (r, g, b) = rgb_colors[color_idx];
-                                final_row_pixels.push((dx, dy, Rgb([
-                                    (r * 255.0) as u8,
-                                    (g * 255.0) as u8,
-                                    (b * 255.0) as u8,
-                                ])));
+                                final_row_pixels.push((
+                                    dx,
+                                    dy,
+                                    Rgb([(r * 255.0) as u8, (g * 255.0) as u8, (b * 255.0) as u8]),
+                                ));
                                 color_idx += 1;
                             }
                         }
@@ -2332,7 +2533,11 @@ fn render_frame_1080p(
             for row in block_pixel_data {
                 // prefetch next row of pixels
                 if y_block_start + BLOCK_SIZE < height {
-                    image_simd::prefetch_data(img.as_ptr(), ((y_block_start + BLOCK_SIZE) * width) as usize, image_simd::PrefetchStrategy::L1);
+                    image_simd::prefetch_data(
+                        img.as_ptr(),
+                        ((y_block_start + BLOCK_SIZE) * width) as usize,
+                        image_simd::PrefetchStrategy::L1,
+                    );
                 }
 
                 // collect current pixels and new pixels for batch blending
@@ -2364,17 +2569,20 @@ fn render_frame_1080p(
     let bar_width = width as f64 / spectrum_data.len() as f64;
 
     // pre-compute all bar coordinates and colors
-    let mut bar_pixels: Vec<(u32, u32, Rgb<u8>)> = Vec::with_capacity(spectrum_data.len() * spectrum_height as usize);
+    let mut bar_pixels: Vec<(u32, u32, Rgb<u8>)> =
+        Vec::with_capacity(spectrum_data.len() * spectrum_height as usize);
     for (i, &magnitude) in spectrum_data.iter().enumerate() {
         let bar_height = (magnitude * 500.0).min(spectrum_height as f64) as u32;
-        if bar_height == 0 { continue; }
-        
+        if bar_height == 0 {
+            continue;
+        }
+
         let (x_pos, start_y) = match spectrum_direction {
             SpectrumDirection::Ltr => ((i as f64 * bar_width) as u32, height - bar_height),
             SpectrumDirection::Rtl => (width - (i as f64 * bar_width) as u32 - bar_width as u32, 0),
             SpectrumDirection::None => continue,
         };
-        
+
         // compute all pixels for this bar
         for y_offset in 0..bar_height {
             let plot_y = start_y + y_offset;
@@ -2391,17 +2599,17 @@ fn render_frame_1080p(
     if !bar_pixels.is_empty() {
         let mut current_pixels: Vec<Rgb<u8>> = Vec::with_capacity(bar_pixels.len());
         let mut new_pixels: Vec<Rgb<u8>> = Vec::with_capacity(bar_pixels.len());
-        let mut coords_to_blend: Vec<(u32, u32)> = Vec::with_capacity(bar_pixels.len()); 
-        
+        let mut coords_to_blend: Vec<(u32, u32)> = Vec::with_capacity(bar_pixels.len());
+
         for (x, y, color) in &bar_pixels {
             current_pixels.push(*img.get_pixel(*x, *y));
             new_pixels.push(*color);
-            coords_to_blend.push((*x, *y)); 
+            coords_to_blend.push((*x, *y));
         }
-        
+
         // batch blend operation
         let blended_pixels = image_simd::blend_pixels_batch(&current_pixels, &new_pixels, 0.2);
-        
+
         // apply blended pixels
         for (_idx, (x, y)) in coords_to_blend.into_iter().enumerate() {
             img.put_pixel(x, y, blended_pixels[_idx]);
@@ -2445,20 +2653,45 @@ fn render_frame_4k(
                         let allocator = &mut *allocator_cell.borrow_mut();
                         allocator.reset(); // reset allocator for each thread's work unit
 
-                        let mut h_values: bumpalo::collections::Vec<'_, f64> = bumpalo::collections::Vec::with_capacity_in((x_block_end - x_block_start) as usize, allocator);
-                        let mut s_values: bumpalo::collections::Vec<'_, f64> = bumpalo::collections::Vec::with_capacity_in((x_block_end - x_block_start) as usize, allocator);
-                        let mut v_values: bumpalo::collections::Vec<'_, f64> = bumpalo::collections::Vec::with_capacity_in((x_block_end - x_block_start) as usize, allocator);
+                        let mut h_values: bumpalo::collections::Vec<'_, f64> =
+                            bumpalo::collections::Vec::with_capacity_in(
+                                (x_block_end - x_block_start) as usize,
+                                allocator,
+                            );
+                        let mut s_values: bumpalo::collections::Vec<'_, f64> =
+                            bumpalo::collections::Vec::with_capacity_in(
+                                (x_block_end - x_block_start) as usize,
+                                allocator,
+                            );
+                        let mut v_values: bumpalo::collections::Vec<'_, f64> =
+                            bumpalo::collections::Vec::with_capacity_in(
+                                (x_block_end - x_block_start) as usize,
+                                allocator,
+                            );
 
-                        let mut row_coords_bump: bumpalo::collections::Vec<'_, (f64, f64)> = bumpalo::collections::Vec::with_capacity_in((x_block_end - x_block_start) as usize, allocator);
-                        let mut noise_coords_bump: bumpalo::collections::Vec<'_, (f64, f64)> = bumpalo::collections::Vec::with_capacity_in((x_block_end - x_block_start) as usize, allocator);
+                        let mut row_coords_bump: bumpalo::collections::Vec<'_, (f64, f64)> =
+                            bumpalo::collections::Vec::with_capacity_in(
+                                (x_block_end - x_block_start) as usize,
+                                allocator,
+                            );
+                        let mut noise_coords_bump: bumpalo::collections::Vec<'_, (f64, f64)> =
+                            bumpalo::collections::Vec::with_capacity_in(
+                                (x_block_end - x_block_start) as usize,
+                                allocator,
+                            );
 
                         for x in x_block_start..x_block_end {
                             let norm_x = (x as f64 - CENTER_X) / WIDTH_F64;
                             let norm_y = (y as f64 - CENTER_Y) / HEIGHT_F64;
 
                             // apply flow field, using fast_sin
-                            let flow_x = fast_sin(norm_x + quantum_data.flow_field_strength * 0.1) * 0.05;
-                            let flow_y = fast_sin(norm_y + quantum_data.flow_field_strength * 0.1 + std::f64::consts::PI / 2.0) * 0.05; // use cos equivalent
+                            let flow_x =
+                                fast_sin(norm_x + quantum_data.flow_field_strength * 0.1) * 0.05;
+                            let flow_y = fast_sin(
+                                norm_y
+                                    + quantum_data.flow_field_strength * 0.1
+                                    + std::f64::consts::PI / 2.0,
+                            ) * 0.05; // use cos equivalent
 
                             row_coords_bump.push((norm_x + flow_x, norm_y + flow_y));
 
@@ -2474,7 +2707,13 @@ fn render_frame_4k(
 
                         let noise_values = perlin_noise.get_batch(&row_coords_bump);
 
-                        let mut row_pixels_for_blending: bumpalo::collections::Vec<'_, (u32, u32, Rgb<u8>)> = bumpalo::collections::Vec::with_capacity_in((x_block_end - x_block_start) as usize, allocator);
+                        let mut row_pixels_for_blending: bumpalo::collections::Vec<
+                            '_,
+                            (u32, u32, Rgb<u8>),
+                        > = bumpalo::collections::Vec::with_capacity_in(
+                            (x_block_end - x_block_start) as usize,
+                            allocator,
+                        );
 
                         // process each pixel in the row
                         for (x_idx, x) in (x_block_start..x_block_end).enumerate() {
@@ -2482,24 +2721,27 @@ fn render_frame_4k(
                             let noise_val = noise_values[x_idx];
 
                             // quantum interference pattern
-                            let interference =
-                                fast_sin(norm_x * 10.0) * fast_sin(norm_y * 10.0 + std::f64::consts::PI / 2.0) * quantum_data.interference_pattern; // use cos equivalent
+                            let interference = fast_sin(norm_x * 10.0)
+                                * fast_sin(norm_y * 10.0 + std::f64::consts::PI / 2.0)
+                                * quantum_data.interference_pattern; // use cos equivalent
                             let final_noise = (noise_val + interference).max(-1.0).min(1.0);
 
                             let brightness_base = quantum_data.base_brightness;
                             let brightness_noise = (final_noise + 1.0) / 2.0; // scale noise from -1..1 to 0..1
-                            let final_brightness =
-                                (brightness_base * brightness_noise * (1.0 - quantum_data.flicker_intensity)
-                                    + quantum_data.flicker_intensity * rand::random::<f64>())
-                                .max(0.0)
-                                .min(1.0);
+                            let final_brightness = (brightness_base
+                                * brightness_noise
+                                * (1.0 - quantum_data.flicker_intensity)
+                                + quantum_data.flicker_intensity * rand::random::<f64>())
+                            .max(0.0)
+                            .min(1.0);
 
                             // color mapping with hue based on audio features and quantum state
                             let hue = (quantum_data.color_hue
                                 + normalized_centroid_for_color(&spectrum_data) * 180.0
                                 + quantum_data.quantum_coherence * 90.0)
                                 % 360.0;
-                            let saturation = (0.7 + quantum_data.quantum_entanglement * 0.3).min(1.0);
+                            let saturation =
+                                (0.7 + quantum_data.quantum_entanglement * 0.3).min(1.0);
                             let value = final_brightness;
 
                             h_values.push(hue);
@@ -2513,31 +2755,42 @@ fn render_frame_4k(
                                 + quantum_data.depth_modulation * 20.0 * fast_sin(noise_val * 2.0))
                                 as u32;
                             let distorted_y = (y as f64
-                                + fast_sin(norm_y * quantum_data.distortion_magnitude * 50.0 + std::f64::consts::PI / 2.0)
-                                + quantum_data.depth_modulation * 20.0 * fast_sin(noise_val * 2.0 + std::f64::consts::PI / 2.0))
+                                + fast_sin(
+                                    norm_y * quantum_data.distortion_magnitude * 50.0
+                                        + std::f64::consts::PI / 2.0,
+                                )
+                                + quantum_data.depth_modulation
+                                    * 20.0
+                                    * fast_sin(noise_val * 2.0 + std::f64::consts::PI / 2.0))
                                 as u32;
 
                             // store pixel, will be blended later
                             if distorted_x < width && distorted_y < height {
                                 // we push a dummy rgb here, the actual color will be set after batch conversion
-                                row_pixels_for_blending.push((distorted_x, distorted_y, Rgb([0, 0, 0])));
+                                row_pixels_for_blending.push((
+                                    distorted_x,
+                                    distorted_y,
+                                    Rgb([0, 0, 0]),
+                                ));
                             }
                         }
 
                         // batch hsv to rgb conversion
-                        let rgb_colors = image_simd::hsv_to_rgb_batch(&h_values, &s_values, &v_values);
+                        let rgb_colors =
+                            image_simd::hsv_to_rgb_batch(&h_values, &s_values, &v_values);
 
                         // update the stored pixels with actual colors
-                        let mut final_row_pixels: Vec<(u32, u32, Rgb<u8>)> = Vec::with_capacity(row_pixels_for_blending.len());
+                        let mut final_row_pixels: Vec<(u32, u32, Rgb<u8>)> =
+                            Vec::with_capacity(row_pixels_for_blending.len());
                         let mut color_idx = 0;
                         for (_idx, (dx, dy, _)) in row_pixels_for_blending.into_iter().enumerate() {
                             if color_idx < rgb_colors.len() {
                                 let (r, g, b) = rgb_colors[color_idx];
-                                final_row_pixels.push((dx, dy, Rgb([
-                                    (r * 255.0) as u8,
-                                    (g * 255.0) as u8,
-                                    (b * 255.0) as u8,
-                                ])));
+                                final_row_pixels.push((
+                                    dx,
+                                    dy,
+                                    Rgb([(r * 255.0) as u8, (g * 255.0) as u8, (b * 255.0) as u8]),
+                                ));
                                 color_idx += 1;
                             }
                         }
@@ -2550,7 +2803,11 @@ fn render_frame_4k(
             for row in block_pixel_data {
                 // prefetch next row of pixels
                 if y_block_start + BLOCK_SIZE < height {
-                    image_simd::prefetch_data(img.as_ptr(), ((y_block_start + BLOCK_SIZE) * width) as usize, image_simd::PrefetchStrategy::L1);
+                    image_simd::prefetch_data(
+                        img.as_ptr(),
+                        ((y_block_start + BLOCK_SIZE) * width) as usize,
+                        image_simd::PrefetchStrategy::L1,
+                    );
                 }
 
                 // collect current pixels and new pixels for batch blending
@@ -2582,17 +2839,20 @@ fn render_frame_4k(
     let bar_width = width as f64 / spectrum_data.len() as f64;
 
     // pre-compute all bar coordinates and colors
-    let mut bar_pixels: Vec<(u32, u32, Rgb<u8>)> = Vec::with_capacity(spectrum_data.len() * spectrum_height as usize);
+    let mut bar_pixels: Vec<(u32, u32, Rgb<u8>)> =
+        Vec::with_capacity(spectrum_data.len() * spectrum_height as usize);
     for (i, &magnitude) in spectrum_data.iter().enumerate() {
         let bar_height = (magnitude * 500.0).min(spectrum_height as f64) as u32;
-        if bar_height == 0 { continue; }
-        
+        if bar_height == 0 {
+            continue;
+        }
+
         let (x_pos, start_y) = match spectrum_direction {
             SpectrumDirection::Ltr => ((i as f64 * bar_width) as u32, height - bar_height),
             SpectrumDirection::Rtl => (width - (i as f64 * bar_width) as u32 - bar_width as u32, 0),
             SpectrumDirection::None => continue,
         };
-        
+
         // compute all pixels for this bar
         for y_offset in 0..bar_height {
             let plot_y = start_y + y_offset;
@@ -2602,24 +2862,24 @@ fn render_frame_4k(
                     bar_pixels.push((plot_x, plot_y, Rgb([255, 0, 0])));
                 }
             }
-            }
+        }
     }
 
     // batch process all bar pixels
     if !bar_pixels.is_empty() {
         let mut current_pixels: Vec<Rgb<u8>> = Vec::with_capacity(bar_pixels.len());
         let mut new_pixels: Vec<Rgb<u8>> = Vec::with_capacity(bar_pixels.len());
-        let mut coords_to_blend: Vec<(u32, u32)> = Vec::with_capacity(bar_pixels.len()); 
-        
+        let mut coords_to_blend: Vec<(u32, u32)> = Vec::with_capacity(bar_pixels.len());
+
         for (x, y, color) in &bar_pixels {
             current_pixels.push(*img.get_pixel(*x, *y));
             new_pixels.push(*color);
-            coords_to_blend.push((*x, *y)); 
+            coords_to_blend.push((*x, *y));
         }
-        
+
         // batch blend operation
         let blended_pixels = image_simd::blend_pixels_batch(&current_pixels, &new_pixels, 0.2);
-        
+
         // apply blended pixels
         for (_idx, (x, y)) in coords_to_blend.into_iter().enumerate() {
             img.put_pixel(x, y, blended_pixels[_idx]);
@@ -2661,21 +2921,46 @@ fn render_frame_generic(
                         allocator.reset(); // reset allocator for each thread's work unit
 
                         // use bump allocator for temporary vectors
-                        let mut h_values: bumpalo::collections::Vec<'_, f64> = bumpalo::collections::Vec::with_capacity_in((x_block_end - x_block_start) as usize, allocator);
-                        let mut s_values: bumpalo::collections::Vec<'_, f64> = bumpalo::collections::Vec::with_capacity_in((x_block_end - x_block_start) as usize, allocator);
-                        let mut v_values: bumpalo::collections::Vec<'_, f64> = bumpalo::collections::Vec::with_capacity_in((x_block_end - x_block_start) as usize, allocator);
+                        let mut h_values: bumpalo::collections::Vec<'_, f64> =
+                            bumpalo::collections::Vec::with_capacity_in(
+                                (x_block_end - x_block_start) as usize,
+                                allocator,
+                            );
+                        let mut s_values: bumpalo::collections::Vec<'_, f64> =
+                            bumpalo::collections::Vec::with_capacity_in(
+                                (x_block_end - x_block_start) as usize,
+                                allocator,
+                            );
+                        let mut v_values: bumpalo::collections::Vec<'_, f64> =
+                            bumpalo::collections::Vec::with_capacity_in(
+                                (x_block_end - x_block_start) as usize,
+                                allocator,
+                            );
 
                         // pre-compute coordinates and noise values for the entire row within the block
-                        let mut row_coords_bump: bumpalo::collections::Vec<'_, (f64, f64)> = bumpalo::collections::Vec::with_capacity_in((x_block_end - x_block_start) as usize, allocator);
-                        let mut noise_coords_bump: bumpalo::collections::Vec<'_, (f64, f64)> = bumpalo::collections::Vec::with_capacity_in((x_block_end - x_block_start) as usize, allocator);
+                        let mut row_coords_bump: bumpalo::collections::Vec<'_, (f64, f64)> =
+                            bumpalo::collections::Vec::with_capacity_in(
+                                (x_block_end - x_block_start) as usize,
+                                allocator,
+                            );
+                        let mut noise_coords_bump: bumpalo::collections::Vec<'_, (f64, f64)> =
+                            bumpalo::collections::Vec::with_capacity_in(
+                                (x_block_end - x_block_start) as usize,
+                                allocator,
+                            );
 
                         for x in x_block_start..x_block_end {
                             let norm_x = (x as f64 - center_x) / width as f64;
                             let norm_y = (y as f64 - center_y) / height as f64;
 
                             // apply flow field, using fast_sin
-                            let flow_x = fast_sin(norm_x + quantum_data.flow_field_strength * 0.1) * 0.05;
-                            let flow_y = fast_sin(norm_y + quantum_data.flow_field_strength * 0.1 + std::f64::consts::PI / 2.0) * 0.05; // use cos equivalent
+                            let flow_x =
+                                fast_sin(norm_x + quantum_data.flow_field_strength * 0.1) * 0.05;
+                            let flow_y = fast_sin(
+                                norm_y
+                                    + quantum_data.flow_field_strength * 0.1
+                                    + std::f64::consts::PI / 2.0,
+                            ) * 0.05; // use cos equivalent
 
                             row_coords_bump.push((norm_x + flow_x, norm_y + flow_y));
 
@@ -2691,7 +2976,13 @@ fn render_frame_generic(
 
                         let noise_values = perlin_noise.get_batch(&noise_coords_bump);
 
-                        let mut row_pixels_for_blending: bumpalo::collections::Vec<'_, (u32, u32, Rgb<u8>)> = bumpalo::collections::Vec::with_capacity_in((x_block_end - x_block_start) as usize, allocator);
+                        let mut row_pixels_for_blending: bumpalo::collections::Vec<
+                            '_,
+                            (u32, u32, Rgb<u8>),
+                        > = bumpalo::collections::Vec::with_capacity_in(
+                            (x_block_end - x_block_start) as usize,
+                            allocator,
+                        );
 
                         // process each pixel in the row
                         for (x_idx, x) in (x_block_start..x_block_end).enumerate() {
@@ -2699,24 +2990,27 @@ fn render_frame_generic(
                             let noise_val = noise_values[x_idx];
 
                             // quantum interference pattern
-                            let interference =
-                                fast_sin(norm_x * 10.0) * fast_sin(norm_y * 10.0 + std::f64::consts::PI / 2.0) * quantum_data.interference_pattern; // use cos equivalent
+                            let interference = fast_sin(norm_x * 10.0)
+                                * fast_sin(norm_y * 10.0 + std::f64::consts::PI / 2.0)
+                                * quantum_data.interference_pattern; // use cos equivalent
                             let final_noise = (noise_val + interference).max(-1.0).min(1.0);
 
                             let brightness_base = quantum_data.base_brightness;
                             let brightness_noise = (final_noise + 1.0) / 2.0; // scale noise from -1..1 to 0..1
-                            let final_brightness =
-                                (brightness_base * brightness_noise * (1.0 - quantum_data.flicker_intensity)
-                                    + quantum_data.flicker_intensity * rand::random::<f64>())
-                                .max(0.0)
-                                .min(1.0);
+                            let final_brightness = (brightness_base
+                                * brightness_noise
+                                * (1.0 - quantum_data.flicker_intensity)
+                                + quantum_data.flicker_intensity * rand::random::<f64>())
+                            .max(0.0)
+                            .min(1.0);
 
                             // color mapping with hue based on audio features and quantum state
                             let hue = (quantum_data.color_hue
                                 + normalized_centroid_for_color(&spectrum_data) * 180.0
                                 + quantum_data.quantum_coherence * 90.0)
                                 % 360.0;
-                            let saturation = (0.7 + quantum_data.quantum_entanglement * 0.3).min(1.0);
+                            let saturation =
+                                (0.7 + quantum_data.quantum_entanglement * 0.3).min(1.0);
                             let value = final_brightness;
 
                             h_values.push(hue);
@@ -2730,31 +3024,42 @@ fn render_frame_generic(
                                 + quantum_data.depth_modulation * 20.0 * fast_sin(noise_val * 2.0))
                                 as u32;
                             let distorted_y = (y as f64
-                                + fast_sin(norm_y * quantum_data.distortion_magnitude * 50.0 + std::f64::consts::PI / 2.0)
-                                + quantum_data.depth_modulation * 20.0 * fast_sin(noise_val * 2.0 + std::f64::consts::PI / 2.0))
+                                + fast_sin(
+                                    norm_y * quantum_data.distortion_magnitude * 50.0
+                                        + std::f64::consts::PI / 2.0,
+                                )
+                                + quantum_data.depth_modulation
+                                    * 20.0
+                                    * fast_sin(noise_val * 2.0 + std::f64::consts::PI / 2.0))
                                 as u32;
 
                             // store pixel, will be blended later
                             if distorted_x < width && distorted_y < height {
                                 // we push a dummy rgb here, the actual color will be set after batch conversion
-                                row_pixels_for_blending.push((distorted_x, distorted_y, Rgb([0, 0, 0])));
+                                row_pixels_for_blending.push((
+                                    distorted_x,
+                                    distorted_y,
+                                    Rgb([0, 0, 0]),
+                                ));
                             }
                         }
 
                         // batch hsv to rgb conversion
-                        let rgb_colors = image_simd::hsv_to_rgb_batch(&h_values, &s_values, &v_values);
+                        let rgb_colors =
+                            image_simd::hsv_to_rgb_batch(&h_values, &s_values, &v_values);
 
                         // update the stored pixels with actual colors
-                        let mut final_row_pixels: Vec<(u32, u32, Rgb<u8>)> = Vec::with_capacity(row_pixels_for_blending.len());
+                        let mut final_row_pixels: Vec<(u32, u32, Rgb<u8>)> =
+                            Vec::with_capacity(row_pixels_for_blending.len());
                         let mut color_idx = 0;
                         for (_idx, (dx, dy, _)) in row_pixels_for_blending.into_iter().enumerate() {
                             if color_idx < rgb_colors.len() {
                                 let (r, g, b) = rgb_colors[color_idx];
-                                final_row_pixels.push((dx, dy, Rgb([
-                                    (r * 255.0) as u8,
-                                    (g * 255.0) as u8,
-                                    (b * 255.0) as u8,
-                                ])));
+                                final_row_pixels.push((
+                                    dx,
+                                    dy,
+                                    Rgb([(r * 255.0) as u8, (g * 255.0) as u8, (b * 255.0) as u8]),
+                                ));
                                 color_idx += 1;
                             }
                         }
@@ -2767,7 +3072,11 @@ fn render_frame_generic(
             for row in block_pixel_data {
                 // prefetch next row of pixels
                 if y_block_start + BLOCK_SIZE < height {
-                    image_simd::prefetch_data(img.as_ptr(), ((y_block_start + BLOCK_SIZE) * width) as usize, image_simd::PrefetchStrategy::L1);
+                    image_simd::prefetch_data(
+                        img.as_ptr(),
+                        ((y_block_start + BLOCK_SIZE) * width) as usize,
+                        image_simd::PrefetchStrategy::L1,
+                    );
                 }
 
                 // collect current pixels and new pixels for batch blending
@@ -2799,17 +3108,20 @@ fn render_frame_generic(
     let bar_width = width as f64 / spectrum_data.len() as f64;
 
     // pre-compute all bar coordinates and colors
-    let mut bar_pixels: Vec<(u32, u32, Rgb<u8>)> = Vec::with_capacity(spectrum_data.len() * spectrum_height as usize);
+    let mut bar_pixels: Vec<(u32, u32, Rgb<u8>)> =
+        Vec::with_capacity(spectrum_data.len() * spectrum_height as usize);
     for (i, &magnitude) in spectrum_data.iter().enumerate() {
         let bar_height = (magnitude * 500.0).min(spectrum_height as f64) as u32;
-        if bar_height == 0 { continue; }
-        
+        if bar_height == 0 {
+            continue;
+        }
+
         let (x_pos, start_y) = match spectrum_direction {
             SpectrumDirection::Ltr => ((i as f64 * bar_width) as u32, height - bar_height),
             SpectrumDirection::Rtl => (width - (i as f64 * bar_width) as u32 - bar_width as u32, 0),
             SpectrumDirection::None => continue,
         };
-        
+
         // compute all pixels for this bar
         for y_offset in 0..bar_height {
             let plot_y = start_y + y_offset;
@@ -2819,24 +3131,24 @@ fn render_frame_generic(
                     bar_pixels.push((plot_x, plot_y, Rgb([255, 0, 0])));
                 }
             }
-            }
+        }
     }
 
     // batch process all bar pixels
     if !bar_pixels.is_empty() {
         let mut current_pixels: Vec<Rgb<u8>> = Vec::with_capacity(bar_pixels.len());
         let mut new_pixels: Vec<Rgb<u8>> = Vec::with_capacity(bar_pixels.len());
-        let mut coords_to_blend: Vec<(u32, u32)> = Vec::with_capacity(bar_pixels.len()); 
-        
+        let mut coords_to_blend: Vec<(u32, u32)> = Vec::with_capacity(bar_pixels.len());
+
         for (x, y, color) in &bar_pixels {
             current_pixels.push(*img.get_pixel(*x, *y));
             new_pixels.push(*color);
-            coords_to_blend.push((*x, *y)); 
+            coords_to_blend.push((*x, *y));
         }
-        
+
         // batch blend operation
         let blended_pixels = image_simd::blend_pixels_batch(&current_pixels, &new_pixels, 0.2);
-        
+
         // apply blended pixels
         for (_idx, (x, y)) in coords_to_blend.into_iter().enumerate() {
             img.put_pixel(x, y, blended_pixels[_idx]);
@@ -2850,7 +3162,11 @@ pub fn configure_thread_pool() {
     // get the number of physical cores (not logical/hyperthreaded)
     let num_physical_cores = num_cpus::get_physical();
     // reserve one core for system tasks if we have many cores
-    let compute_cores = if num_physical_cores > 4 { num_physical_cores - 1 } else { num_physical_cores };
+    let compute_cores = if num_physical_cores > 4 {
+        num_physical_cores - 1
+    } else {
+        num_physical_cores
+    };
 
     // create a thread pool with optimal configuration
     let thread_pool = rayon::ThreadPoolBuilder::new()
@@ -2880,13 +3196,13 @@ pub fn configure_thread_pool() {
     });
 }
 
-
 // converts hsv to rgb
 
 fn normalized_centroid_for_color(spectrum_data: &[f64]) -> f64 {
     // Wrapped in unsafe block
-    let (sum_weighted_freq, sum_magnitudes) =
-        unsafe { audio_simd::calculate_spectral_centroid_f64(spectrum_data, 1.0 / spectrum_data.len() as f64) };
+    let (sum_weighted_freq, sum_magnitudes) = unsafe {
+        audio_simd::calculate_spectral_centroid_f64(spectrum_data, 1.0 / spectrum_data.len() as f64)
+    };
 
     if sum_magnitudes > 0.0 {
         sum_weighted_freq / sum_magnitudes

@@ -4,7 +4,11 @@ RUSTFLAGS="-C target-cpu=native" cargo test --release (remove release for debug)
 
 ## with GPU features (can apply to any ISA)
 
-RUSTFLAGS="-C target-cpu=native" cargo test --release --features vulkan,opencl3,mpi
+RUSTFLAGS="-C target-cpu=native" cargo test --release --features vulkan,opencl,mpi
+
+## vulkan debug for GPU
+
+RADV_DEBUG=info,startup RUSTFLAGS="-C target-cpu=native" cargo run --release --features vulkan gpu-bench --qubits 27
 
 ## only x86_64 test:
 

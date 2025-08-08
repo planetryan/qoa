@@ -1,0 +1,55 @@
+#version 450
+layout(local_size_x = 32, local_size_y = 1, local_size_z = 1) in;
+
+// state vector (complex numbers stored as pairs of floats)
+layout(std430, binding = 0) buffer StateVector {
+    vec2 state[];
+};
+
+// gate parameters
+layout(std140, binding = 1) uniform GateParams {
+    uint gate_type;
+    uint target_qubit;
+    uint num_qubits;
+    // using _pad field for the rotation angle
+    float angle;
+} params;
+
+void main() {
+    uint gid = gl_GlobalInvocationID.x;
+    uint state_size = 1u << params.num_qubits;
+
+    // return if index is out of bounds
+    if (gid >= state_size) {
+        return;
+    }
+
+    // compute paired index (flipping the target qubit)
+    uint paired_idx = gid ^ (1u << params.target_qubit);
+
+    // only process the first index of each pair to avoid race conditions
+    if (gid < paired_idx) {
+        // get current amplitudes
+        vec2 amp_0 = state[gid];
+        vec2 amp_1 = state[paired_idx];
+
+        // calculate rotation components
+        float cos_half = cos(params.angle / 2.0);
+        float sin_half = sin(params.angle / 2.0);
+
+        // apply ry rotation: [cos(θ/2), -sin(θ/2); sin(θ/2), cos(θ/2)]
+        vec2 new_amp_0 = vec2(
+            cos_half * amp_0.x - sin_half * amp_1.x,
+            cos_half * amp_0.y - sin_half * amp_1.y
+        );
+
+        vec2 new_amp_1 = vec2(
+            cos_half * amp_1.x + sin_half * amp_0.x,
+            cos_half * amp_1.y + sin_half * amp_0.y
+        );
+
+        // write back results
+        state[gid] = new_amp_0;
+        state[paired_idx] = new_amp_1;
+    }
+}

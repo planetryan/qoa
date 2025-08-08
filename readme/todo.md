@@ -2,8 +2,8 @@
 
 **THIS TODO LIST WILL DECREASE IN SIZE AS I FINISH IT**
 
-- Create quantum math library for all ISAS > SOME INSTRUCTIONS MISSING BUT BASICALLY DONE
-- add multi-GPU support for quantum state simulation (via CUDA/OpenCL/Rust-CUDA, Vulkan, etc.) > STARTED NOT DONE
+- Create quantum math library for all ISAS > ALMOST DONE
+- add multi-GPU support for quantum state simulation (via CUDA/OpenCL/Rust-CUDA, Vulkan, etc.) > NEEDS INTERGATION
 - add multi-threaded CPU+GPU coordination for hybrid workloads > STARTED NOT DONE
 
 - Design and implement distributed simulation across multiple systems > STARTED NOT DONE

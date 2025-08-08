@@ -2,11 +2,11 @@
 #![allow(unused_imports)] // cfg-controlled modules
 
 use num_complex::Complex64;
-use std::f64::consts::PI;
 use qoa::instructions::Instruction;
 use qoa::runtime::quantum_state::QuantumState;
-use qoa::vectorization::*;
 use qoa::vectorization::x86_64_simd;
+use qoa::vectorization::*;
+use std::f64::consts::PI;
 
 // for distribute.rs
 use qoa::distribute::{DistributedConfig, PartitionStrategy, SparseStateVector}; // removed Complex
@@ -86,10 +86,10 @@ fn test_hadamard_on_1_qubit() {
 
     // expected: h_1|01> = 1/sqrt(2) (|01> + |11>)
     let expected = vec![
-        Complex64::new(0.0, 0.0),                           // |00>
-        Complex64::new(1.0 / (2.0f64).sqrt(), 0.0),          // |01>
-        Complex64::new(0.0, 0.0),                           // |10>
-        Complex64::new(1.0 / (2.0f64).sqrt(), 0.0),          // |11>
+        Complex64::new(0.0, 0.0),                   // |00>
+        Complex64::new(1.0 / (2.0f64).sqrt(), 0.0), // |01>
+        Complex64::new(0.0, 0.0),                   // |10>
+        Complex64::new(1.0 / (2.0f64).sqrt(), 0.0), // |11>
     ];
     assert_amps_approx_eq(&amps, &expected, 1e-9);
 }
@@ -336,10 +336,7 @@ fn test_ry_on_0_qubit() {
     let cos_half = (angle / 2.0).cos();
     let sin_half = (angle / 2.0).sin();
 
-    let expected = vec![
-        Complex64::new(cos_half, 0.0),
-        Complex64::new(sin_half, 0.0),
-    ]; // cos(a/2)|0> + sin(a/2)|1>
+    let expected = vec![Complex64::new(cos_half, 0.0), Complex64::new(sin_half, 0.0)]; // cos(a/2)|0> + sin(a/2)|1>
     apply_ry_vectorized(&mut amps, 0, angle);
     assert_amps_approx_eq(&amps, &expected, 1e-9);
 }
@@ -354,20 +351,12 @@ fn test_rz_on_0_qubit() {
     let _expected_1 = Complex64::new(0.0, std::f64::consts::FRAC_PI_4).exp(); // e^(i*pi/4)
 
     apply_rz_vectorized(&mut amps, 0, angle);
-    assert_amps_approx_eq(
-        &amps,
-        &vec![expected_0, Complex64::new(0.0, 0.0)],
-        1e-9,
-    );
+    assert_amps_approx_eq(&amps, &vec![expected_0, Complex64::new(0.0, 0.0)], 1e-9);
 
     let mut amps_1 = vec![Complex64::new(0.0, 0.0); 2];
     amps_1[1] = Complex64::new(1.0, 0.0); // |1> state
     apply_rz_vectorized(&mut amps_1, 0, angle);
-    assert_amps_approx_eq(
-        &amps_1,
-        &vec![Complex64::new(0.0, 0.0), _expected_1],
-        1e-9,
-    );
+    assert_amps_approx_eq(&amps_1, &vec![Complex64::new(0.0, 0.0), _expected_1], 1e-9);
 }
 
 // --- cnot gate tests ---
@@ -419,9 +408,9 @@ fn test_cz_2_qubits() {
     let mut amps = vec![Complex64::new(0.0, 0.0); 4];
     amps[0b11] = Complex64::new(1.0, 0.0); // |11>
     let expected = vec![
-        Complex64::new(0.0, 0.0), // |00>
-        Complex64::new(0.0, 0.0), // |01>
-        Complex64::new(0.0, 0.0), // |10>
+        Complex64::new(0.0, 0.0),  // |00>
+        Complex64::new(0.0, 0.0),  // |01>
+        Complex64::new(0.0, 0.0),  // |10>
         Complex64::new(-1.0, 0.0), // -|11>
     ];
     apply_cz_vectorized(&mut amps, 1, 0); // control q1, target q0
@@ -450,9 +439,9 @@ fn test_controlled_phase_rotation_2_qubits() {
     let mut amps = vec![Complex64::new(0.0, 0.0); 4];
     amps[0b11] = Complex64::new(1.0, 0.0); // |11>
     let expected = vec![
-        Complex64::new(0.0, 0.0), // |00>
-        Complex64::new(0.0, 0.0), // |01>
-        Complex64::new(0.0, 0.0), // |10>
+        Complex64::new(0.0, 0.0),                           // |00>
+        Complex64::new(0.0, 0.0),                           // |01>
+        Complex64::new(0.0, 0.0),                           // |10>
         Complex64::new((PI / 4.0).cos(), (PI / 4.0).sin()), // e^(i*pi/4)|11>
     ];
     apply_controlled_phase_rotation_vectorized(&mut amps, 1, 0, angle); // control q1, target q0
@@ -660,10 +649,10 @@ mod fallback_vectorized_tests {
         // |10> (q0=0) remains 1+0i
         // |11> (q0=1) becomes 0
         // and the remaining state is normalized
-        let norm = ((0.5*0.5 + 0.5*0.5) + (1.0*1.0) as f64).sqrt();
-        assert_complex_approx_eq(amps[0], Complex64::new(0.5, 0.5)/norm, 1e-9);
+        let norm = ((0.5 * 0.5 + 0.5 * 0.5) + (1.0 * 1.0) as f64).sqrt();
+        assert_complex_approx_eq(amps[0], Complex64::new(0.5, 0.5) / norm, 1e-9);
         assert_complex_approx_eq(amps[1], Complex64::new(0.0, 0.0), 1e-9);
-        assert_complex_approx_eq(amps[2], Complex64::new(1.0, 0.0)/norm, 1e-9);
+        assert_complex_approx_eq(amps[2], Complex64::new(1.0, 0.0) / norm, 1e-9);
         assert_complex_approx_eq(amps[3], Complex64::new(0.0, 0.0), 1e-9);
 
         let mut amps_single_qubit = vec![Complex64::new(0.0, 1.0), Complex64::new(1.0, 0.0)]; // i|0> + 1|1>
@@ -826,6 +815,7 @@ mod fallback_vectorized_tests {
 #[cfg(target_arch = "x86_64")]
 mod x86_64_base_simd_tests {
     use super::*;
+    use qoa::vectorization::x86_64_simd;
     use qoa::vectorization::{
         apply_cnot_vectorized, apply_controlled_phase_rotation_vectorized,
         apply_controlled_swap_vectorized, apply_cz_vectorized, apply_hadamard_vectorized,
@@ -834,15 +824,22 @@ mod x86_64_base_simd_tests {
         apply_swap_vectorized, apply_t_vectorized, apply_x_vectorized, apply_y_vectorized,
         apply_z_vectorized,
     };
-    use qoa::vectorization::x86_64_simd;
 
     #[test]
     fn test_apply_hadamard_simd_x86_64() {
         let mut amps_1_qubit = initial_state(1); // |0> state
         let norm_factor = Complex64::new(1.0 / (2.0f64).sqrt(), 0.0);
         apply_hadamard_vectorized(&mut amps_1_qubit, norm_factor, 0);
-        assert_complex_approx_eq(amps_1_qubit[0], Complex64::new(1.0 / (2.0f64).sqrt(), 0.0), 1e-9);
-        assert_complex_approx_eq(amps_1_qubit[1], Complex64::new(1.0 / (2.0f64).sqrt(), 0.0), 1e-9);
+        assert_complex_approx_eq(
+            amps_1_qubit[0],
+            Complex64::new(1.0 / (2.0f64).sqrt(), 0.0),
+            1e-9,
+        );
+        assert_complex_approx_eq(
+            amps_1_qubit[1],
+            Complex64::new(1.0 / (2.0f64).sqrt(), 0.0),
+            1e-9,
+        );
     }
 
     #[test]
@@ -927,10 +924,10 @@ mod x86_64_base_simd_tests {
         apply_reset_vectorized(&mut amps, 0);
 
         // corrected expected values based on non-normalizing reset behavior
-        let norm = ((0.5*0.5 + 0.5*0.5) + (1.0*1.0) as f64).sqrt();
-        assert_complex_approx_eq(amps[0], Complex64::new(0.5, 0.5)/norm, 1e-9);
+        let norm = ((0.5 * 0.5 + 0.5 * 0.5) + (1.0 * 1.0) as f64).sqrt();
+        assert_complex_approx_eq(amps[0], Complex64::new(0.5, 0.5) / norm, 1e-9);
         assert_complex_approx_eq(amps[1], Complex64::new(0.0, 0.0), 1e-9);
-        assert_complex_approx_eq(amps[2], Complex64::new(1.0, 0.0)/norm, 1e-9);
+        assert_complex_approx_eq(amps[2], Complex64::new(1.0, 0.0) / norm, 1e-9);
         assert_complex_approx_eq(amps[3], Complex64::new(0.0, 0.0), 1e-9);
 
         let mut amps_single_qubit = vec![Complex64::new(0.0, 1.0), Complex64::new(1.0, 0.0)];
@@ -1021,12 +1018,7 @@ mod x86_64_base_simd_tests {
         let angle = std::f64::consts::FRAC_PI_4;
         let expected_phase_factor = Complex64::new(0.0, angle).exp();
 
-        apply_controlled_phase_rotation_vectorized(
-            &mut amps,
-            1,
-            0,
-            angle,
-        );
+        apply_controlled_phase_rotation_vectorized(&mut amps, 1, 0, angle);
 
         assert_complex_approx_eq(amps[0], Complex64::new(0.0, 0.0), 1e-9);
         assert_complex_approx_eq(amps[1], Complex64::new(0.0, 0.0), 1e-9);
@@ -1072,8 +1064,16 @@ mod x86_64_avx2_tests {
         let mut amps_1_qubit = initial_state(1);
         let norm_factor = Complex64::new(1.0 / (2.0f64).sqrt(), 0.0);
         apply_hadamard_vectorized(&mut amps_1_qubit, norm_factor, 0);
-        assert_complex_approx_eq(amps_1_qubit[0], Complex64::new(1.0 / (2.0f64).sqrt(), 0.0), 1e-9);
-        assert_complex_approx_eq(amps_1_qubit[1], Complex64::new(1.0 / (2.0f64).sqrt(), 0.0), 1e-9);
+        assert_complex_approx_eq(
+            amps_1_qubit[0],
+            Complex64::new(1.0 / (2.0f64).sqrt(), 0.0),
+            1e-9,
+        );
+        assert_complex_approx_eq(
+            amps_1_qubit[1],
+            Complex64::new(1.0 / (2.0f64).sqrt(), 0.0),
+            1e-9,
+        );
     }
 
     #[test]
@@ -1140,12 +1140,17 @@ mod x86_64_avx2_tests {
 
     #[test]
     fn test_apply_reset_simd_avx2() {
-        let mut amps = vec![Complex64::new(0.5, 0.5), Complex64::new(0.0, 1.0), Complex64::new(1.0, 0.0), Complex64::new(0.2, 0.8)];
-        let norm = ((0.5*0.5 + 0.5*0.5) + (1.0*1.0) as f64).sqrt();
+        let mut amps = vec![
+            Complex64::new(0.5, 0.5),
+            Complex64::new(0.0, 1.0),
+            Complex64::new(1.0, 0.0),
+            Complex64::new(0.2, 0.8),
+        ];
+        let norm = ((0.5 * 0.5 + 0.5 * 0.5) + (1.0 * 1.0) as f64).sqrt();
         apply_reset_vectorized(&mut amps, 0);
-        assert_complex_approx_eq(amps[0], Complex64::new(0.5, 0.5)/norm, 1e-9);
+        assert_complex_approx_eq(amps[0], Complex64::new(0.5, 0.5) / norm, 1e-9);
         assert_complex_approx_eq(amps[1], Complex64::new(0.0, 0.0), 1e-9);
-        assert_complex_approx_eq(amps[2], Complex64::new(1.0, 0.0)/norm, 1e-9);
+        assert_complex_approx_eq(amps[2], Complex64::new(1.0, 0.0) / norm, 1e-9);
         assert_complex_approx_eq(amps[3], Complex64::new(0.0, 0.0), 1e-9);
     }
 
@@ -1224,12 +1229,7 @@ mod x86_64_avx2_tests {
         amps[0] = Complex64::new(0.0, 0.0);
         let angle = std::f64::consts::FRAC_PI_4;
         let expected_phase_factor = Complex64::new(0.0, angle).exp();
-        apply_controlled_phase_rotation_vectorized(
-            &mut amps,
-            1,
-            0,
-            angle,
-        );
+        apply_controlled_phase_rotation_vectorized(&mut amps, 1, 0, angle);
 
         assert_complex_approx_eq(amps[0], Complex64::new(0.0, 0.0), 1e-9);
         assert_complex_approx_eq(amps[1], Complex64::new(0.0, 0.0), 1e-9);
@@ -1241,7 +1241,12 @@ mod x86_64_avx2_tests {
 
     #[test]
     fn test_apply_reset_all_simd_avx2() {
-        let mut amps = vec![Complex64::new(0.5, 0.5), Complex64::new(0.0, 1.0), Complex64::new(1.0, 0.0), Complex64::new(0.2, 0.8)];
+        let mut amps = vec![
+            Complex64::new(0.5, 0.5),
+            Complex64::new(0.0, 1.0),
+            Complex64::new(1.0, 0.0),
+            Complex64::new(0.2, 0.8),
+        ];
         apply_reset_all_vectorized(&mut amps);
         assert_complex_approx_eq(amps[0], Complex64::new(1.0, 0.0), 1e-9);
         assert_complex_approx_eq(amps[1], Complex64::new(0.0, 0.0), 1e-9);
@@ -1269,8 +1274,16 @@ mod x86_64_avx512_tests {
         let mut amps_1_qubit = initial_state(1);
         let norm_factor = Complex64::new(1.0 / (2.0f64).sqrt(), 0.0);
         apply_hadamard_vectorized(&mut amps_1_qubit, norm_factor, 0);
-        assert_complex_approx_eq(amps_1_qubit[0], Complex64::new(1.0 / (2.0f64).sqrt(), 0.0), 1e-9);
-        assert_complex_approx_eq(amps_1_qubit[1], Complex64::new(1.0 / (2.0f64).sqrt(), 0.0), 1e-9);
+        assert_complex_approx_eq(
+            amps_1_qubit[0],
+            Complex64::new(1.0 / (2.0f64).sqrt(), 0.0),
+            1e-9,
+        );
+        assert_complex_approx_eq(
+            amps_1_qubit[1],
+            Complex64::new(1.0 / (2.0f64).sqrt(), 0.0),
+            1e-9,
+        );
     }
 
     #[test]
@@ -1337,12 +1350,17 @@ mod x86_64_avx512_tests {
 
     #[test]
     fn test_apply_reset_simd_avx512() {
-        let mut amps = vec![Complex64::new(0.5, 0.5), Complex64::new(0.0, 1.0), Complex64::new(1.0, 0.0), Complex64::new(0.2, 0.8)];
-        let norm = ((0.5*0.5 + 0.5*0.5) + (1.0*1.0) as f64).sqrt();
+        let mut amps = vec![
+            Complex64::new(0.5, 0.5),
+            Complex64::new(0.0, 1.0),
+            Complex64::new(1.0, 0.0),
+            Complex64::new(0.2, 0.8),
+        ];
+        let norm = ((0.5 * 0.5 + 0.5 * 0.5) + (1.0 * 1.0) as f64).sqrt();
         apply_reset_vectorized(&mut amps, 0);
-        assert_complex_approx_eq(amps[0], Complex64::new(0.5, 0.5)/norm, 1e-9);
+        assert_complex_approx_eq(amps[0], Complex64::new(0.5, 0.5) / norm, 1e-9);
         assert_complex_approx_eq(amps[1], Complex64::new(0.0, 0.0), 1e-9);
-        assert_complex_approx_eq(amps[2], Complex64::new(1.0, 0.0)/norm, 1e-9);
+        assert_complex_approx_eq(amps[2], Complex64::new(1.0, 0.0) / norm, 1e-9);
         assert_complex_approx_eq(amps[3], Complex64::new(0.0, 0.0), 1e-9);
     }
 
@@ -1447,7 +1465,12 @@ mod x86_64_avx512_tests {
 
     #[test]
     fn test_apply_reset_all_simd_avx512() {
-        let mut amps = vec![Complex64::new(0.5, 0.5), Complex64::new(0.0, 1.0), Complex64::new(1.0, 0.0), Complex64::new(0.2, 0.8)];
+        let mut amps = vec![
+            Complex64::new(0.5, 0.5),
+            Complex64::new(0.0, 1.0),
+            Complex64::new(1.0, 0.0),
+            Complex64::new(0.2, 0.8),
+        ];
         apply_reset_all_vectorized(&mut amps);
         assert_complex_approx_eq(amps[0], Complex64::new(1.0, 0.0), 1e-9);
         assert_complex_approx_eq(amps[1], Complex64::new(0.0, 0.0), 1e-9);
@@ -1484,8 +1507,7 @@ mod x86_64_aes_tests {
         // apply a controlled phase rotation
         let angle = std::f64::consts::PI / 3.0; // arbitrary angle
         apply_controlled_phase_rotation_vectorized(
-            &mut amps,
-            1, // control q1
+            &mut amps, 1, // control q1
             0, // target q0
             angle,
         );
@@ -1500,7 +1522,6 @@ mod x86_64_aes_tests {
         assert!((amps.iter().map(|a| a.norm_sqr()).sum::<f64>() - 1.0).abs() < 1e-9); // normality check
     }
 }
-
 
 // --- aarch64 neon simd tests ---
 #[cfg(all(target_arch = "aarch64", target_feature = "neon"))]
@@ -1521,8 +1542,16 @@ mod aarch64_neon_tests {
         let mut amps_1_qubit = initial_state(1); // |0> state
         let norm_factor = Complex64::new(1.0 / (2.0f64).sqrt(), 0.0);
         apply_hadamard_vectorized(&mut amps_1_qubit, norm_factor, 0);
-        assert_complex_approx_eq(amps_1_qubit[0], Complex64::new(1.0 / (2.0f64).sqrt(), 0.0), 1e-9);
-        assert_complex_approx_eq(amps_1_qubit[1], Complex64::new(1.0 / (2.0f64).sqrt(), 0.0), 1e-9);
+        assert_complex_approx_eq(
+            amps_1_qubit[0],
+            Complex64::new(1.0 / (2.0f64).sqrt(), 0.0),
+            1e-9,
+        );
+        assert_complex_approx_eq(
+            amps_1_qubit[1],
+            Complex64::new(1.0 / (2.0f64).sqrt(), 0.0),
+            1e-9,
+        );
     }
 
     #[test]
@@ -1589,12 +1618,17 @@ mod aarch64_neon_tests {
 
     #[test]
     fn test_apply_reset_simd_aarch64() {
-        let mut amps = vec![Complex64::new(0.5, 0.5), Complex64::new(0.0, 1.0), Complex64::new(1.0, 0.0), Complex64::new(0.2, 0.8)];
-        let norm = ((0.5*0.5 + 0.5*0.5) + (1.0*1.0) as f64).sqrt();
+        let mut amps = vec![
+            Complex64::new(0.5, 0.5),
+            Complex64::new(0.0, 1.0),
+            Complex64::new(1.0, 0.0),
+            Complex64::new(0.2, 0.8),
+        ];
+        let norm = ((0.5 * 0.5 + 0.5 * 0.5) + (1.0 * 1.0) as f64).sqrt();
         apply_reset_vectorized(&mut amps, 0);
-        assert_complex_approx_eq(amps[0], Complex64::new(0.5, 0.5)/norm, 1e-9);
+        assert_complex_approx_eq(amps[0], Complex64::new(0.5, 0.5) / norm, 1e-9);
         assert_complex_approx_eq(amps[1], Complex64::new(0.0, 0.0), 1e-9);
-        assert_complex_approx_eq(amps[2], Complex64::new(1.0, 0.0)/norm, 1e-9);
+        assert_complex_approx_eq(amps[2], Complex64::new(1.0, 0.0) / norm, 1e-9);
         assert_complex_approx_eq(amps[3], Complex64::new(0.0, 0.0), 1e-9);
     }
 
@@ -1699,7 +1733,12 @@ mod aarch64_neon_tests {
 
     #[test]
     fn test_apply_reset_all_simd_aarch64() {
-        let mut amps = vec![Complex64::new(0.5, 0.5), Complex64::new(0.0, 1.0), Complex64::new(1.0, 0.0), Complex64::new(0.2, 0.8)];
+        let mut amps = vec![
+            Complex64::new(0.5, 0.5),
+            Complex64::new(0.0, 1.0),
+            Complex64::new(1.0, 0.0),
+            Complex64::new(0.2, 0.8),
+        ];
         apply_reset_all_vectorized(&mut amps);
         assert_complex_approx_eq(amps[0], Complex64::new(1.0, 0.0), 1e-9);
         assert_complex_approx_eq(amps[1], Complex64::new(0.0, 0.0), 1e-9);
@@ -1727,8 +1766,16 @@ mod riscv64_rvv_tests {
         let mut amps_1_qubit = initial_state(1); // |0> state
         let norm_factor = Complex64::new(1.0 / (2.0f64).sqrt(), 0.0);
         apply_hadamard_vectorized(&mut amps_1_qubit, norm_factor, 0);
-        assert_complex_approx_eq(amps_1_qubit[0], Complex64::new(1.0 / (2.0f64).sqrt(), 0.0), 1e-9);
-        assert_complex_approx_eq(amps_1_qubit[1], Complex64::new(1.0 / (2.0f64).sqrt(), 0.0), 1e-9);
+        assert_complex_approx_eq(
+            amps_1_qubit[0],
+            Complex64::new(1.0 / (2.0f64).sqrt(), 0.0),
+            1e-9,
+        );
+        assert_complex_approx_eq(
+            amps_1_qubit[1],
+            Complex64::new(1.0 / (2.0f64).sqrt(), 0.0),
+            1e-9,
+        );
     }
 
     #[test]
@@ -1795,12 +1842,17 @@ mod riscv64_rvv_tests {
 
     #[test]
     fn test_apply_reset_simd_riscv64() {
-        let mut amps = vec![Complex64::new(0.5, 0.5), Complex64::new(0.0, 1.0), Complex64::new(1.0, 0.0), Complex64::new(0.2, 0.8)];
-        let norm = ((0.5*0.5 + 0.5*0.5) + (1.0*1.0) as f64).sqrt();
+        let mut amps = vec![
+            Complex64::new(0.5, 0.5),
+            Complex64::new(0.0, 1.0),
+            Complex64::new(1.0, 0.0),
+            Complex64::new(0.2, 0.8),
+        ];
+        let norm = ((0.5 * 0.5 + 0.5 * 0.5) + (1.0 * 1.0) as f64).sqrt();
         apply_reset_vectorized(&mut amps, 0);
-        assert_complex_approx_eq(amps[0], Complex64::new(0.5, 0.5)/norm, 1e-9);
+        assert_complex_approx_eq(amps[0], Complex64::new(0.5, 0.5) / norm, 1e-9);
         assert_complex_approx_eq(amps[1], Complex64::new(0.0, 0.0), 1e-9);
-        assert_complex_approx_eq(amps[2], Complex64::new(1.0, 0.0)/norm, 1e-9);
+        assert_complex_approx_eq(amps[2], Complex64::new(1.0, 0.0) / norm, 1e-9);
         assert_complex_approx_eq(amps[3], Complex64::new(0.0, 0.0), 1e-9);
     }
 
@@ -1905,7 +1957,12 @@ mod riscv64_rvv_tests {
 
     #[test]
     fn test_apply_reset_all_simd_riscv64() {
-        let mut amps = vec![Complex64::new(0.5, 0.5), Complex64::new(0.0, 1.0), Complex64::new(1.0, 0.0), Complex64::new(0.2, 0.8)];
+        let mut amps = vec![
+            Complex64::new(0.5, 0.5),
+            Complex64::new(0.0, 1.0),
+            Complex64::new(1.0, 0.0),
+            Complex64::new(0.2, 0.8),
+        ];
         apply_reset_all_vectorized(&mut amps);
         assert_complex_approx_eq(amps[0], Complex64::new(1.0, 0.0), 1e-9);
         assert_complex_approx_eq(amps[1], Complex64::new(0.0, 0.0), 1e-9);
@@ -1933,8 +1990,16 @@ mod powerpc64_vsx_tests {
         let mut amps_1_qubit = initial_state(1); // |0> state
         let norm_factor = Complex64::new(1.0 / (2.0f64).sqrt(), 0.0);
         apply_hadamard_vectorized(&mut amps_1_qubit, norm_factor, 0);
-        assert_complex_approx_eq(amps_1_qubit[0], Complex64::new(1.0 / (2.0f64).sqrt(), 0.0), 1e-9);
-        assert_complex_approx_eq(amps_1_qubit[1], Complex64::new(1.0 / (2.0f64).sqrt(), 0.0), 1e-9);
+        assert_complex_approx_eq(
+            amps_1_qubit[0],
+            Complex64::new(1.0 / (2.0f64).sqrt(), 0.0),
+            1e-9,
+        );
+        assert_complex_approx_eq(
+            amps_1_qubit[1],
+            Complex64::new(1.0 / (2.0f64).sqrt(), 0.0),
+            1e-9,
+        );
     }
 
     #[test]
@@ -2001,12 +2066,17 @@ mod powerpc64_vsx_tests {
 
     #[test]
     fn test_apply_reset_simd_powerpc64() {
-        let mut amps = vec![Complex64::new(0.5, 0.5), Complex64::new(0.0, 1.0), Complex64::new(1.0, 0.0), Complex64::new(0.2, 0.8)];
-        let norm = ((0.5*0.5 + 0.5*0.5) + (1.0*1.0) as f64).sqrt();
+        let mut amps = vec![
+            Complex64::new(0.5, 0.5),
+            Complex64::new(0.0, 1.0),
+            Complex64::new(1.0, 0.0),
+            Complex64::new(0.2, 0.8),
+        ];
+        let norm = ((0.5 * 0.5 + 0.5 * 0.5) + (1.0 * 1.0) as f64).sqrt();
         apply_reset_vectorized(&mut amps, 0);
-        assert_complex_approx_eq(amps[0], Complex64::new(0.5, 0.5)/norm, 1e-9);
+        assert_complex_approx_eq(amps[0], Complex64::new(0.5, 0.5) / norm, 1e-9);
         assert_complex_approx_eq(amps[1], Complex64::new(0.0, 0.0), 1e-9);
-        assert_complex_approx_eq(amps[2], Complex64::new(1.0, 0.0)/norm, 1e-9);
+        assert_complex_approx_eq(amps[2], Complex64::new(1.0, 0.0) / norm, 1e-9);
         assert_complex_approx_eq(amps[3], Complex64::new(0.0, 0.0), 1e-9);
     }
 
@@ -2111,7 +2181,12 @@ mod powerpc64_vsx_tests {
 
     #[test]
     fn test_apply_reset_all_simd_powerpc64() {
-        let mut amps = vec![Complex64::new(0.5, 0.5), Complex64::new(0.0, 1.0), Complex64::new(1.0, 0.0), Complex64::new(0.2, 0.8)];
+        let mut amps = vec![
+            Complex64::new(0.5, 0.5),
+            Complex64::new(0.0, 1.0),
+            Complex64::new(1.0, 0.0),
+            Complex64::new(0.2, 0.8),
+        ];
         apply_reset_all_vectorized(&mut amps);
         assert_complex_approx_eq(amps[0], Complex64::new(1.0, 0.0), 1e-9);
         assert_complex_approx_eq(amps[1], Complex64::new(0.0, 0.0), 1e-9);
@@ -2342,21 +2417,30 @@ mod instruction_tests {
     #[test]
     fn test_eswapm_short_for_entangleswapmeasure() {
         let mut q = initial_quantum_state_qstate(4); // |0000>
-        QuantumState::execute_arithmetic(&Instruction::ESWAPM(0, 1, 2, 3, "label".to_string()), &mut q).unwrap();
+        QuantumState::execute_arithmetic(
+            &Instruction::ESWAPM(0, 1, 2, 3, "label".to_string()),
+            &mut q,
+        )
+        .unwrap();
         // EntangleSwapMeasure is a placeholder, verify it doesn't panic
     }
 
     #[test]
     fn test_ecfb_short_for_entanglewithclassicalfeedback() {
         let mut q = initial_quantum_state_qstate(2); // |00>
-        QuantumState::execute_arithmetic(&Instruction::ECFB(0, 1, "feedback_reg".to_string()), &mut q).unwrap();
+        QuantumState::execute_arithmetic(
+            &Instruction::ECFB(0, 1, "feedback_reg".to_string()),
+            &mut q,
+        )
+        .unwrap();
         // EntangleWithClassicalFeedback is a placeholder, verify it doesn't panic
     }
 
     #[test]
     fn test_edist_short_for_entangledistributed() {
         let mut q = initial_quantum_state_qstate(1); // |0>
-        QuantumState::execute_arithmetic(&Instruction::EDIST(0, "node_id".to_string()), &mut q).unwrap();
+        QuantumState::execute_arithmetic(&Instruction::EDIST(0, "node_id".to_string()), &mut q)
+            .unwrap();
         // EntangleDistributed is a placeholder, verify it doesn't panic
     }
 
@@ -2379,7 +2463,8 @@ mod instruction_tests {
     #[test]
     fn test_vlog_short_for_verboselog() {
         let mut q = initial_quantum_state_qstate(1);
-        QuantumState::execute_arithmetic(&Instruction::VLOG(0, "test message".to_string()), &mut q).unwrap();
+        QuantumState::execute_arithmetic(&Instruction::VLOG(0, "test message".to_string()), &mut q)
+            .unwrap();
         // VerboseLog is a placeholder, verify it doesn't panic
     }
 
@@ -2921,7 +3006,11 @@ mod instruction_tests {
         let mut q = QuantumState::new(2, None); // initialize with 2 registers
         q.set_reg(1, 1.0.into()).unwrap(); // e^1
         QuantumState::execute_arithmetic(&Instruction::EXP(0, 1), &mut q).unwrap();
-        assert_complex_approx_eq(*q.get_reg(0).unwrap(), Complex64::new(std::f64::consts::E, 0.0), 1e-9);
+        assert_complex_approx_eq(
+            *q.get_reg(0).unwrap(),
+            Complex64::new(std::f64::consts::E, 0.0),
+            1e-9,
+        );
     }
 
     #[test]
@@ -3357,23 +3446,14 @@ mod instruction_tests {
 
     #[test]
     fn test_applylinearopticaltransform_instruction_creation() {
-        let instruction = Instruction::APPLYLINEAROPTICALTRANSFORM(
-            "bs".to_string(),
-            vec![0, 1],
-            vec![2, 3],
-            2,
-        );
+        let instruction =
+            Instruction::APPLYLINEAROPTICALTRANSFORM("bs".to_string(), vec![0, 1], vec![2, 3], 2);
         assert!(!instruction.encode().is_empty());
     }
 
     #[test]
     fn test_alot_short_for_applylinearopticaltransform_instruction_creation() {
-        let instruction = Instruction::ALOT(
-            "bs".to_string(),
-            vec![0, 1],
-            vec![2, 3],
-            2,
-        );
+        let instruction = Instruction::ALOT("bs".to_string(), vec![0, 1], vec![2, 3], 2);
         assert!(!instruction.encode().is_empty());
     }
 
@@ -3886,7 +3966,9 @@ mod instruction_tests {
 // --- distribute.rs tests ---
 mod distribute_tests {
     use super::*; // import everything from the parent module's scope
-    use qoa::distribute::{calculate_partitions, DistributedConfig, PartitionStrategy, SparseStateVector};
+    use qoa::distribute::{
+        DistributedConfig, PartitionStrategy, SparseStateVector, calculate_partitions,
+    };
 
     #[test]
     fn test_partition_calculation() {
@@ -3920,7 +4002,7 @@ mod distribute_tests {
 
         // check that there are no gaps or overlaps
         for i in 0..3 {
-            assert_eq!(partitions[i].end_idx, partitions[i+1].start_idx);
+            assert_eq!(partitions[i].end_idx, partitions[i + 1].start_idx);
         }
     }
 
@@ -3930,8 +4012,26 @@ mod distribute_tests {
 
         // apply hadamard to qubit 0
         let h_gate = [
-            [DistributeComplex64 { re: 1.0/2.0_f64.sqrt(), im: 0.0 }, DistributeComplex64 { re: 1.0/2.0_f64.sqrt(), im: 0.0 }],
-            [DistributeComplex64 { re: 1.0/2.0_f64.sqrt(), im: 0.0 }, DistributeComplex64 { re: -1.0/2.0_f64.sqrt(), im: 0.0 }],
+            [
+                DistributeComplex64 {
+                    re: 1.0 / 2.0_f64.sqrt(),
+                    im: 0.0,
+                },
+                DistributeComplex64 {
+                    re: 1.0 / 2.0_f64.sqrt(),
+                    im: 0.0,
+                },
+            ],
+            [
+                DistributeComplex64 {
+                    re: 1.0 / 2.0_f64.sqrt(),
+                    im: 0.0,
+                },
+                DistributeComplex64 {
+                    re: -1.0 / 2.0_f64.sqrt(),
+                    im: 0.0,
+                },
+            ],
         ];
 
         state.apply_single_qubit_gate(0, h_gate);

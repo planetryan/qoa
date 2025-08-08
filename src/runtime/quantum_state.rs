@@ -1,8 +1,8 @@
 use crate::instructions::Instruction;
 use num_complex::Complex64;
-use rand::rngs::StdRng;
 use rand::Rng; // import the Rng trait
 use rand::SeedableRng;
+use rand::rngs::StdRng;
 use rand::rngs::ThreadRng; // import ThreadRng directly
 
 // use rand::seq::SliceRandom; // for shuffling in perlin noise (not needed for now)
@@ -10,7 +10,6 @@ use rand::rngs::ThreadRng; // import ThreadRng directly
 use crate::vectorization; // import the vectorization module from crate root
 use rayon::prelude::*; // for parallel iterators
 use serde::{Deserialize, Serialize}; // serialize and deserialize
-
 
 // configuration for noise application in the quantum state simulation.
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -42,7 +41,7 @@ pub struct QuantumState {
     // the vector of complex amplitudes representing the quantum state.
     pub amps: Vec<Complex64>,
     // classical registers for storing measurement results or intermediate classical computations.
-    pub regs: Vec<Complex64>, 
+    pub regs: Vec<Complex64>,
     // status flags indicating numerical issues like nan, division by zero, or overflow.
     pub status: Status,
     // optional configuration for applying noise to the quantum state.
@@ -57,7 +56,7 @@ impl QuantumState {
     pub fn new(n_qubits: usize, noise_config: Option<NoiseConfig>) -> Self {
         // ensure n is at least 1, as a quantum state typically implies at least one qubit.
         // if n_qubits is 0, it will be treated as 1.
-        let n = n_qubits.max(1); 
+        let n = n_qubits.max(1);
 
         // ensure amps has the correct length for n qubits
         let mut amps = vec![Complex64::new(0.0, 0.0); 1 << n];
@@ -354,10 +353,15 @@ impl QuantumState {
             );
             return;
         }
-        vectorization::apply_controlled_phase_rotation_vectorized(&mut self.amps, control_q, target_q, angle);
+        vectorization::apply_controlled_phase_rotation_vectorized(
+            &mut self.amps,
+            control_q,
+            target_q,
+            angle,
+        );
         self.apply_noise();
     }
-    
+
     pub fn apply_swap(&mut self, q1: usize, q2: usize) {
         if q1 >= self.n || q2 >= self.n {
             eprintln!(
@@ -383,7 +387,9 @@ impl QuantumState {
             return;
         }
         if control == target1 || control == target2 || target1 == target2 {
-            eprintln!("error: control and target qubits must be distinct for controlled swap gate.");
+            eprintln!(
+                "error: control and target qubits must be distinct for controlled swap gate."
+            );
             return;
         }
         vectorization::apply_controlled_swap_vectorized(&mut self.amps, control, target1, target2);
@@ -397,7 +403,10 @@ impl QuantumState {
 
         let total_qubits = self.n;
         let num_amplitudes = 1 << total_qubits;
-        let mut rng = self.rng.take().expect("rng should be initialized for measure.");
+        let mut rng = self
+            .rng
+            .take()
+            .expect("rng should be initialized for measure.");
 
         let mut probabilities_for_0 = 0.0;
         let mut probabilities_for_1 = 0.0;
@@ -488,7 +497,11 @@ impl QuantumState {
                 state.apply_s_gate(*q as usize);
                 Ok(())
             }
-            PHASESHIFT(q, angle) | P(q, angle) | SETPHASE(q, angle) | SETP(q, angle) | PHASE(q, angle) => {
+            PHASESHIFT(q, angle)
+            | P(q, angle)
+            | SETPHASE(q, angle)
+            | SETP(q, angle)
+            | PHASE(q, angle) => {
                 state.apply_phase_shift(*q as usize, *angle);
                 Ok(())
             }
@@ -514,7 +527,9 @@ impl QuantumState {
                 state.apply_cz(*c as usize, *t as usize);
                 Ok(())
             }
-            CONTROLLEDPHASEROTATION(c, t, angle) | CPHASE(c, t, angle) | APPLYCPHASE(c, t, angle) => {
+            CONTROLLEDPHASEROTATION(c, t, angle)
+            | CPHASE(c, t, angle)
+            | APPLYCPHASE(c, t, angle) => {
                 state.apply_controlled_phase(*c as usize, *t as usize, *angle);
                 Ok(())
             }
@@ -574,7 +589,7 @@ impl QuantumState {
                 state.apply_cnot(*q1 as usize, *q3 as usize);
                 state.apply_cnot(*q2 as usize, *q4 as usize);
                 state.apply_swap(*q3 as usize, *q4 as usize);
-                
+
                 // then measure the qubits
                 let _m1 = state.measure(*q3 as usize)?;
                 let _m2 = state.measure(*q4 as usize)?;
@@ -586,7 +601,10 @@ impl QuantumState {
                 // this is a conceptual implementation.
                 // a real implementation would involve reading from `feedback_reg`
                 // and conditionally applying gates.
-                eprintln!("info: entanglewithclassicalfeedback on qubits {} and {} with feedback register {}", q1, q2, feedback_reg);
+                eprintln!(
+                    "info: entanglewithclassicalfeedback on qubits {} and {} with feedback register {}",
+                    q1, q2, feedback_reg
+                );
                 // for now, just entangle them as a basic CNOT
                 state.apply_cnot(*q1 as usize, *q2 as usize);
                 Ok(())
@@ -594,7 +612,10 @@ impl QuantumState {
             ENTANGLEDISTRIBUTED(q, node_id) | EDIST(q, node_id) => {
                 // this is a placeholder for distributed entanglement.
                 // a real implementation would involve network communication.
-                eprintln!("info: attempting distributed entanglement for qubit {} on node {}", q, node_id);
+                eprintln!(
+                    "info: attempting distributed entanglement for qubit {} on node {}",
+                    q, node_id
+                );
                 // for now, do nothing or apply a local operation if needed for testing
                 Ok(())
             }
@@ -691,7 +712,10 @@ impl QuantumState {
                 Ok(())
             }
             RAND(reg) => {
-                let mut temp_rng = state.rng.take().expect("rng should be initialized for rand.");
+                let mut temp_rng = state
+                    .rng
+                    .take()
+                    .expect("rng should be initialized for rand.");
                 let random_val: f64 = temp_rng.random(); // use .random()
                 state.rng = Some(temp_rng); // put rng back
                 state.set_reg(*reg as usize, Complex64::new(random_val, 0.0))?;
@@ -875,7 +899,9 @@ impl QuantumState {
                 *amp /= norm;
             });
         } else {
-            eprintln!("warning: state became zero due to noise or numerical instability, resetting to |0...0>.");
+            eprintln!(
+                "warning: state became zero due to noise or numerical instability, resetting to |0...0>."
+            );
             vectorization::apply_reset_all_vectorized(&mut self.amps); // use vectorized reset all
         }
     }
@@ -1055,7 +1081,11 @@ impl QuantumState {
         }
 
         // determine the masks and order for the two qubits
-        let (mask_low, mask_high) = if q1 < q2 { (1 << q1, 1 << q2) } else { (1 << q2, 1 << q1) };
+        let (mask_low, mask_high) = if q1 < q2 {
+            (1 << q1, 1 << q2)
+        } else {
+            (1 << q2, 1 << q1)
+        };
         let (idx_low, idx_high) = if q1 < q2 { (q1, q2) } else { (q2, q1) };
 
         let old_amps = self.amps.clone(); // clone for safe parallel reads

@@ -1,0 +1,45 @@
+#version 450
+
+layout(local_size_x = 32, local_size_y = 1, local_size_z = 1) in;
+
+// State vector (complex numbers stored as pairs of floats)
+layout(std430, binding = 0) buffer StateVector {
+    vec2 state[];
+};
+
+// Gate parameters
+layout(std140, binding = 1) uniform GateParams {
+    uint gate_type;
+    uint control_qubit; // Use target_qubit for control
+    uint target_qubit;  // Use num_qubits for target
+    uint num_qubits;    // Total number of qubits
+} params;
+
+void main() {
+    uint gid = gl_GlobalInvocationID.x;
+    uint state_size = 1u << params.num_qubits;
+    
+    // Return if index is out of bounds
+    if (gid >= state_size) {
+        return;
+    }
+    
+    // Check if control qubit is 1
+    uint control_mask = 1u << params.control_qubit;
+    if ((gid & control_mask) != 0) {
+        // Compute paired index (flipping the target qubit)
+        uint target_mask = 1u << params.target_qubit;
+        uint paired_idx = gid ^ target_mask;
+        
+        // Only process the first index of each pair to avoid race conditions
+        if (gid < paired_idx) {
+            // Get current amplitudes
+            vec2 amp_0 = state[gid];
+            vec2 amp_1 = state[paired_idx];
+            
+            // Swap the amplitudes (X gate on target when control is 1)
+            state[gid] = amp_1;
+            state[paired_idx] = amp_0;
+        }
+    }
+}

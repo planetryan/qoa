@@ -1,0 +1,102 @@
+#version 450
+#extension GL_KHR_shader_subgroup_ballot: enable
+#extension GL_KHR_shader_subgroup_arithmetic: enable
+#extension GL_KHR_shader_subgroup_quad: enable
+#extension GL_KHR_shader_subgroup_clustered: enable
+
+layout(local_size_x = 32, local_size_y = 1, local_size_z = 1) in;
+
+// complex number struct for the math library
+struct Complex {
+    float real;
+    float imag;
+};
+
+// a math library for complex numbers
+Complex complex_add(Complex a, Complex b) {
+    return Complex(a.real + b.real, a.imag + b.imag);
+}
+
+Complex complex_sub(Complex a, Complex b) {
+    return Complex(a.real - b.real, a.imag - b.imag);
+}
+
+Complex complex_mul(Complex a, Complex b) {
+    return Complex(a.real * b.real - a.imag * b.imag, a.real * b.imag + a.imag * b.real);
+}
+
+Complex complex_scale(Complex a, float s) {
+    return Complex(a.real * s, a.imag * s);
+}
+
+// storage buffer for the quantum state vector
+layout(set = 0, binding = 0) buffer StateVector {
+    Complex state[];
+} state_vector;
+
+// uniform buffer for gate parameters
+layout(set = 0, binding = 1) uniform GateParams {
+    uint gate_type;
+    uint target_qubit;
+    uint num_qubits;
+} gate_params;
+
+void main() {
+    // get the global invocation id
+    uint i = gl_GlobalInvocationID.x;
+
+    // check if the current thread should be active
+    uint total_states = 1 << gate_params.num_qubits;
+    if (i >= total_states) {
+        return;
+    }
+
+    uint stride = 1 << gate_params.target_qubit;
+    uint target_bit = (i >> gate_params.target_qubit) & 1;
+
+    // handle the gates based on the uniform parameter
+    switch (gate_params.gate_type) {
+        // hadamard gate
+        case 0:
+            // only process pairs where the target bit is 0
+            if (target_bit == 0) {
+                uint j = i | stride;
+                Complex a = state_vector.state[i];
+                Complex b = state_vector.state[j];
+                
+                float inv_sqrt2 = 0.707106781;
+                Complex new_a = complex_scale(complex_add(a, b), inv_sqrt2);
+                Complex new_b = complex_scale(complex_sub(a, b), inv_sqrt2);
+
+                state_vector.state[i] = new_a;
+                state_vector.state[j] = new_b;
+            }
+            break;
+
+        // pauli-x gate
+        case 1:
+            // only process pairs where the target bit is 0
+            if (target_bit == 0) {
+                uint j = i | stride;
+                Complex temp_i = state_vector.state[i];
+                Complex temp_j = state_vector.state[j];
+                
+                state_vector.state[i] = temp_j;
+                state_vector.state[j] = temp_i;
+            }
+            break;
+
+        // pauli-z gate
+        case 2:
+            // only negate the amplitude if the target bit is 1
+            if (target_bit == 1) {
+                state_vector.state[i].real = -state_vector.state[i].real;
+                state_vector.state[i].imag = -state_vector.state[i].imag;
+            }
+            break;
+
+        default:
+            // no operation for unknown gates
+            break;
+    }
+}
