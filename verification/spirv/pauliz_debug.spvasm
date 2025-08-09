@@ -1,0 +1,164 @@
+; SPIR-V
+; Version: 1.0
+; Generator: Google Shaderc over Glslang; 11
+; Bound: 68
+; Schema: 0
+               OpCapability Shader
+          %2 = OpExtInstImport "GLSL.std.450"
+               OpMemoryModel Logical GLSL450
+               OpEntryPoint GLCompute %main "main" %gl_GlobalInvocationID
+               OpExecutionMode %main LocalSize 32 1 1
+          %1 = OpString "/home/rayan/Documents/git/qoa/src/kernel/shaders/pauliz.comp"
+               OpSource GLSL 450 %1 "// OpModuleProcessed entry-point main
+// OpModuleProcessed client vulkan100
+// OpModuleProcessed target-env vulkan1.0
+// OpModuleProcessed entry-point main
+#line 1
+#version 450
+
+layout(local_size_x = 32, local_size_y = 1, local_size_z = 1) in;
+
+// State vector (complex numbers stored as pairs of floats)
+layout(std430, binding = 0) buffer StateVector {
+    vec2 state[];
+};
+
+// Gate parameters
+layout(std140, binding = 1) uniform GateParams {
+    uint gate_type;
+    uint target_qubit;
+    uint num_qubits;
+    uint _pad;
+} params;
+
+void main() {
+    uint gid = gl_GlobalInvocationID.x;
+    uint state_size = 1u << params.num_qubits;
+    
+    // Return if index is out of bounds
+    if (gid >= state_size) {
+        return;
+    }
+    
+    // Check if the target qubit is 1 in this index
+    uint mask = 1u << params.target_qubit;
+    if ((gid & mask) != 0) {
+        // Apply Z gate: negate the amplitude
+        state[gid] = vec2(-state[gid].x, -state[gid].y);
+    }
+}"
+               OpSourceExtension "GL_GOOGLE_cpp_style_line_directive"
+               OpSourceExtension "GL_GOOGLE_include_directive"
+               OpName %main "main"
+               OpName %gid "gid"
+               OpName %gl_GlobalInvocationID "gl_GlobalInvocationID"
+               OpName %state_size "state_size"
+               OpName %GateParams "GateParams"
+               OpMemberName %GateParams 0 "gate_type"
+               OpMemberName %GateParams 1 "target_qubit"
+               OpMemberName %GateParams 2 "num_qubits"
+               OpMemberName %GateParams 3 "_pad"
+               OpName %params "params"
+               OpName %mask "mask"
+               OpName %StateVector "StateVector"
+               OpMemberName %StateVector 0 "state"
+               OpName %_ ""
+               OpDecorate %gl_GlobalInvocationID BuiltIn GlobalInvocationId
+               OpDecorate %GateParams Block
+               OpMemberDecorate %GateParams 0 Offset 0
+               OpMemberDecorate %GateParams 1 Offset 4
+               OpMemberDecorate %GateParams 2 Offset 8
+               OpMemberDecorate %GateParams 3 Offset 12
+               OpDecorate %params Binding 1
+               OpDecorate %params DescriptorSet 0
+               OpDecorate %_runtimearr_v2float ArrayStride 8
+               OpDecorate %StateVector BufferBlock
+               OpMemberDecorate %StateVector 0 Offset 0
+               OpDecorate %_ Binding 0
+               OpDecorate %_ DescriptorSet 0
+               OpDecorate %gl_WorkGroupSize BuiltIn WorkgroupSize
+       %void = OpTypeVoid
+          %4 = OpTypeFunction %void
+       %uint = OpTypeInt 32 0
+%_ptr_Function_uint = OpTypePointer Function %uint
+     %v3uint = OpTypeVector %uint 3
+%_ptr_Input_v3uint = OpTypePointer Input %v3uint
+%gl_GlobalInvocationID = OpVariable %_ptr_Input_v3uint Input
+     %uint_0 = OpConstant %uint 0
+%_ptr_Input_uint = OpTypePointer Input %uint
+     %uint_1 = OpConstant %uint 1
+ %GateParams = OpTypeStruct %uint %uint %uint %uint
+%_ptr_Uniform_GateParams = OpTypePointer Uniform %GateParams
+     %params = OpVariable %_ptr_Uniform_GateParams Uniform
+        %int = OpTypeInt 32 1
+      %int_2 = OpConstant %int 2
+%_ptr_Uniform_uint = OpTypePointer Uniform %uint
+       %bool = OpTypeBool
+      %int_1 = OpConstant %int 1
+      %float = OpTypeFloat 32
+    %v2float = OpTypeVector %float 2
+%_runtimearr_v2float = OpTypeRuntimeArray %v2float
+%StateVector = OpTypeStruct %_runtimearr_v2float
+%_ptr_Uniform_StateVector = OpTypePointer Uniform %StateVector
+          %_ = OpVariable %_ptr_Uniform_StateVector Uniform
+      %int_0 = OpConstant %int 0
+%_ptr_Uniform_float = OpTypePointer Uniform %float
+%_ptr_Uniform_v2float = OpTypePointer Uniform %v2float
+    %uint_32 = OpConstant %uint 32
+%gl_WorkGroupSize = OpConstantComposite %v3uint %uint_32 %uint_1 %uint_1
+               OpLine %1 18 11
+       %main = OpFunction %void None %4
+          %6 = OpLabel
+        %gid = OpVariable %_ptr_Function_uint Function
+ %state_size = OpVariable %_ptr_Function_uint Function
+       %mask = OpVariable %_ptr_Function_uint Function
+               OpLine %1 19 0
+         %15 = OpAccessChain %_ptr_Input_uint %gl_GlobalInvocationID %uint_0
+         %16 = OpLoad %uint %15
+               OpStore %gid %16
+               OpLine %1 20 0
+         %25 = OpAccessChain %_ptr_Uniform_uint %params %int_2
+         %26 = OpLoad %uint %25
+         %27 = OpShiftLeftLogical %uint %uint_1 %26
+               OpStore %state_size %27
+               OpLine %1 23 0
+         %28 = OpLoad %uint %gid
+         %29 = OpLoad %uint %state_size
+         %31 = OpUGreaterThanEqual %bool %28 %29
+               OpSelectionMerge %33 None
+               OpBranchConditional %31 %32 %33
+         %32 = OpLabel
+               OpLine %1 24 0
+               OpReturn
+         %33 = OpLabel
+               OpLine %1 28 0
+         %37 = OpAccessChain %_ptr_Uniform_uint %params %int_1
+         %38 = OpLoad %uint %37
+         %39 = OpShiftLeftLogical %uint %uint_1 %38
+               OpStore %mask %39
+               OpLine %1 29 0
+         %40 = OpLoad %uint %gid
+         %41 = OpLoad %uint %mask
+         %42 = OpBitwiseAnd %uint %40 %41
+         %43 = OpINotEqual %bool %42 %uint_0
+               OpSelectionMerge %45 None
+               OpBranchConditional %43 %44 %45
+         %44 = OpLabel
+               OpLine %1 31 0
+         %53 = OpLoad %uint %gid
+         %54 = OpLoad %uint %gid
+         %56 = OpAccessChain %_ptr_Uniform_float %_ %int_0 %54 %uint_0
+         %57 = OpLoad %float %56
+         %58 = OpFNegate %float %57
+         %59 = OpLoad %uint %gid
+         %60 = OpAccessChain %_ptr_Uniform_float %_ %int_0 %59 %uint_1
+         %61 = OpLoad %float %60
+         %62 = OpFNegate %float %61
+         %63 = OpCompositeConstruct %v2float %58 %62
+         %65 = OpAccessChain %_ptr_Uniform_v2float %_ %int_0 %53
+               OpStore %65 %63
+               OpBranch %45
+         %45 = OpLabel
+               OpLine %1 33 0
+               OpReturn
+               OpFunctionEnd

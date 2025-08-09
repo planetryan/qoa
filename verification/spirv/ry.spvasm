@@ -1,0 +1,113 @@
+; SPIR-V
+; Version: 1.0
+; Generator: Google Shaderc over Glslang; 11
+; Bound: 140
+; Schema: 0
+               OpCapability Shader
+          %1 = OpExtInstImport "GLSL.std.450"
+               OpMemoryModel Logical GLSL450
+               OpEntryPoint GLCompute %4 "main" %gl_GlobalInvocationID
+               OpExecutionMode %4 LocalSize 32 1 1
+               OpDecorate %gl_GlobalInvocationID BuiltIn GlobalInvocationId
+               OpDecorate %_struct_19 Block
+               OpMemberDecorate %_struct_19 0 Offset 0
+               OpMemberDecorate %_struct_19 1 Offset 4
+               OpMemberDecorate %_struct_19 2 Offset 8
+               OpMemberDecorate %_struct_19 3 Offset 12
+               OpDecorate %21 Binding 1
+               OpDecorate %21 DescriptorSet 0
+               OpDecorate %_runtimearr_v2float ArrayStride 8
+               OpDecorate %_struct_51 BufferBlock
+               OpMemberDecorate %_struct_51 0 Offset 0
+               OpDecorate %53 Binding 0
+               OpDecorate %53 DescriptorSet 0
+               OpDecorate %gl_WorkGroupSize BuiltIn WorkgroupSize
+       %void = OpTypeVoid
+          %3 = OpTypeFunction %void
+       %uint = OpTypeInt 32 0
+     %v3uint = OpTypeVector %uint 3
+%_ptr_Input_v3uint = OpTypePointer Input %v3uint
+%gl_GlobalInvocationID = OpVariable %_ptr_Input_v3uint Input
+     %uint_0 = OpConstant %uint 0
+%_ptr_Input_uint = OpTypePointer Input %uint
+     %uint_1 = OpConstant %uint 1
+      %float = OpTypeFloat 32
+ %_struct_19 = OpTypeStruct %uint %uint %uint %float
+%_ptr_Uniform__struct_19 = OpTypePointer Uniform %_struct_19
+         %21 = OpVariable %_ptr_Uniform__struct_19 Uniform
+        %int = OpTypeInt 32 1
+      %int_2 = OpConstant %int 2
+%_ptr_Uniform_uint = OpTypePointer Uniform %uint
+       %bool = OpTypeBool
+      %int_1 = OpConstant %int 1
+    %v2float = OpTypeVector %float 2
+%_runtimearr_v2float = OpTypeRuntimeArray %v2float
+ %_struct_51 = OpTypeStruct %_runtimearr_v2float
+%_ptr_Uniform__struct_51 = OpTypePointer Uniform %_struct_51
+         %53 = OpVariable %_ptr_Uniform__struct_51 Uniform
+      %int_0 = OpConstant %int 0
+%_ptr_Uniform_v2float = OpTypePointer Uniform %v2float
+      %int_3 = OpConstant %int 3
+%_ptr_Uniform_float = OpTypePointer Uniform %float
+    %uint_32 = OpConstant %uint 32
+%gl_WorkGroupSize = OpConstantComposite %v3uint %uint_32 %uint_1 %uint_1
+  %float_0_5 = OpConstant %float 0.5
+          %4 = OpFunction %void None %3
+          %5 = OpLabel
+               OpSelectionMerge %125 None
+               OpSwitch %uint_0 %126
+        %126 = OpLabel
+         %14 = OpAccessChain %_ptr_Input_uint %gl_GlobalInvocationID %uint_0
+         %15 = OpLoad %uint %14
+         %25 = OpAccessChain %_ptr_Uniform_uint %21 %int_2
+         %26 = OpLoad %uint %25
+         %27 = OpShiftLeftLogical %uint %uint_1 %26
+         %31 = OpUGreaterThanEqual %bool %15 %27
+               OpSelectionMerge %33 None
+               OpBranchConditional %31 %32 %33
+         %32 = OpLabel
+               OpBranch %125
+         %33 = OpLabel
+         %38 = OpAccessChain %_ptr_Uniform_uint %21 %int_1
+         %39 = OpLoad %uint %38
+         %40 = OpShiftLeftLogical %uint %uint_1 %39
+         %41 = OpBitwiseXor %uint %15 %40
+         %44 = OpULessThan %bool %15 %41
+               OpSelectionMerge %46 None
+               OpBranchConditional %44 %45 %46
+         %45 = OpLabel
+         %57 = OpAccessChain %_ptr_Uniform_v2float %53 %int_0 %15
+         %58 = OpLoad %v2float %57
+         %61 = OpAccessChain %_ptr_Uniform_v2float %53 %int_0 %41
+         %62 = OpLoad %v2float %61
+         %67 = OpAccessChain %_ptr_Uniform_float %21 %int_3
+         %68 = OpLoad %float %67
+         %70 = OpFMul %float %68 %float_0_5
+         %71 = OpExtInst %float %1 Cos %70
+         %76 = OpExtInst %float %1 Sin %70
+         %80 = OpCompositeExtract %float %58 0
+         %81 = OpFMul %float %71 %80
+         %84 = OpCompositeExtract %float %62 0
+         %85 = OpFMul %float %76 %84
+         %86 = OpFSub %float %81 %85
+         %89 = OpCompositeExtract %float %58 1
+         %90 = OpFMul %float %71 %89
+         %93 = OpCompositeExtract %float %62 1
+         %94 = OpFMul %float %76 %93
+         %95 = OpFSub %float %90 %94
+         %96 = OpCompositeConstruct %v2float %86 %95
+        %101 = OpFMul %float %71 %84
+        %105 = OpFMul %float %76 %80
+        %106 = OpFAdd %float %101 %105
+        %110 = OpFMul %float %71 %93
+        %114 = OpFMul %float %76 %89
+        %115 = OpFAdd %float %110 %114
+        %116 = OpCompositeConstruct %v2float %106 %115
+               OpStore %57 %96
+               OpStore %61 %116
+               OpBranch %46
+         %46 = OpLabel
+               OpBranch %125
+        %125 = OpLabel
+               OpReturn
+               OpFunctionEnd

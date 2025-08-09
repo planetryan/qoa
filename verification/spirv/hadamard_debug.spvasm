@@ -1,0 +1,386 @@
+; SPIR-V
+; Version: 1.0
+; Generator: Google Shaderc over Glslang; 11
+; Bound: 175
+; Schema: 0
+               OpCapability Shader
+          %2 = OpExtInstImport "GLSL.std.450"
+               OpMemoryModel Logical GLSL450
+               OpEntryPoint GLCompute %main "main" %gl_GlobalInvocationID
+               OpExecutionMode %main LocalSize 256 1 1
+          %1 = OpString "/home/rayan/Documents/git/qoa/src/kernel/shaders/hadamard.comp"
+               OpSource GLSL 450 %1 "// OpModuleProcessed entry-point main
+// OpModuleProcessed client vulkan100
+// OpModuleProcessed target-env vulkan1.0
+// OpModuleProcessed entry-point main
+#line 1
+#version 450
+
+layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+
+// Quantum state storage
+layout(set = 0, binding = 0) buffer QuantumState {
+    vec4 amplitudes[];  // Each vec4 contains two complex numbers (re1, im1, re2, im2)
+};
+
+// Push constants for gate parameters
+layout(push_constant) uniform PushConstants {
+    uint targetQubit;
+    uint stateSize;
+    uint reserved1;
+    uint reserved2;
+} params;
+
+// Complex number multiplication
+vec2 cmul(vec2 a, vec2 b) {
+    return vec2(a.x * b.x - a.y * b.y, a.x * b.y + a.y * b.x);
+}
+
+void main() {
+    uint idx = gl_GlobalInvocationID.x;
+    if (idx >= params.stateSize) return;
+    
+    // Calculate the two indices that will be mixed by the Hadamard gate
+    uint mask = 1u << params.targetQubit;
+    uint idx0 = idx & ~mask;  // Index with target qubit = 0
+    uint idx1 = idx | mask;   // Index with target qubit = 1
+    
+    // Only process each pair once (when idx has target bit = 0)
+    if ((idx & mask) != 0) return;
+    
+    // Fetch the two amplitudes to be modified
+    uint vec_idx0 = idx0 / 2;
+    uint vec_idx1 = idx1 / 2;
+    bool odd0 = (idx0 & 1) != 0;
+    bool odd1 = (idx1 & 1) != 0;
+    
+    vec2 psi0, psi1;
+    
+    // Extract complex amplitudes from packed storage
+    if (odd0) {
+        psi0 = vec2(amplitudes[vec_idx0].z, amplitudes[vec_idx0].w);
+    } else {
+        psi0 = vec2(amplitudes[vec_idx0].x, amplitudes[vec_idx0].y);
+    }
+    
+    if (odd1) {
+        psi1 = vec2(amplitudes[vec_idx1].z, amplitudes[vec_idx1].w);
+    } else {
+        psi1 = vec2(amplitudes[vec_idx1].x, amplitudes[vec_idx1].y);
+    }
+    
+    // Hadamard transform: 1/sqrt(2) * [1 1; 1 -1]
+    float inv_sqrt2 = 0.7071067811865475; // 1/sqrt(2)
+    vec2 new_psi0 = inv_sqrt2 * (psi0 + psi1);
+    vec2 new_psi1 = inv_sqrt2 * (psi0 - psi1);
+    
+    // Memory barrier to ensure all threads finish reading before writing
+    memoryBarrier();
+    
+    // Store results back to global memory
+    if (odd0) {
+        amplitudes[vec_idx0].z = new_psi0.x;
+        amplitudes[vec_idx0].w = new_psi0.y;
+    } else {
+        amplitudes[vec_idx0].x = new_psi0.x;
+        amplitudes[vec_idx0].y = new_psi0.y;
+    }
+    
+    if (odd1) {
+        amplitudes[vec_idx1].z = new_psi1.x;
+        amplitudes[vec_idx1].w = new_psi1.y;
+    } else {
+        amplitudes[vec_idx1].x = new_psi1.x;
+        amplitudes[vec_idx1].y = new_psi1.y;
+    }
+}"
+               OpSourceExtension "GL_GOOGLE_cpp_style_line_directive"
+               OpSourceExtension "GL_GOOGLE_include_directive"
+               OpName %main "main"
+               OpName %idx "idx"
+               OpName %gl_GlobalInvocationID "gl_GlobalInvocationID"
+               OpName %PushConstants "PushConstants"
+               OpMemberName %PushConstants 0 "targetQubit"
+               OpMemberName %PushConstants 1 "stateSize"
+               OpMemberName %PushConstants 2 "reserved1"
+               OpMemberName %PushConstants 3 "reserved2"
+               OpName %params "params"
+               OpName %mask "mask"
+               OpName %idx0 "idx0"
+               OpName %idx1 "idx1"
+               OpName %vec_idx0 "vec_idx0"
+               OpName %vec_idx1 "vec_idx1"
+               OpName %odd0 "odd0"
+               OpName %odd1 "odd1"
+               OpName %psi0 "psi0"
+               OpName %QuantumState "QuantumState"
+               OpMemberName %QuantumState 0 "amplitudes"
+               OpName %_ ""
+               OpName %psi1 "psi1"
+               OpName %inv_sqrt2 "inv_sqrt2"
+               OpName %new_psi0 "new_psi0"
+               OpName %new_psi1 "new_psi1"
+               OpDecorate %gl_GlobalInvocationID BuiltIn GlobalInvocationId
+               OpDecorate %PushConstants Block
+               OpMemberDecorate %PushConstants 0 Offset 0
+               OpMemberDecorate %PushConstants 1 Offset 4
+               OpMemberDecorate %PushConstants 2 Offset 8
+               OpMemberDecorate %PushConstants 3 Offset 12
+               OpDecorate %_runtimearr_v4float ArrayStride 16
+               OpDecorate %QuantumState BufferBlock
+               OpMemberDecorate %QuantumState 0 Offset 0
+               OpDecorate %_ Binding 0
+               OpDecorate %_ DescriptorSet 0
+               OpDecorate %gl_WorkGroupSize BuiltIn WorkgroupSize
+       %void = OpTypeVoid
+          %4 = OpTypeFunction %void
+       %uint = OpTypeInt 32 0
+%_ptr_Function_uint = OpTypePointer Function %uint
+     %v3uint = OpTypeVector %uint 3
+%_ptr_Input_v3uint = OpTypePointer Input %v3uint
+%gl_GlobalInvocationID = OpVariable %_ptr_Input_v3uint Input
+     %uint_0 = OpConstant %uint 0
+%_ptr_Input_uint = OpTypePointer Input %uint
+%PushConstants = OpTypeStruct %uint %uint %uint %uint
+%_ptr_PushConstant_PushConstants = OpTypePointer PushConstant %PushConstants
+     %params = OpVariable %_ptr_PushConstant_PushConstants PushConstant
+        %int = OpTypeInt 32 1
+      %int_1 = OpConstant %int 1
+%_ptr_PushConstant_uint = OpTypePointer PushConstant %uint
+       %bool = OpTypeBool
+     %uint_1 = OpConstant %uint 1
+      %int_0 = OpConstant %int 0
+     %uint_2 = OpConstant %uint 2
+%_ptr_Function_bool = OpTypePointer Function %bool
+      %float = OpTypeFloat 32
+    %v2float = OpTypeVector %float 2
+%_ptr_Function_v2float = OpTypePointer Function %v2float
+    %v4float = OpTypeVector %float 4
+%_runtimearr_v4float = OpTypeRuntimeArray %v4float
+%QuantumState = OpTypeStruct %_runtimearr_v4float
+%_ptr_Uniform_QuantumState = OpTypePointer Uniform %QuantumState
+          %_ = OpVariable %_ptr_Uniform_QuantumState Uniform
+%_ptr_Uniform_float = OpTypePointer Uniform %float
+     %uint_3 = OpConstant %uint 3
+%_ptr_Function_float = OpTypePointer Function %float
+%float_0_707106769 = OpConstant %float 0.707106769
+  %uint_3400 = OpConstant %uint 3400
+   %uint_256 = OpConstant %uint 256
+%gl_WorkGroupSize = OpConstantComposite %v3uint %uint_256 %uint_1 %uint_1
+               OpLine %1 23 11
+       %main = OpFunction %void None %4
+          %6 = OpLabel
+        %idx = OpVariable %_ptr_Function_uint Function
+       %mask = OpVariable %_ptr_Function_uint Function
+       %idx0 = OpVariable %_ptr_Function_uint Function
+       %idx1 = OpVariable %_ptr_Function_uint Function
+   %vec_idx0 = OpVariable %_ptr_Function_uint Function
+   %vec_idx1 = OpVariable %_ptr_Function_uint Function
+       %odd0 = OpVariable %_ptr_Function_bool Function
+       %odd1 = OpVariable %_ptr_Function_bool Function
+       %psi0 = OpVariable %_ptr_Function_v2float Function
+       %psi1 = OpVariable %_ptr_Function_v2float Function
+  %inv_sqrt2 = OpVariable %_ptr_Function_float Function
+   %new_psi0 = OpVariable %_ptr_Function_v2float Function
+   %new_psi1 = OpVariable %_ptr_Function_v2float Function
+               OpLine %1 24 0
+         %15 = OpAccessChain %_ptr_Input_uint %gl_GlobalInvocationID %uint_0
+         %16 = OpLoad %uint %15
+               OpStore %idx %16
+               OpLine %1 25 0
+         %17 = OpLoad %uint %idx
+         %24 = OpAccessChain %_ptr_PushConstant_uint %params %int_1
+         %25 = OpLoad %uint %24
+         %27 = OpUGreaterThanEqual %bool %17 %25
+               OpSelectionMerge %29 None
+               OpBranchConditional %27 %28 %29
+         %28 = OpLabel
+               OpLine %1 25 0
+               OpReturn
+         %29 = OpLabel
+               OpLine %1 28 0
+         %34 = OpAccessChain %_ptr_PushConstant_uint %params %int_0
+         %35 = OpLoad %uint %34
+         %36 = OpShiftLeftLogical %uint %uint_1 %35
+               OpStore %mask %36
+               OpLine %1 29 0
+         %38 = OpLoad %uint %idx
+         %39 = OpLoad %uint %mask
+         %40 = OpNot %uint %39
+         %41 = OpBitwiseAnd %uint %38 %40
+               OpStore %idx0 %41
+               OpLine %1 30 0
+         %43 = OpLoad %uint %idx
+         %44 = OpLoad %uint %mask
+         %45 = OpBitwiseOr %uint %43 %44
+               OpStore %idx1 %45
+               OpLine %1 33 0
+         %46 = OpLoad %uint %idx
+         %47 = OpLoad %uint %mask
+         %48 = OpBitwiseAnd %uint %46 %47
+         %49 = OpINotEqual %bool %48 %uint_0
+               OpSelectionMerge %51 None
+               OpBranchConditional %49 %50 %51
+         %50 = OpLabel
+               OpLine %1 33 0
+               OpReturn
+         %51 = OpLabel
+               OpLine %1 36 0
+         %54 = OpLoad %uint %idx0
+         %56 = OpUDiv %uint %54 %uint_2
+               OpStore %vec_idx0 %56
+               OpLine %1 37 0
+         %58 = OpLoad %uint %idx1
+         %59 = OpUDiv %uint %58 %uint_2
+               OpStore %vec_idx1 %59
+               OpLine %1 38 0
+         %62 = OpLoad %uint %idx0
+         %63 = OpBitwiseAnd %uint %62 %uint_1
+         %64 = OpINotEqual %bool %63 %uint_0
+               OpStore %odd0 %64
+               OpLine %1 39 0
+         %66 = OpLoad %uint %idx1
+         %67 = OpBitwiseAnd %uint %66 %uint_1
+         %68 = OpINotEqual %bool %67 %uint_0
+               OpStore %odd1 %68
+               OpLine %1 44 0
+         %69 = OpLoad %bool %odd0
+               OpSelectionMerge %71 None
+               OpBranchConditional %69 %70 %90
+         %70 = OpLabel
+               OpLine %1 45 0
+         %81 = OpLoad %uint %vec_idx0
+         %83 = OpAccessChain %_ptr_Uniform_float %_ %int_0 %81 %uint_2
+         %84 = OpLoad %float %83
+         %85 = OpLoad %uint %vec_idx0
+         %87 = OpAccessChain %_ptr_Uniform_float %_ %int_0 %85 %uint_3
+         %88 = OpLoad %float %87
+         %89 = OpCompositeConstruct %v2float %84 %88
+               OpStore %psi0 %89
+               OpBranch %71
+         %90 = OpLabel
+               OpLine %1 47 0
+         %91 = OpLoad %uint %vec_idx0
+         %92 = OpAccessChain %_ptr_Uniform_float %_ %int_0 %91 %uint_0
+         %93 = OpLoad %float %92
+         %94 = OpLoad %uint %vec_idx0
+         %95 = OpAccessChain %_ptr_Uniform_float %_ %int_0 %94 %uint_1
+         %96 = OpLoad %float %95
+         %97 = OpCompositeConstruct %v2float %93 %96
+               OpStore %psi0 %97
+               OpBranch %71
+         %71 = OpLabel
+               OpLine %1 50 0
+         %98 = OpLoad %bool %odd1
+               OpSelectionMerge %100 None
+               OpBranchConditional %98 %99 %109
+         %99 = OpLabel
+               OpLine %1 51 0
+        %102 = OpLoad %uint %vec_idx1
+        %103 = OpAccessChain %_ptr_Uniform_float %_ %int_0 %102 %uint_2
+        %104 = OpLoad %float %103
+        %105 = OpLoad %uint %vec_idx1
+        %106 = OpAccessChain %_ptr_Uniform_float %_ %int_0 %105 %uint_3
+        %107 = OpLoad %float %106
+        %108 = OpCompositeConstruct %v2float %104 %107
+               OpStore %psi1 %108
+               OpBranch %100
+        %109 = OpLabel
+               OpLine %1 53 0
+        %110 = OpLoad %uint %vec_idx1
+        %111 = OpAccessChain %_ptr_Uniform_float %_ %int_0 %110 %uint_0
+        %112 = OpLoad %float %111
+        %113 = OpLoad %uint %vec_idx1
+        %114 = OpAccessChain %_ptr_Uniform_float %_ %int_0 %113 %uint_1
+        %115 = OpLoad %float %114
+        %116 = OpCompositeConstruct %v2float %112 %115
+               OpStore %psi1 %116
+               OpBranch %100
+        %100 = OpLabel
+               OpLine %1 57 0
+               OpStore %inv_sqrt2 %float_0_707106769
+               OpLine %1 58 0
+        %121 = OpLoad %float %inv_sqrt2
+        %122 = OpLoad %v2float %psi0
+        %123 = OpLoad %v2float %psi1
+        %124 = OpFAdd %v2float %122 %123
+        %125 = OpVectorTimesScalar %v2float %124 %121
+               OpStore %new_psi0 %125
+               OpLine %1 59 0
+        %127 = OpLoad %float %inv_sqrt2
+        %128 = OpLoad %v2float %psi0
+        %129 = OpLoad %v2float %psi1
+        %130 = OpFSub %v2float %128 %129
+        %131 = OpVectorTimesScalar %v2float %130 %127
+               OpStore %new_psi1 %131
+               OpLine %1 62 0
+               OpMemoryBarrier %uint_1 %uint_3400
+               OpLine %1 65 0
+        %133 = OpLoad %bool %odd0
+               OpSelectionMerge %135 None
+               OpBranchConditional %133 %134 %144
+        %134 = OpLabel
+               OpLine %1 66 0
+        %136 = OpLoad %uint %vec_idx0
+        %137 = OpAccessChain %_ptr_Function_float %new_psi0 %uint_0
+        %138 = OpLoad %float %137
+        %139 = OpAccessChain %_ptr_Uniform_float %_ %int_0 %136 %uint_2
+               OpStore %139 %138
+               OpLine %1 67 0
+        %140 = OpLoad %uint %vec_idx0
+        %141 = OpAccessChain %_ptr_Function_float %new_psi0 %uint_1
+        %142 = OpLoad %float %141
+        %143 = OpAccessChain %_ptr_Uniform_float %_ %int_0 %140 %uint_3
+               OpStore %143 %142
+               OpBranch %135
+        %144 = OpLabel
+               OpLine %1 69 0
+        %145 = OpLoad %uint %vec_idx0
+        %146 = OpAccessChain %_ptr_Function_float %new_psi0 %uint_0
+        %147 = OpLoad %float %146
+        %148 = OpAccessChain %_ptr_Uniform_float %_ %int_0 %145 %uint_0
+               OpStore %148 %147
+               OpLine %1 70 0
+        %149 = OpLoad %uint %vec_idx0
+        %150 = OpAccessChain %_ptr_Function_float %new_psi0 %uint_1
+        %151 = OpLoad %float %150
+        %152 = OpAccessChain %_ptr_Uniform_float %_ %int_0 %149 %uint_1
+               OpStore %152 %151
+               OpBranch %135
+        %135 = OpLabel
+               OpLine %1 73 0
+        %153 = OpLoad %bool %odd1
+               OpSelectionMerge %155 None
+               OpBranchConditional %153 %154 %164
+        %154 = OpLabel
+               OpLine %1 74 0
+        %156 = OpLoad %uint %vec_idx1
+        %157 = OpAccessChain %_ptr_Function_float %new_psi1 %uint_0
+        %158 = OpLoad %float %157
+        %159 = OpAccessChain %_ptr_Uniform_float %_ %int_0 %156 %uint_2
+               OpStore %159 %158
+               OpLine %1 75 0
+        %160 = OpLoad %uint %vec_idx1
+        %161 = OpAccessChain %_ptr_Function_float %new_psi1 %uint_1
+        %162 = OpLoad %float %161
+        %163 = OpAccessChain %_ptr_Uniform_float %_ %int_0 %160 %uint_3
+               OpStore %163 %162
+               OpBranch %155
+        %164 = OpLabel
+               OpLine %1 77 0
+        %165 = OpLoad %uint %vec_idx1
+        %166 = OpAccessChain %_ptr_Function_float %new_psi1 %uint_0
+        %167 = OpLoad %float %166
+        %168 = OpAccessChain %_ptr_Uniform_float %_ %int_0 %165 %uint_0
+               OpStore %168 %167
+               OpLine %1 78 0
+        %169 = OpLoad %uint %vec_idx1
+        %170 = OpAccessChain %_ptr_Function_float %new_psi1 %uint_1
+        %171 = OpLoad %float %170
+        %172 = OpAccessChain %_ptr_Uniform_float %_ %int_0 %169 %uint_1
+               OpStore %172 %171
+               OpBranch %155
+        %155 = OpLabel
+               OpLine %1 80 0
+               OpReturn
+               OpFunctionEnd
