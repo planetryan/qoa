@@ -1,7 +1,7 @@
 Instruction count: 0
 
 Original binary size:
--rw------- 1 rayan rayan 1,4K  8 d’ag.    20:02 /tmp/tmp.Xmc0AxLgzU
+-rw------- 1 rayan rayan 1,4K  8 d’ag.    21:10 /tmp/tmp.8vIx3gsi5j
 
 Optimized binary size:
--rw------- 1 rayan rayan 1,4K  8 d’ag.    20:02 /tmp/tmp.P0OmcStJsY
+-rw------- 1 rayan rayan 1,4K  8 d’ag.    21:10 /tmp/tmp.IloI7jVR3u

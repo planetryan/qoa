@@ -1,16 +1,23 @@
 #!/usr/bin/env bash
 # install_vulkan_sdk.sh
-# Downloads the latest LunarG Vulkan SDK for Linux, extracts it into INSTALL_PARENT,
-# and removes older versioned SDK directories in that parent.
-# Default INSTALL_PARENT matches where you currently keep your SDKs:
-#   $HOME/Documents/git/qoa/verification/scripts
+# Auto-detects QOA root dir from this script location,
+# installs latest Vulkan SDK into $QOA_ROOT/verification/sdk,
+# and cleans up older SDK versions.
+
 set -euo pipefail
 
-# Configurable vars
-INSTALL_PARENT="${INSTALL_PARENT:-$HOME/Documents/git/qoa/verification/scripts}"
+# Resolve the absolute directory of this script
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Assume QOA root is 3 levels up from script dir (adjust if needed)
+QOA_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+
+# Installation directory inside QOA root
+INSTALL_PARENT="$QOA_ROOT/verification/sdk"
+
 TMPDIR="${TMPDIR:-/tmp}"
-KEEP_COUNT="${KEEP_COUNT:-1}"   # how many newest versions to keep (default 1 = keep latest only)
-FORCE="${FORCE:-0}"            # set to 1 to skip prompts (currently no prompt by default)
+KEEP_COUNT="${KEEP_COUNT:-1}"   # Keep N newest versions
+FORCE="${FORCE:-0}"             # 1 to skip prompts (not used currently)
 
 SDK_BASE_URL="https://sdk.lunarg.com/sdk"
 
@@ -26,31 +33,30 @@ Options:
 EOF
 }
 
-# simple arg parse
+# Argument parsing (override INSTALL_PARENT and KEEP_COUNT)
 while (( "$#" )); do
     case "$1" in
         --install-parent) INSTALL_PARENT="$2"; shift 2 ;;
         --keep) KEEP_COUNT="$2"; shift 2 ;;
         --yes|--y) FORCE=1; shift ;;
         -h|--help) usage; exit 0 ;;
-        *) echo "Unknown arg: $1"; usage; exit 1 ;;
+        *) echo "Unknown argument: $1"; usage; exit 1 ;;
     esac
 done
 
 mkdir -p "$INSTALL_PARENT"
 cd "$INSTALL_PARENT"
 
+echo "QOA root detected as: $QOA_ROOT"
 echo "Installing Vulkan SDK into: $INSTALL_PARENT"
 echo "Querying latest SDK version..."
 
-# get latest version string for linux (plain text)
 set +o pipefail
 LATEST_VERSION=$(curl -fsSL "https://vulkan.lunarg.com/sdk/latest/linux.txt" || true)
 set -o pipefail
 
 if [ -z "$LATEST_VERSION" ]; then
     echo "Failed to get latest version from LunarG. Trying generic 'latest' download URL..."
-    # fallback to using 'latest' URL (we won't know the version string in that case)
     DOWNLOAD_URL="${SDK_BASE_URL}/download/latest/linux/vulkan_sdk.tar.xz"
     TARFILE="$TMPDIR/vulkan_sdk-latest.tar.xz"
     echo "Downloading: $DOWNLOAD_URL"
@@ -64,7 +70,6 @@ fi
 
 echo "Latest version: $LATEST_VERSION"
 
-# compose versioned download URL and local tar name
 FILE_NAME="vulkansdk-linux-x86_64-${LATEST_VERSION}.tar.xz"
 DOWNLOAD_URL="${SDK_BASE_URL}/download/${LATEST_VERSION}/linux/${FILE_NAME}"
 TARFILE="$TMPDIR/${FILE_NAME}"
@@ -78,7 +83,6 @@ curl -fSL -o "$TARFILE" "$DOWNLOAD_URL" || {
 echo "Verifying SHA (if available)..."
 SHA_URL="${SDK_BASE_URL}/sdk/sha/${LATEST_VERSION}/linux/${FILE_NAME}.txt"
 if curl -fsSL "$SHA_URL" -o /dev/null 2>/dev/null; then
-    # fetch sha and verify
     sha_expected=$(curl -fsSL "$SHA_URL" | awk '{print $1}')
     sha_actual=$(sha256sum "$TARFILE" | awk '{print $1}')
     if [ "$sha_expected" = "$sha_actual" ]; then
@@ -96,36 +100,28 @@ fi
 echo "Extracting $TARFILE into $INSTALL_PARENT..."
 tar -xvf "$TARFILE" -C "$INSTALL_PARENT" || { echo "Extraction failed"; rm -f "$TARFILE"; exit 1; }
 
-# extracted folder name is usually the version string, e.g. 1.4.321.1
 EXTRACTED_DIR="$INSTALL_PARENT/$LATEST_VERSION"
 if [ ! -d "$EXTRACTED_DIR" ]; then
-    # sometimes tar creates slightly different folder name; try to detect newest folder
     echo "Expected extracted dir $EXTRACTED_DIR not found. Listing newly created dirs:"
     ls -1dt "$INSTALL_PARENT"/*/ | head -10
 fi
 
-# cleanup tarball
 rm -f "$TARFILE"
 echo "Extraction done. Cleaned up tarball."
 
-# remove older versioned SDK directories
 echo "Removing older versioned SDK directories (keeping $KEEP_COUNT newest)..."
 
-# find directories that look like version numbers (start with digit)
 mapfile -t sdk_dirs < <(find "$INSTALL_PARENT" -maxdepth 1 -mindepth 1 -type d -printf '%f\n' | grep -E '^[0-9]+' | sort -Vr)
 
 if [ "${#sdk_dirs[@]}" -le "$KEEP_COUNT" ]; then
     echo "Found ${#sdk_dirs[@]} versioned SDK dirs; nothing to delete."
 else
-    # list to delete (all except first KEEP_COUNT)
     to_delete=( "${sdk_dirs[@]:$KEEP_COUNT}" )
     printf 'Will remove %d old SDK dirs:\n' "${#to_delete[@]}"
     for d in "${to_delete[@]}"; do printf '  %s\n' "$d"; done
 
-    # proceed to delete
     for d in "${to_delete[@]}"; do
         full="$INSTALL_PARENT/$d"
-        # safety: ensure full path starts with INSTALL_PARENT and candidate looks like a version
         if [[ "$full" == "$INSTALL_PARENT/"* ]] && [[ "$d" =~ ^[0-9] ]]; then
             echo "Removing $full"
             rm -rf -- "$full"
@@ -138,6 +134,5 @@ fi
 echo "Done. Current SDKs in $INSTALL_PARENT:"
 ls -1d "$INSTALL_PARENT"/*/ 2>/dev/null || true
 
-echo "You may want to add the new SDK env setup to your shell rc:"
+echo "Add the new SDK env setup to your shell rc:"
 echo "  source $EXTRACTED_DIR/setup-env.sh"
-

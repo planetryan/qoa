@@ -8,7 +8,7 @@
                OpMemoryModel Logical GLSL450
                OpEntryPoint GLCompute %main "main" %gl_GlobalInvocationID
                OpExecutionMode %main LocalSize 32 1 1
-          %1 = OpString "/home/rayan/Documents/git/qoa/src/kernel/shaders/tensor.comp"
+          %1 = OpString "/home/rayan/qoa/src/kernel/shaders/tensor.comp"
                OpSource GLSL 450 %1 "// OpModuleProcessed entry-point main
 // OpModuleProcessed client vulkan100
 // OpModuleProcessed target-env vulkan1.0
