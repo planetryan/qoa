@@ -1,10 +1,9 @@
 [build]
-# general rustflags applied to all targets unless overridden
 rustflags = [
-    # use free software optimizations that work across architectures
     "-C", "llvm-args=-vectorize-loops",
-    "-C", "llvm-args=-vectorize-slp", 
-    "-C", "llvm-args=-enable-gvn-hoist"
+    "-C", "llvm-args=-vectorize-slp",
+    "-C", "llvm-args=-enable-gvn-hoist",
+    "-Zunstable-options"
 ]
 
 [profile.dev]

@@ -1,0 +1,27 @@
+crash
+
+Problem 1: Validation Layer Pointer Scope Issue
+The validation_layers_ptrs is defined at line 227 in the instance creation scope, but it's being used later at line 324 in device creation. However, the validation_layers_cstrs that these pointers reference might have gone out of scope or been invalidated between instance and device creation.
+Problem 2: Device Features Issue
+At line 316, you're creating empty device features:
+rustlet device_features = vk::PhysicalDeviceFeatures::builder().build();
+This creates a features struct with all features disabled, but your application might be trying to use features that aren't explicitly enabled.
+Solution 1: Fix the validation layers issue
+The problem is that device-level validation layers are deprecated in modern Vulkan. You should remove device-level validation layers. Change this:
+rustif enable_validation_layers {
+    device_create_info = device_create_info.enabled_layer_names(&validation_layers_ptrs);
+}
+To just:
+rust// Remove this block entirely - device-level validation layers are deprecated
+Solution 2: Quick test without validation layers
+Let's test this theory by running without the VK_INSTANCE_LAYERS environment variable:
+bashRUSTFLAGS="-C target-cpu=native" cargo run --release --features vulkan gpu-bench --qubits 15
+If it works without validation layers, then the issue is confirmed.
+Solution 3: Check what features your compute shaders need
+Your application might need specific Vulkan features. Look for any compute shader or buffer usage that requires features like:
+
+shaderStorageBufferArrayDynamicIndexing
+variablePointers
+etc.
+
+Can you try running without validation layers first (Solution 2)? If that works, we know the validation layer device creation is the culprit.

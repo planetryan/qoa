@@ -25,6 +25,8 @@ ndarray = { version = "0.16", features = ["rayon"] }
 realfft = "2.0"
 chrono = "0.4"
 whoami = "1.4"
+zerofrom = "0.1.6"
+zerofrom-derive = "0.1.6"
 
 # explicitly override openssl-sys to force vendored compilation
 openssl-sys = { version = "0.9.109", features = ["vendored"] }
