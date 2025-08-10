@@ -1,0 +1,50 @@
+#version 450
+layout(local_size_x = 32, local_size_y = 1, local_size_z = 1) in;
+
+// state vector (complex numbers stored as pairs of floats)
+layout(std430, binding = 0) buffer StateVector {
+    vec2 state[];
+};
+
+// gate parameters
+layout(std140, binding = 1) uniform GateParams {
+    // using target_qubit for the first qubit
+    uint target_qubit;
+    // using num_qubits for the second qubit
+    uint second_qubit;
+    // total qubits in separate field
+    uint num_qubits;
+} params;
+
+void main() {
+    uint gid = gl_GlobalInvocationID.x;
+    uint state_size = 1u << params.num_qubits;
+
+    // return if index is out of bounds
+    if (gid >= state_size) {
+        return;
+    }
+
+    // calculate bitmasks for the qubits
+    uint q0_mask = 1u << params.target_qubit;
+    uint q1_mask = 1u << params.second_qubit;
+
+    // check the state of the two qubits
+    bool q0_state = (gid & q0_mask) != 0;
+    bool q1_state = (gid & q1_mask) != 0;
+
+    // we only need to swap if one qubit is 0 and the other is 1
+    if (q0_state != q1_state) {
+        // compute the swapped index
+        uint swapped_idx = (gid & ~q0_mask & ~q1_mask) | (q1_state ? q0_mask : 0u) | (q0_state ? q1_mask : 0u);
+
+        // only process the smaller index to prevent race conditions
+        if (gid < swapped_idx) {
+            vec2 amp_0 = state[gid];
+            vec2 amp_1 = state[swapped_idx];
+
+            state[gid] = amp_1;
+            state[swapped_idx] = amp_0;
+        }
+    }
+}

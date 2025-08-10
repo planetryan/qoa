@@ -1,5 +1,5 @@
 #[cfg(feature = "vulkan")]
-use ash::{vk, Device, Entry};
+use ash::{vk, Device};
 #[cfg(feature = "vulkan")]
 use std::sync::Arc;
 #[cfg(feature = "vulkan")]
@@ -11,22 +11,22 @@ use std::mem::size_of;
 #[cfg(feature = "vulkan")]
 use num_complex::Complex64;
 
-// re export VulkanContext from the parent module
+// re-export VulkanContext from the parent module
 #[cfg(feature = "vulkan")]
 use super::VulkanContext;
 
-// a quantum gate to be applied on the gpu.
-#[derive(Debug, Clone, Copy)]
-#[repr(u32)] // use u32 to match glsl
+// quantum gate enum, matching GLSL u32
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[repr(u32)]
 pub enum QuantumGate {
     Hadamard = 0,
     PauliX = 1,
     PauliZ = 2,
 }
 
-// struct to hold the data for the gpu kernel.
+// GPU kernel parameters struct (must be #[repr(C)])
 #[derive(Debug, Clone)]
-#[repr(C)] // ensures memory layout is C compatible
+#[repr(C)]
 struct QuantumKernelData {
     gate_type: u32,
     target_qubit: u32,
@@ -34,7 +34,6 @@ struct QuantumKernelData {
     _pad: u32,
 }
 
-// manages a gpu kernel for quantum operations.
 #[cfg(feature = "vulkan")]
 pub struct QuantumGpuManager {
     vulkan_context: Arc<VulkanContext>,
@@ -42,6 +41,7 @@ pub struct QuantumGpuManager {
     pipeline_layout: vk::PipelineLayout,
     descriptor_set_layout: vk::DescriptorSetLayout,
     descriptor_pool: vk::DescriptorPool,
+    descriptor_set: vk::DescriptorSet,
     state_buffer: vk::Buffer,
     state_buffer_memory: vk::DeviceMemory,
     gate_params_buffer: vk::Buffer,
@@ -54,28 +54,27 @@ impl QuantumGpuManager {
     pub fn new(
         vulkan_context: Arc<VulkanContext>,
         state_vector: &[Complex64],
+        gate: QuantumGate,
     ) -> Result<Self, String> {
         unsafe {
             let device = &vulkan_context.device;
 
-            // load spir-v shader code from file
-            let shader_code = Self::load_shader_code("spirv.spv")?;
+            // Load SPIR-V shader code for gate
+            let shader_code = Self::load_shader_code_for_gate(gate)?;
             let shader_module_info = vk::ShaderModuleCreateInfo::builder()
                 .code(&shader_code);
             let shader_module = device
                 .create_shader_module(&shader_module_info, None)
                 .map_err(|e| format!("failed to create shader module: {}", e))?;
 
-            // create descriptor set layout
+            // Descriptor set layout bindings
             let descriptor_set_layout_bindings = [
-                // binding 0: state vector storage buffer
                 vk::DescriptorSetLayoutBinding::builder()
                     .binding(0)
                     .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
                     .descriptor_count(1)
                     .stage_flags(vk::ShaderStageFlags::COMPUTE)
                     .build(),
-                // binding 1: gate parameters uniform buffer
                 vk::DescriptorSetLayoutBinding::builder()
                     .binding(1)
                     .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
@@ -89,14 +88,14 @@ impl QuantumGpuManager {
                 .create_descriptor_set_layout(&descriptor_set_layout_info, None)
                 .map_err(|e| format!("failed to create descriptor set layout: {}", e))?;
 
-            // create pipeline layout
+            // Pipeline layout
             let pipeline_layout_info = vk::PipelineLayoutCreateInfo::builder()
                 .set_layouts(std::slice::from_ref(&descriptor_set_layout));
             let pipeline_layout = device
                 .create_pipeline_layout(&pipeline_layout_info, None)
                 .map_err(|e| format!("failed to create pipeline layout: {}", e))?;
 
-            // create compute pipeline
+            // Compute pipeline
             let entry_point_name = CString::new("main").unwrap();
             let shader_stage = vk::PipelineShaderStageCreateInfo::builder()
                 .stage(vk::ShaderStageFlags::COMPUTE)
@@ -110,29 +109,29 @@ impl QuantumGpuManager {
                 .create_compute_pipelines(vk::PipelineCache::null(), &[compute_pipeline_info.build()], None)
                 .map_err(|e| format!("failed to create compute pipeline: {}", e))?[0];
 
-            // create buffers
+            // Create buffers
             let (state_buffer, state_buffer_memory) = Self::create_buffer(
-                device,
+                &vulkan_context,
                 (state_vector.len() * size_of::<Complex64>()) as vk::DeviceSize,
                 vk::BufferUsageFlags::STORAGE_BUFFER,
                 vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
             )?;
             let (gate_params_buffer, gate_params_buffer_memory) = Self::create_buffer(
-                device,
+                &vulkan_context,
                 size_of::<QuantumKernelData>() as vk::DeviceSize,
                 vk::BufferUsageFlags::UNIFORM_BUFFER,
                 vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
             )?;
 
-            // copy initial state to the gpu buffer
+            // Copy initial state vector data to GPU buffer
             let data_ptr = device
-                .map_memory(state_buffer_memory, 0, vk::WHOLE_SIZE, vk::MemoryMapFlags::empty())
+                .map_memory(state_buffer_memory, 0, (state_vector.len() * size_of::<Complex64>()) as vk::DeviceSize, vk::MemoryMapFlags::empty())
                 .map_err(|e| format!("failed to map memory: {}", e))?;
-            let mut slice = std::slice::from_raw_parts_mut(data_ptr as *mut Complex64, state_vector.len());
+            let slice = std::slice::from_raw_parts_mut(data_ptr as *mut Complex64, state_vector.len());
             slice.copy_from_slice(state_vector);
             device.unmap_memory(state_buffer_memory);
 
-            // create descriptor pool
+            // Descriptor pool
             let pool_sizes = [
                 vk::DescriptorPoolSize::builder()
                     .ty(vk::DescriptorType::STORAGE_BUFFER)
@@ -150,7 +149,7 @@ impl QuantumGpuManager {
                 .create_descriptor_pool(&descriptor_pool_info, None)
                 .map_err(|e| format!("failed to create descriptor pool: {}", e))?;
 
-            // allocate descriptor set
+            // Allocate descriptor set
             let descriptor_set_allocate_info = vk::DescriptorSetAllocateInfo::builder()
                 .descriptor_pool(descriptor_pool)
                 .set_layouts(std::slice::from_ref(&descriptor_set_layout));
@@ -159,15 +158,15 @@ impl QuantumGpuManager {
                 .map_err(|e| format!("failed to allocate descriptor sets: {}", e))?;
             let descriptor_set = descriptor_sets[0];
 
-            // update descriptor set
+            // Update descriptor sets with buffers
             let buffer_info_state = vk::DescriptorBufferInfo::builder()
                 .buffer(state_buffer)
                 .offset(0)
-                .range(vk::WHOLE_SIZE);
+                .range((state_vector.len() * size_of::<Complex64>()) as vk::DeviceSize);
             let buffer_info_params = vk::DescriptorBufferInfo::builder()
                 .buffer(gate_params_buffer)
                 .offset(0)
-                .range(vk::WHOLE_SIZE);
+                .range(size_of::<QuantumKernelData>() as vk::DeviceSize);
 
             let write_descriptor_sets = [
                 vk::WriteDescriptorSet::builder()
@@ -187,7 +186,7 @@ impl QuantumGpuManager {
             ];
             device.update_descriptor_sets(&write_descriptor_sets, &[]);
 
-            // create command buffer
+            // Allocate command buffer
             let command_buffer_allocate_info = vk::CommandBufferAllocateInfo::builder()
                 .command_pool(vulkan_context.command_pool)
                 .level(vk::CommandBufferLevel::PRIMARY)
@@ -197,7 +196,7 @@ impl QuantumGpuManager {
                 .map_err(|e| format!("failed to allocate command buffers: {}", e))?;
             let command_buffer = command_buffers[0];
 
-            // clean up shader module
+            // Destroy shader module (no longer needed after pipeline creation)
             device.destroy_shader_module(shader_module, None);
 
             Ok(Self {
@@ -206,6 +205,7 @@ impl QuantumGpuManager {
                 pipeline_layout,
                 descriptor_set_layout,
                 descriptor_pool,
+                descriptor_set,
                 state_buffer,
                 state_buffer_memory,
                 gate_params_buffer,
@@ -219,7 +219,7 @@ impl QuantumGpuManager {
         unsafe {
             let device = &self.vulkan_context.device;
 
-            // map and update the gate parameters buffer
+            // Update gate parameters uniform buffer
             let gate_data = QuantumKernelData {
                 gate_type: gate as u32,
                 target_qubit,
@@ -232,37 +232,39 @@ impl QuantumGpuManager {
             std::ptr::copy_nonoverlapping(&gate_data, data_ptr as *mut QuantumKernelData, 1);
             device.unmap_memory(self.gate_params_buffer_memory);
 
-            // begin command buffer recording
+            // Begin command buffer recording
             let begin_info = vk::CommandBufferBeginInfo::builder()
                 .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
-            device.begin_command_buffer(self.command_buffer, &begin_info).map_err(|e| format!("failed to begin command buffer: {}", e))?;
+            device.begin_command_buffer(self.command_buffer, &begin_info)
+                .map_err(|e| format!("failed to begin command buffer: {}", e))?;
 
-            // bind pipeline and descriptor sets
+            // Bind pipeline and descriptor set
             device.cmd_bind_pipeline(self.command_buffer, vk::PipelineBindPoint::COMPUTE, self.pipeline);
             device.cmd_bind_descriptor_sets(
                 self.command_buffer,
                 vk::PipelineBindPoint::COMPUTE,
                 self.pipeline_layout,
                 0,
-                std::slice::from_ref(&self.vulkan_context.descriptor_sets[0]), // note: this part assumes VulkanContext holds descriptor sets
+                std::slice::from_ref(&self.descriptor_set),
                 &[],
             );
 
-            // dispatch the compute shader
+            // Dispatch compute shader (ceil div for group count)
             let state_len = 1 << num_qubits;
-            let group_count_x = (state_len / 32) as u32; // assuming a local workgroup size of 32
+            let group_count_x = ((state_len + 31) / 32) as u32; // local size 32
             device.cmd_dispatch(self.command_buffer, group_count_x, 1, 1);
 
-            // end command buffer recording
-            device.end_command_buffer(self.command_buffer).map_err(|e| format!("failed to end command buffer: {}", e))?;
+            // End command buffer recording
+            device.end_command_buffer(self.command_buffer)
+                .map_err(|e| format!("failed to end command buffer: {}", e))?;
 
-            // submit the command buffer to the queue
+            // Submit to queue and wait
             let submit_info = vk::SubmitInfo::builder()
                 .command_buffers(std::slice::from_ref(&self.command_buffer));
             device.queue_submit(self.vulkan_context.graphics_queue, &[submit_info.build()], vk::Fence::null())
                 .map_err(|e| format!("failed to submit queue: {}", e))?;
-
-            device.device_wait_idle().map_err(|e| format!("failed to wait for device idle: {}", e))?;
+            device.device_wait_idle()
+                .map_err(|e| format!("failed to wait for device idle: {}", e))?;
 
             Ok(())
         }
@@ -273,16 +275,16 @@ impl QuantumGpuManager {
             let device = &self.vulkan_context.device;
             let state_len = 1 << num_qubits;
             let data_ptr = device
-                .map_memory(self.state_buffer_memory, 0, vk::WHOLE_SIZE, vk::MemoryMapFlags::empty())
+                .map_memory(self.state_buffer_memory, 0, (state_len * size_of::<Complex64>()) as vk::DeviceSize, vk::MemoryMapFlags::empty())
                 .map_err(|e| format!("failed to map memory for state vector: {}", e))?;
-            let slice = std::slice::from_raw_parts(data_ptr as *mut Complex64, state_len);
+            let slice = std::slice::from_raw_parts(data_ptr as *const Complex64, state_len);
             let result = slice.to_vec();
             device.unmap_memory(self.state_buffer_memory);
             Ok(result)
         }
     }
 
-    // helper function to load spir-v code from a file.
+    // Load SPIR-V binary from file
     fn load_shader_code(path: &str) -> Result<Vec<u32>, String> {
         let mut file = std::fs::File::open(path)
             .map_err(|e| format!("failed to open shader file {}: {}", path, e))?;
@@ -309,14 +311,25 @@ impl QuantumGpuManager {
         Ok(words)
     }
 
-    // helper function to create a vulkan buffer.
+    // Load shader code filename from QuantumGate enum
+    fn load_shader_code_for_gate(gate: QuantumGate) -> Result<Vec<u32>, String> {
+        let filename = match gate {
+            QuantumGate::Hadamard => "src/gpu/shaders/hadamard.spv",
+            QuantumGate::PauliX => "src/gpu/shaders/paulix.spv",
+            QuantumGate::PauliZ => "src/gpu/shaders/pauliz.spv",
+        };
+        Self::load_shader_code(filename)
+    }
+
+    // Create Vulkan buffer with memory allocation
     fn create_buffer(
-        device: &Device,
+        vulkan_context: &VulkanContext,
         size: vk::DeviceSize,
         usage: vk::BufferUsageFlags,
         properties: vk::MemoryPropertyFlags,
     ) -> Result<(vk::Buffer, vk::DeviceMemory), String> {
-        // buffer create info
+        let device = &vulkan_context.device;
+
         let buffer_info = vk::BufferCreateInfo::builder()
             .size(size)
             .usage(usage)
@@ -326,17 +339,14 @@ impl QuantumGpuManager {
             .create_buffer(&buffer_info, None)
             .map_err(|e| format!("failed to create buffer: {}", e))?;
 
-        // memory requirements
         let mem_requirements = device.get_buffer_memory_requirements(buffer);
-        let mem_properties = device
-            .get_physical_device_memory_properties(device.physical_device); // this line is incorrect, it should come from the vulkancontext
 
-        // find a suitable memory type
+        let mem_properties = &vulkan_context.memory_properties;
+
         let mut mem_type_index = u32::MAX;
         for i in 0..mem_properties.memory_type_count {
             if (mem_requirements.memory_type_bits & (1 << i)) != 0
-                && (mem_properties.memory_types[i as usize].property_flags & properties)
-                    == properties
+                && (mem_properties.memory_types[i as usize].property_flags & properties) == properties
             {
                 mem_type_index = i;
                 break;
@@ -346,7 +356,6 @@ impl QuantumGpuManager {
             return Err("failed to find suitable memory type".to_string());
         }
 
-        // allocate memory
         let alloc_info = vk::MemoryAllocateInfo::builder()
             .allocation_size(mem_requirements.size)
             .memory_type_index(mem_type_index);
@@ -355,7 +364,6 @@ impl QuantumGpuManager {
             .allocate_memory(&alloc_info, None)
             .map_err(|e| format!("failed to allocate buffer memory: {}", e))?;
 
-        // bind buffer to memory
         device.bind_buffer_memory(buffer, buffer_memory, 0)
             .map_err(|e| format!("failed to bind buffer memory: {}", e))?;
 

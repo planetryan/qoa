@@ -11,11 +11,9 @@ layout(std140, binding = 1) uniform GateParams {
     uint gate_type;
     uint target_qubit;
     uint num_qubits;
-    uint _pad;
+    // using _pad field for the rotation angle
+    float angle;
 } params;
-
-// constants
-const float INV_SQRT_2 = 0.7071067811865475; // 1/sqrt(2)
 
 void main() {
     uint gid = gl_GlobalInvocationID.x;
@@ -35,15 +33,19 @@ void main() {
         vec2 amp_0 = state[gid];
         vec2 amp_1 = state[paired_idx];
 
-        // apply hadamard transformation
+        // calculate rotation components
+        float cos_half = cos(params.angle / 2.0);
+        float sin_half = sin(params.angle / 2.0);
+
+        // apply rx rotation: [cos(θ/2), -i*sin(θ/2); -i*sin(θ/2), cos(θ/2)]
         vec2 new_amp_0 = vec2(
-            INV_SQRT_2 * (amp_0.x + amp_1.x),
-            INV_SQRT_2 * (amp_0.y + amp_1.y)
+            cos_half * amp_0.x - sin_half * amp_1.y,
+            cos_half * amp_0.y + sin_half * amp_1.x
         );
 
         vec2 new_amp_1 = vec2(
-            INV_SQRT_2 * (amp_0.x - amp_1.x),
-            INV_SQRT_2 * (amp_0.y - amp_1.y)
+            cos_half * amp_1.x - sin_half * amp_0.y,
+            cos_half * amp_1.y + sin_half * amp_0.x
         );
 
         // write back results

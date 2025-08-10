@@ -17,6 +17,8 @@ use std::fs::{self, File};
 use std::io::{self, BufRead, BufReader, Write};
 use std::path::PathBuf;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
+
+use std::mem;
 #[cfg(feature = "vulkan")]
 use num_complex::Complex64;
 #[cfg(feature = "vulkan")]
@@ -25,10 +27,127 @@ use qoa::vulkan::VulkanContext;
 use std::ffi::CString;
 #[cfg(feature = "vulkan")]
 use std::sync::Arc;
-
 #[cfg(feature = "vulkan")]
 use ash::{self, vk};
 
+struct VulkanBuffer {
+    context: Arc<VulkanContext>,
+    buffer: vk::Buffer,
+    memory: vk::DeviceMemory,
+}
+
+impl VulkanBuffer {
+    fn new(
+        context: Arc<VulkanContext>,
+        size: vk::DeviceSize,
+        usage: vk::BufferUsageFlags,
+    ) -> Result<Self, String> {
+        unsafe {
+            // create buffer
+            let buffer_info = vk::BufferCreateInfo::builder()
+                .size(size)
+                .usage(usage)
+                .sharing_mode(vk::SharingMode::EXCLUSIVE);
+            let buffer = context
+                .device
+                .create_buffer(&buffer_info, None)
+                .map_err(|e| format!("failed to create buffer: {}", e))?;
+
+            // find memory type
+            let mem_req = context.device.get_buffer_memory_requirements(buffer);
+            let mem_props = context
+                .instance
+                .get_physical_device_memory_properties(context.physical_device);
+            let memory_type_index = (0..mem_props.memory_type_count)
+                .position(|i| {
+                    let memory_type = mem_props.memory_types[i as usize];
+                    (mem_req.memory_type_bits & (1 << i)) != 0
+                        && memory_type
+                            .property_flags
+                            .contains(vk::MemoryPropertyFlags::HOST_VISIBLE)
+                        && memory_type
+                            .property_flags
+                            .contains(vk::MemoryPropertyFlags::HOST_COHERENT)
+                })
+                .map(|i| i as u32)
+                .ok_or_else(|| "no suitable memory type found".to_string())?;
+
+            // allocate memory
+            let alloc_info = vk::MemoryAllocateInfo::builder()
+                .allocation_size(mem_req.size)
+                .memory_type_index(memory_type_index);
+            let memory = context
+                .device
+                .allocate_memory(&alloc_info, None)
+                .map_err(|e| format!("failed to allocate memory: {}", e))?;
+
+            // bind memory to buffer
+            context
+                .device
+                .bind_buffer_memory(buffer, memory, 0)
+                .map_err(|e| format!("failed to bind buffer memory: {}", e))?;
+
+            Ok(Self {
+                context,
+                buffer,
+                memory,
+            })
+        }
+    }
+}
+
+impl Drop for VulkanBuffer {
+    fn drop(&mut self) {
+        unsafe {
+            self.context.device.destroy_buffer(self.buffer, None);
+            self.context.device.free_memory(self.memory, None);
+        }
+    }
+}
+
+// raii wrapper for the descriptor set layout
+struct VulkanDescriptorSetLayout {
+    context: Arc<VulkanContext>,
+    layout: vk::DescriptorSetLayout,
+}
+
+impl Drop for VulkanDescriptorSetLayout {
+    fn drop(&mut self) {
+        unsafe {
+            self.context.device.destroy_descriptor_set_layout(self.layout, None);
+        }
+    }
+}
+
+// a simple raii wrapper for the pipeline layout
+struct VulkanPipelineLayout {
+    context: Arc<VulkanContext>,
+    layout: vk::PipelineLayout,
+}
+
+impl Drop for VulkanPipelineLayout {
+    fn drop(&mut self) {
+        unsafe {
+            self.context.device.destroy_pipeline_layout(self.layout, None);
+        }
+    }
+}
+
+// a simple raii wrapper for the pipeline to ensure it's destroyed
+struct VulkanPipeline {
+    context: Arc<VulkanContext>,
+    pipeline: vk::Pipeline,
+}
+
+impl Drop for VulkanPipeline {
+    fn drop(&mut self) {
+        unsafe {
+            self.context.device.destroy_pipeline(self.pipeline, None);
+        }
+    }
+}
+
+// define the compiled shader code
 #[cfg(feature = "vulkan")]
 const COMPUTE_SHADER_SPIRV: &[u32] = &[
     0x07230203, 0x00010000, 0x0008000b, 0x000000ee, 0x00000000, 0x00020011, 0x00000001, 0x0006000b,
@@ -309,69 +428,9 @@ const COMPUTE_SHADER_SPIRV: &[u32] = &[
 ];
 
 #[cfg(feature = "vulkan")]
-fn create_buffer_on_gpu(
-    context: &VulkanContext,
-    size: vk::DeviceSize,
-    usage: vk::BufferUsageFlags,
-) -> Result<vk::Buffer, String> {
-    unsafe {
-        let buffer_info = vk::BufferCreateInfo::builder()
-            .size(size)
-            .usage(usage)
-            .sharing_mode(vk::SharingMode::EXCLUSIVE);
-        context
-            .device
-            .create_buffer(&buffer_info, None)
-            .map_err(|e| format!("failed to create buffer: {}", e))
-    }
-}
-
-#[cfg(feature = "vulkan")]
-unsafe fn allocate_and_bind_buffer_memory(
-    context: &VulkanContext,
-    buffer: vk::Buffer,
-    _size: usize,
-) -> Result<(vk::DeviceMemory, vk::MemoryRequirements), String> {
-    unsafe {
-        // wrap this in an unsafe block to fix the warnings
-        let mem_req = context.device.get_buffer_memory_requirements(buffer);
-        let mem_props = context
-            .instance
-            .get_physical_device_memory_properties(context.physical_device);
-        let memory_type_index = (0..mem_props.memory_type_count)
-            .position(|i| {
-                let memory_type = mem_props.memory_types[i as usize];
-                (mem_req.memory_type_bits & (1 << i)) != 0
-                    && memory_type
-                        .property_flags
-                        .contains(vk::MemoryPropertyFlags::HOST_VISIBLE)
-                    && memory_type
-                        .property_flags
-                        .contains(vk::MemoryPropertyFlags::HOST_COHERENT)
-            })
-            .map(|i| i as u32)
-            .ok_or_else(|| "no suitable memory type found".to_string())?;
-
-        let alloc_info = vk::MemoryAllocateInfo::builder()
-            .allocation_size(mem_req.size)
-            .memory_type_index(memory_type_index);
-
-        let buffer_memory = context
-            .device
-            .allocate_memory(&alloc_info, None)
-            .map_err(|e| format!("failed to allocate memory: {}", e))?;
-        context
-            .device
-            .bind_buffer_memory(buffer, buffer_memory, 0)
-            .map_err(|e| format!("failed to bind buffer memory: {}", e))?;
-        Ok((buffer_memory, mem_req))
-    }
-}
-
-#[cfg(feature = "vulkan")]
 fn create_descriptor_set_layout(
-    context: &VulkanContext,
-) -> Result<vk::DescriptorSetLayout, String> {
+    context: &Arc<VulkanContext>,
+) -> Result<VulkanDescriptorSetLayout, String> {
     unsafe {
         let descriptor_set_layout_bindings = [
             vk::DescriptorSetLayoutBinding::builder()
@@ -389,39 +448,49 @@ fn create_descriptor_set_layout(
         ];
         let descriptor_set_layout_info =
             vk::DescriptorSetLayoutCreateInfo::builder().bindings(&descriptor_set_layout_bindings);
-        context
+        let layout = context
             .device
             .create_descriptor_set_layout(&descriptor_set_layout_info, None)
-            .map_err(|e| format!("failed to create descriptor set layout: {}", e))
+            .map_err(|e| format!("failed to create descriptor set layout: {}", e))?;
+        Ok(VulkanDescriptorSetLayout {
+            context: Arc::clone(context),
+            layout,
+        })
     }
 }
 
 #[cfg(feature = "vulkan")]
 fn create_compute_pipeline_layout(
-    context: &VulkanContext,
-    descriptor_set_layout: vk::DescriptorSetLayout,
-) -> Result<vk::PipelineLayout, String> {
+    context: &Arc<VulkanContext>,
+    descriptor_set_layout: &VulkanDescriptorSetLayout,
+) -> Result<VulkanPipelineLayout, String> {
     unsafe {
-        let layouts = [descriptor_set_layout]; // variable to extend lifetime
+        let layouts = [descriptor_set_layout.layout];
         let pipeline_layout_info = vk::PipelineLayoutCreateInfo::builder().set_layouts(&layouts);
-        context
+        let layout = context
             .device
             .create_pipeline_layout(&pipeline_layout_info.build(), None)
-            .map_err(|e| format!("failed to create pipeline layout: {}", e))
+            .map_err(|e| format!("failed to create pipeline layout: {}", e))?;
+        Ok(VulkanPipelineLayout {
+            context: Arc::clone(context),
+            layout,
+        })
     }
 }
 
 #[cfg(feature = "vulkan")]
 fn create_compute_pipeline(
-    context: &VulkanContext,
-    pipeline_layout: vk::PipelineLayout,
-) -> Result<vk::Pipeline, String> {
+    context: &Arc<VulkanContext>,
+    pipeline_layout: &VulkanPipelineLayout,
+) -> Result<VulkanPipeline, String> {
     unsafe {
+        debug!("Creating shader module from SPIR-V code...");
         let shader_module_info = vk::ShaderModuleCreateInfo::builder().code(COMPUTE_SHADER_SPIRV);
         let shader_module = context
             .device
             .create_shader_module(&shader_module_info, None)
             .map_err(|e| format!("failed to create shader module: {}", e))?;
+        debug!("Shader module created successfully.");
 
         let main_function_name = CString::new("main").unwrap();
         let shader_stage_info = vk::PipelineShaderStageCreateInfo::builder()
@@ -431,8 +500,9 @@ fn create_compute_pipeline(
 
         let compute_pipeline_info = vk::ComputePipelineCreateInfo::builder()
             .stage(shader_stage_info.build())
-            .layout(pipeline_layout);
+            .layout(pipeline_layout.layout);
 
+        debug!("About to create compute pipelines...");
         let pipelines = context
             .device
             .create_compute_pipelines(
@@ -440,29 +510,39 @@ fn create_compute_pipeline(
                 &[compute_pipeline_info.build()],
                 None,
             )
-            .map_err(|e| format!("failed to create compute pipelines: {:?}", e))?; // use {:?} for the error here
+            .map_err(|e| format!("failed to create compute pipelines: {:?}", e))?;
+        debug!("Compute pipelines created successfully.");
 
         context.device.destroy_shader_module(shader_module, None);
-        Ok(pipelines[0])
+
+        Ok(VulkanPipeline {
+            context: Arc::clone(context),
+            pipeline: pipelines[0],
+        })
     }
 }
 
 #[cfg(feature = "vulkan")]
 fn update_descriptor_set(
-    context: &VulkanContext,
+    context: &Arc<VulkanContext>,
     descriptor_set: vk::DescriptorSet,
-    buffer1: vk::Buffer,
-    buffer2: vk::Buffer,
+    buffer1: &VulkanBuffer,
+    size1: vk::DeviceSize,
+    buffer2: &VulkanBuffer,
+    size2: vk::DeviceSize,
 ) {
     unsafe {
-        let buffer_info1 = vk::DescriptorBufferInfo::builder()
-            .buffer(buffer1)
+        let buffer_info1 = [vk::DescriptorBufferInfo::builder()
+            .buffer(buffer1.buffer)
             .offset(0)
-            .range(vk::WHOLE_SIZE);
-        let buffer_info2 = vk::DescriptorBufferInfo::builder()
-            .buffer(buffer2)
+            .range(size1)
+            .build()];
+
+        let buffer_info2 = [vk::DescriptorBufferInfo::builder()
+            .buffer(buffer2.buffer)
             .offset(0)
-            .range(vk::WHOLE_SIZE);
+            .range(size2)
+            .build()];
 
         let write_descriptor_sets = [
             vk::WriteDescriptorSet::builder()
@@ -470,14 +550,14 @@ fn update_descriptor_set(
                 .dst_binding(0)
                 .dst_array_element(0)
                 .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-                .buffer_info(&[buffer_info1.build()])
+                .buffer_info(&buffer_info1)
                 .build(),
             vk::WriteDescriptorSet::builder()
                 .dst_set(descriptor_set)
                 .dst_binding(1)
                 .dst_array_element(0)
                 .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-                .buffer_info(&[buffer_info2.build()])
+                .buffer_info(&buffer_info2)
                 .build(),
         ];
         context
@@ -488,9 +568,9 @@ fn update_descriptor_set(
 
 #[cfg(feature = "vulkan")]
 fn run_compute_shader(
-    context: &VulkanContext,
-    pipeline: vk::Pipeline,
-    pipeline_layout: vk::PipelineLayout,
+    context: &Arc<VulkanContext>,
+    pipeline: &VulkanPipeline,
+    pipeline_layout: &VulkanPipelineLayout,
     descriptor_set: vk::DescriptorSet,
     num_elements: u32,
 ) -> Result<(), String> {
@@ -513,11 +593,11 @@ fn run_compute_shader(
 
         context
             .device
-            .cmd_bind_pipeline(command_buffer, vk::PipelineBindPoint::COMPUTE, pipeline);
+            .cmd_bind_pipeline(command_buffer, vk::PipelineBindPoint::COMPUTE, pipeline.pipeline);
         context.device.cmd_bind_descriptor_sets(
             command_buffer,
             vk::PipelineBindPoint::COMPUTE,
-            pipeline_layout,
+            pipeline_layout.layout,
             0,
             &[descriptor_set],
             &[],
@@ -534,7 +614,7 @@ fn run_compute_shader(
             .end_command_buffer(command_buffer)
             .map_err(|e| format!("failed to end command buffer: {}", e))?;
 
-        let command_buffers = [command_buffer]; // variable to extend lifetime
+        let command_buffers = [command_buffer];
         let submit_info = vk::SubmitInfo::builder().command_buffers(&command_buffers);
         let submit_info_build = submit_info.build();
         context
@@ -559,94 +639,44 @@ fn run_compute_shader(
 }
 
 #[cfg(feature = "vulkan")]
-fn vulkan_apply_gate(
+fn vulkan_apply_gate_in_place(
     context: &Arc<VulkanContext>,
-    quantum_state: &mut QuantumState,
-    gate_matrix: &[Complex64],
-    _qubit_index: u32,
+    state_buffer: &VulkanBuffer,
+    _gate_buffer: &VulkanBuffer,
+    pipeline: &VulkanPipeline,
+    pipeline_layout: &VulkanPipelineLayout,
+    descriptor_set: vk::DescriptorSet,
+    quantum_state_amps: &mut [Complex64],
 ) -> Result<(), String> {
     unsafe {
-        let state_size = quantum_state.amps.len();
-        let state_slice = &quantum_state.amps;
+        let state_size = quantum_state_amps.len();
 
-        let state_buffer = create_buffer_on_gpu(
-            context,
-            (state_size * std::mem::size_of::<Complex64>()) as vk::DeviceSize,
-            vk::BufferUsageFlags::STORAGE_BUFFER,
-        )?;
-        let (state_buffer_memory, _state_mem_req) =
-            allocate_and_bind_buffer_memory(context, state_buffer, state_size)?;
-
-        // map memory and copy data
+        // map memory and copy data for state buffer
         let mapped_ptr = context
             .device
-            .map_memory(
-                state_buffer_memory,
-                0,
-                vk::WHOLE_SIZE,
-                vk::MemoryMapFlags::empty(),
-            )
+            .map_memory(state_buffer.memory, 0, vk::WHOLE_SIZE, vk::MemoryMapFlags::empty())
             .map_err(|e| format!("failed to map memory: {}", e))?;
         std::ptr::copy_nonoverlapping(
-            state_slice.as_ptr(),
+            quantum_state_amps.as_ptr(),
             mapped_ptr as *mut Complex64,
-            state_slice.len(),
+            state_size,
         );
-        context.device.unmap_memory(state_buffer_memory);
+        context.device.unmap_memory(state_buffer.memory);
 
-        let gate_buffer = create_buffer_on_gpu(
-            context,
-            (gate_matrix.len() * std::mem::size_of::<Complex64>()) as vk::DeviceSize,
-            vk::BufferUsageFlags::STORAGE_BUFFER,
-        )?;
-        let (gate_buffer_memory, _gate_mem_req) =
-            allocate_and_bind_buffer_memory(context, gate_buffer, gate_matrix.len())?;
-
-        // map memory and copy data
-        let mapped_ptr = context
-            .device
-            .map_memory(
-                gate_buffer_memory,
-                0,
-                vk::WHOLE_SIZE,
-                vk::MemoryMapFlags::empty(),
-            )
-            .map_err(|e| format!("failed to map memory: {}", e))?;
-        std::ptr::copy_nonoverlapping(
-            gate_matrix.as_ptr(),
-            mapped_ptr as *mut Complex64,
-            gate_matrix.len(),
-        );
-        context.device.unmap_memory(gate_buffer_memory);
-
-        let descriptor_set_layout = create_descriptor_set_layout(context)?;
-        let pipeline_layout = create_compute_pipeline_layout(context, descriptor_set_layout)?;
-        let compute_pipeline = create_compute_pipeline(context, pipeline_layout)?;
-
-        let descriptor_sets = context
-            .device
-            .allocate_descriptor_sets(
-                &vk::DescriptorSetAllocateInfo::builder()
-                    .descriptor_pool(context.descriptor_pool)
-                    .set_layouts(&[descriptor_set_layout]),
-            )
-            .map_err(|e| format!("failed to allocate descriptor sets: {}", e))?;
-        let descriptor_set = descriptor_sets[0];
-        update_descriptor_set(context, descriptor_set, state_buffer, gate_buffer);
-
+        // run the shader
         run_compute_shader(
             context,
-            compute_pipeline,
+            pipeline,
             pipeline_layout,
             descriptor_set,
             state_size as u32,
         )?;
 
-        // retrieve the data from the gpu
+        // retrieve data from the gpu
         let mapped_ptr = context
             .device
             .map_memory(
-                state_buffer_memory,
+                state_buffer.memory,
                 0,
                 vk::WHOLE_SIZE,
                 vk::MemoryMapFlags::empty(),
@@ -654,24 +684,216 @@ fn vulkan_apply_gate(
             .map_err(|e| format!("failed to map memory: {}", e))?;
         std::ptr::copy_nonoverlapping(
             mapped_ptr as *const Complex64,
-            quantum_state.amps.as_mut_ptr(),
-            quantum_state.amps.len(),
+            quantum_state_amps.as_mut_ptr(),
+            state_size,
         );
-        context.device.unmap_memory(state_buffer_memory);
-
-        context.device.destroy_buffer(state_buffer, None);
-        context.device.free_memory(state_buffer_memory, None);
-        context.device.destroy_buffer(gate_buffer, None);
-        context.device.free_memory(gate_buffer_memory, None);
-        context
-            .device
-            .destroy_descriptor_set_layout(descriptor_set_layout, None);
-        context
-            .device
-            .destroy_pipeline_layout(pipeline_layout, None);
-        context.device.destroy_pipeline(compute_pipeline, None);
+        context.device.unmap_memory(state_buffer.memory);
     }
     Ok(())
+}
+
+#[cfg(feature = "vulkan")]
+fn initialize_gpu_benchmark(
+    qubits: u32,
+    target_qubit: u32,
+    num_operations: usize,
+) -> Result<(f64, f64, f64, String, bool), String> {
+    info!("Initializing GPU benchmark...");
+
+    // create state
+    info!("Creating quantum state with {} qubits...", qubits);
+    let mut quantum_state =
+        match std::panic::catch_unwind(|| QuantumState::new(qubits as usize, None)) {
+            Ok(state) => state,
+            Err(_) => {
+                return Err(format!(
+                    "Failed to allocate memory for quantum state with {} qubits",
+                    qubits
+                ));
+            }
+        };
+    info!("Quantum state created successfully.");
+
+    // get GPU device info
+    let device_info = get_gpu_device_name().unwrap_or_else(|| "Unknown GPU".to_string());
+    info!("GPU Device: {}", device_info);
+
+    // try to initialize Vulkan
+    let vulkan_context = std::panic::catch_unwind(|| VulkanContext::new());
+    let use_gpu = match &vulkan_context {
+        Ok(Ok(_)) => {
+            info!("Successfully initialized Vulkan, attempting to use GPU acceleration");
+            true
+        }
+        _ => {
+            warn!("Failed to initialize Vulkan properly, falling back to CPU simulation");
+            false
+        }
+    };
+
+    let start_time = Instant::now();
+
+    if use_gpu {
+        let context = Arc::new(vulkan_context.unwrap().unwrap());
+        let state_size = quantum_state.amps.len();
+        let gate_size = 4; // h gate is a 2x2 matrix
+
+        let state_bytes = (state_size * mem::size_of::<Complex64>()) as vk::DeviceSize;
+        let gate_bytes = (gate_size * mem::size_of::<Complex64>()) as vk::DeviceSize;
+        debug!("Creating state buffer with size {} bytes", state_bytes);
+        let state_buffer = VulkanBuffer::new(
+            Arc::clone(&context),
+            state_bytes,
+            vk::BufferUsageFlags::STORAGE_BUFFER,
+        )?;
+        debug!("Creating gate buffer with size {} bytes", gate_bytes);
+        let gate_buffer = VulkanBuffer::new(
+            Arc::clone(&context),
+            gate_bytes,
+            vk::BufferUsageFlags::STORAGE_BUFFER,
+        )?;
+        debug!("Buffers created successfully.");
+
+        // update gate buffer once
+        let hadamard_gate_matrix = [
+            Complex64::new(1.0 / 2.0f64.sqrt(), 0.0),
+            Complex64::new(1.0 / 2.0f64.sqrt(), 0.0),
+            Complex64::new(1.0 / 2.0f64.sqrt(), 0.0),
+            Complex64::new(-1.0 / 2.0f64.sqrt(), 0.0),
+        ];
+        debug!("Mapping gate buffer memory and copying matrix data...");
+        unsafe {
+            let mapped_ptr = context
+                .device
+                .map_memory(gate_buffer.memory, 0, vk::WHOLE_SIZE, vk::MemoryMapFlags::empty())
+                .map_err(|e| format!("failed to map memory: {}", e))?;
+            std::ptr::copy_nonoverlapping(
+                hadamard_gate_matrix.as_ptr(),
+                mapped_ptr as *mut Complex64,
+                gate_size,
+            );
+            context.device.unmap_memory(gate_buffer.memory);
+        }
+        debug!("Gate buffer memory updated successfully.");
+
+        // create and update descriptor set once
+        debug!("Creating descriptor set layout...");
+        let descriptor_set_layout = create_descriptor_set_layout(&context)?;
+        debug!("Creating pipeline layout...");
+        let pipeline_layout = create_compute_pipeline_layout(&context, &descriptor_set_layout)?;
+        debug!("Creating compute pipeline...");
+        let compute_pipeline = create_compute_pipeline(&context, &pipeline_layout)?;
+        debug!("Allocating descriptor sets...");
+        let descriptor_sets = unsafe {
+            context
+            .device
+            .allocate_descriptor_sets(
+                &vk::DescriptorSetAllocateInfo::builder()
+                    .descriptor_pool(context.descriptor_pool)
+                    .set_layouts(&[descriptor_set_layout.layout]),
+            )
+            .map_err(|e| format!("failed to allocate descriptor sets: {}", e))?
+        };
+        if descriptor_sets.is_empty() {
+            return Err("failed to allocate descriptor sets: none were returned".to_string());
+        }
+        let descriptor_set = descriptor_sets[0];
+        debug!("Updating descriptor set with buffer information...");
+        update_descriptor_set(
+            &context,
+            descriptor_set,
+            &state_buffer,
+            state_bytes,
+            &gate_buffer,
+            gate_bytes,
+        );
+        debug!("Descriptor set updated successfully.");
+
+        // loop for operations
+        info!(
+            "Performing {} Hadamard gate operations on GPU...",
+            num_operations
+        );
+
+        let mut gpu_success = true;
+        for i in 1..=num_operations {
+            let op_start = Instant::now();
+
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                vulkan_apply_gate_in_place(
+                    &context,
+                    &state_buffer,
+                    &gate_buffer,
+                    &compute_pipeline,
+                    &pipeline_layout,
+                    descriptor_set,
+                    &mut quantum_state.amps,
+                )
+            }));
+
+            match result {
+                Ok(Ok(_)) => {
+                    let op_duration = op_start.elapsed();
+                    info!(
+                        "GPU operation {}/{} completed in {:.2?}",
+                        i, num_operations, op_duration
+                    );
+                }
+                _ => {
+                    warn!(
+                        "GPU operation failed, falling back to CPU simulation for remaining operations"
+                    );
+                    gpu_success = false;
+                    break;
+                }
+            }
+        }
+
+        if !gpu_success {
+            info!("Continuing with CPU simulation...");
+            for i in 1..=num_operations {
+                let op_start = Instant::now();
+                quantum_state.apply_h(target_qubit as usize);
+                let op_duration = op_start.elapsed();
+                info!(
+                    "CPU operation {}/{} completed in {:.2?}",
+                    i, num_operations, op_duration
+                );
+            }
+        }
+    } else {
+        // just use cpu simulation
+        info!(
+            "Simulating {} Hadamard gate operations on CPU...",
+            num_operations
+        );
+        for i in 1..=num_operations {
+            let op_start = Instant::now();
+            quantum_state.apply_h(target_qubit as usize);
+            let op_duration = op_start.elapsed();
+            info!(
+                "Simulated GPU operation {}/{} completed in {:.2?}",
+                i, num_operations, op_duration
+            );
+        }
+    }
+
+    // calculate performance metrics
+    let duration = start_time.elapsed();
+    let duration_secs = duration.as_secs_f64();
+    let ops_per_second = num_operations as f64 / duration_secs;
+    let time_per_op = duration_secs / num_operations as f64;
+
+    info!("Benchmark completed successfully");
+
+    // return success status along with metrics
+    Ok((
+        duration_secs,
+        ops_per_second,
+        time_per_op,
+        device_info,
+        use_gpu,
+    ))
 }
 
 fn run_cpu_benchmark(
@@ -760,11 +982,71 @@ fn gpu_cli_main(qubits: u32, qubit_index: u32) -> Result<(), String> {
         ];
 
         let mut quantum_state = QuantumState::new(qubits as usize, None);
-        vulkan_apply_gate(
+
+        // a single vulkan_apply_gate call, not in a loop
+        let state_size = quantum_state.amps.len();
+        let gate_size = hadamard_gate_matrix.len();
+        let state_bytes = (state_size * mem::size_of::<Complex64>()) as vk::DeviceSize;
+        let gate_bytes = (gate_size * mem::size_of::<Complex64>()) as vk::DeviceSize;
+
+        let state_buffer = VulkanBuffer::new(
+            Arc::clone(&context_arc),
+            state_bytes,
+            vk::BufferUsageFlags::STORAGE_BUFFER,
+        )?;
+        let gate_buffer = VulkanBuffer::new(
+            Arc::clone(&context_arc),
+            gate_bytes,
+            vk::BufferUsageFlags::STORAGE_BUFFER,
+        )?;
+
+        // copy gate matrix data to the gate buffer
+        unsafe {
+            let mapped_ptr = context_arc
+                .device
+                .map_memory(gate_buffer.memory, 0, vk::WHOLE_SIZE, vk::MemoryMapFlags::empty())
+                .map_err(|e| format!("failed to map memory: {}", e))?;
+            std::ptr::copy_nonoverlapping(
+                hadamard_gate_matrix.as_ptr(),
+                mapped_ptr as *mut Complex64,
+                gate_size,
+            );
+            context_arc.device.unmap_memory(gate_buffer.memory);
+        }
+
+        // create and update descriptor set once
+        let descriptor_set_layout = create_descriptor_set_layout(&context_arc)?;
+        let pipeline_layout = create_compute_pipeline_layout(&context_arc, &descriptor_set_layout)?;
+        let compute_pipeline = create_compute_pipeline(&context_arc, &pipeline_layout)?;
+
+        let descriptor_sets = unsafe {
+            context_arc
+            .device
+            .allocate_descriptor_sets(
+                &vk::DescriptorSetAllocateInfo::builder()
+                    .descriptor_pool(context_arc.descriptor_pool)
+                    .set_layouts(&[descriptor_set_layout.layout]),
+            )
+            .map_err(|e| format!("failed to allocate descriptor sets: {}", e))?
+        };
+        let descriptor_set = descriptor_sets[0];
+        update_descriptor_set(
             &context_arc,
-            &mut quantum_state,
-            &hadamard_gate_matrix,
-            qubit_index,
+            descriptor_set,
+            &state_buffer,
+            state_bytes,
+            &gate_buffer,
+            gate_bytes,
+        );
+
+        vulkan_apply_gate_in_place(
+            &context_arc,
+            &state_buffer,
+            &gate_buffer,
+            &compute_pipeline,
+            &pipeline_layout,
+            descriptor_set,
+            &mut quantum_state.amps,
         )?;
 
         println!(
@@ -798,202 +1080,13 @@ fn get_device_name_from_context(context: &VulkanContext) -> String {
 }
 
 #[cfg(feature = "vulkan")]
-fn initialize_gpu_benchmark(
-    qubits: u32,
-    target_qubit: u32,
-    num_operations: usize,
-) -> Result<(f64, f64, f64, String, bool), String> {
-    info!("Initializing GPU benchmark...");
-
-    // create state
-    info!("Creating quantum state with {} qubits...", qubits);
-    let mut quantum_state =
-        match std::panic::catch_unwind(|| QuantumState::new(qubits as usize, None)) {
-            Ok(state) => state,
-            Err(_) => {
-                return Err(format!(
-                    "Failed to allocate memory for quantum state with {} qubits",
-                    qubits
-                ));
-            }
-        };
-    info!("Quantum state created successfully.");
-
-    // get GPU device info
-    let device_info = get_gpu_device_name().unwrap_or_else(|| "Unknown GPU".to_string());
-    info!("GPU Device: {}", device_info);
-
-    // try to initialize Vulkan 
-    // may or may not segfault
-    let vulkan_context = std::panic::catch_unwind(|| VulkanContext::new());
-    let use_gpu = match &vulkan_context {
-        Ok(Ok(_)) => {
-            info!("Successfully initialized Vulkan, attempting to use GPU acceleration");
-            true
-        }
-        _ => {
-            warn!("Failed to initialize Vulkan properly, falling back to CPU simulation");
-            false
-        }
-    };
-
-    // define H gate matrix
-    let hadamard_gate_matrix = [
-        Complex64::new(1.0 / 2.0f64.sqrt(), 0.0),
-        Complex64::new(1.0 / 2.0f64.sqrt(), 0.0),
-        Complex64::new(1.0 / 2.0f64.sqrt(), 0.0),
-        Complex64::new(-1.0 / 2.0f64.sqrt(), 0.0),
-    ];
-
-    let start_time = Instant::now();
-
-    if use_gpu {
-        info!(
-            "Performing {} Hadamard gate operations on GPU...",
-            num_operations
-        );
-        let context = Arc::new(vulkan_context.unwrap().unwrap());
-
-        // try to run on GPU, fall back to CPU if there's an error
-        let mut gpu_success = true;
-        for i in 1..=num_operations {
-            let op_start = Instant::now();
-
-            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                vulkan_apply_gate(
-                    &context,
-                    &mut quantum_state,
-                    &hadamard_gate_matrix,
-                    target_qubit,
-                )
-            }));
-
-            match result {
-                Ok(Ok(_)) => {
-                    let op_duration = op_start.elapsed();
-                    info!(
-                        "GPU operation {}/{} completed in {:.2?}",
-                        i, num_operations, op_duration
-                    );
-                }
-                _ => {
-                    warn!(
-                        "GPU operation failed, falling back to CPU simulation for remaining operations"
-                    );
-                    gpu_success = false;
-                    break;
-                }
-            }
-        }
-
-        // If GPU failed, complete the benchmark on CPU
-        if !gpu_success {
-            info!("Continuing with CPU simulation...");
-            for i in 1..=num_operations {
-                let op_start = Instant::now();
-                quantum_state.apply_h(target_qubit as usize);
-                let op_duration = op_start.elapsed();
-                info!(
-                    "CPU operation {}/{} completed in {:.2?}",
-                    i, num_operations, op_duration
-                );
-            }
-        }
-    } else {
-        // Just use CPU simulation
-        info!(
-            "Simulating {} Hadamard gate operations on CPU...",
-            num_operations
-        );
-        for i in 1..=num_operations {
-            let op_start = Instant::now();
-            quantum_state.apply_h(target_qubit as usize);
-            let op_duration = op_start.elapsed();
-            info!(
-                "Simulated GPU operation {}/{} completed in {:.2?}",
-                i, num_operations, op_duration
-            );
-        }
-    }
-
-    // Calculate performance metrics
-    let duration = start_time.elapsed();
-    let duration_secs = duration.as_secs_f64();
-    let ops_per_second = num_operations as f64 / duration_secs;
-    let time_per_op = duration_secs / num_operations as f64;
-
-    info!("Benchmark completed successfully");
-
-    // Return success status along with metrics
-    Ok((
-        duration_secs,
-        ops_per_second,
-        time_per_op,
-        device_info,
-        use_gpu,
-    ))
-}
-
-// fallback function if GPU operations fail
-#[allow(dead_code)] // conditionally used
-#[cfg(feature = "vulkan")]
-fn fallback_to_cpu_simulation(
-    qubits: u32,
-    target_qubit: u32,
-    num_operations: usize,
-) -> Result<(f64, f64, f64, String), String> {
-    warn!("Falling back to CPU based simulation...");
-
-    // create a CPU based quantum state
-    let mut quantum_state =
-        match std::panic::catch_unwind(|| QuantumState::new(qubits as usize, None)) {
-            Ok(state) => state,
-            Err(_) => {
-                return Err(format!(
-                    "Failed to allocate memory for quantum state with {} qubits",
-                    qubits
-                ));
-            }
-        };
-
-    // simulate GPU operations using CPU for stability
-    let start_time = Instant::now();
-
-    // apply operations on CPU but report as if on GPU
-    for i in 1..=num_operations {
-        let op_start = Instant::now();
-
-        // apply H gate using CPU implementation
-        quantum_state.apply_h(target_qubit as usize);
-
-        let op_duration = op_start.elapsed();
-        info!(
-            "CPU operation {}/{} completed in {:.2?}",
-            i, num_operations, op_duration
-        );
-    }
-
-    // calculate performance metrics
-    let duration = start_time.elapsed();
-    let duration_secs = duration.as_secs_f64();
-    let ops_per_second = num_operations as f64 / duration_secs;
-    let time_per_op = duration_secs / num_operations as f64;
-
-    info!("CPU benchmark completed successfully");
-
-    // get actual GPU device info
-    let device_info = get_gpu_device_name().unwrap_or_else(|| "Unknown GPU".to_string());
-
-    Ok((duration_secs, ops_per_second, time_per_op, device_info))
-}
-
-#[cfg(feature = "vulkan")]
 fn get_gpu_device_name() -> Option<String> {
-    use ash::Entry;
-    use ash::vk;
+    use ash::{vk, Entry};
     use std::ffi::CStr;
 
-    // try to get GPU name via Vulkan
+    // try to get gpu name via vulkan.
+    // note: `Entry::linked()` will panic if the vulkan loader is not found.
+    // the calling functions handle this with `catch_unwind`.
     let entry = Entry::linked();
 
     let app_info = vk::ApplicationInfo::builder()
@@ -1044,7 +1137,7 @@ fn initialize_gpu_benchmark(
     _qubits: u32,
     _target_qubit: u32,
     _num_operations: usize,
-) -> Result<(f64, f64, f64, String), String> {
+) -> Result<(f64, f64, f64, String, bool), String> {
     Err("Vulkan feature is not enabled. Recompile with --features vulkan".to_string())
 }
 
@@ -1053,6 +1146,7 @@ fn initialize_gpu_benchmark(
 fn get_gpu_device_name() -> Option<String> {
     None
 }
+
 
 // -- NON GPU STUFF BEGINS HERE ---
 
@@ -1165,7 +1259,7 @@ enum Commands {
         #[arg(short, long, default_value_t = 2)]
         qubits: u32,
         // The index of the qubit to apply the gate on
-        #[arg(short, long, default_value_t = 0)]
+        #[arg(short = 'i', long, default_value_t = 0)]
         _qubit_index: u32,
     },
     // Runs a quantum circuit on the GPU.
@@ -1174,7 +1268,7 @@ enum Commands {
         #[arg(short, long, default_value_t = 2)]
         qubits: u32,
         // The index of the qubit to apply the gate on
-        #[arg(short, long, default_value_t = 0)]
+        #[arg(short = 'i', long, default_value_t = 0)]
         _qubit_index: u32,
     },
     // Runs a benchmark on the CPU.
@@ -1183,7 +1277,7 @@ enum Commands {
         #[arg(short, long, default_value_t = 2)]
         qubits: u32,
         // The index of the qubit to apply the gate on
-        #[arg(short, long, default_value_t = 0)]
+        #[arg(short = 'i', long, default_value_t = 0)]
         _qubit_index: u32,
     },
     // Runs a benchmark on the GPU.
@@ -1192,7 +1286,7 @@ enum Commands {
         #[arg(short, long, default_value_t = 2)]
         qubits: u32,
         // The index of the qubit to apply the gate on
-        #[arg(short, long, default_value_t = 0)]
+        #[arg(short = 'i', long, default_value_t = 0)]
         _qubit_index: u32,
     },
     // Show version information
@@ -1200,6 +1294,7 @@ enum Commands {
     // Show available flags
     Flags,
 }
+
 
 // helper function to parse resolution string
 #[allow(dead_code)]

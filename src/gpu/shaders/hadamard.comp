@@ -1,0 +1,60 @@
+#version 450
+
+layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+
+layout(set = 0, binding = 0) buffer QuantumState {
+    vec4 amplitudes[];  // each vec4 contains two complex numbers (re1, im1, re2, im2)
+};
+
+layout(push_constant) uniform PushConstants {
+    uint targetQubit;
+    uint stateSize;
+    uint reserved1;
+    uint reserved2;
+} params;
+
+vec2 cmul(vec2 a, vec2 b) {
+    return vec2(a.x * b.x - a.y * b.y, a.x * b.y + a.y * b.x);
+}
+
+void main() {
+    uint idx = gl_GlobalInvocationID.x;
+    if (idx >= params.stateSize) return;
+
+    uint mask = 1u << params.targetQubit;
+    uint idx0 = idx & ~mask;
+    uint idx1 = idx | mask;
+
+    if ((idx & mask) != 0) return;
+
+    uint vec_idx0 = idx0 / 2;
+    uint vec_idx1 = idx1 / 2;
+    bool odd0 = (idx0 & 1) != 0;
+    bool odd1 = (idx1 & 1) != 0;
+
+    vec2 psi0 = odd0 ? vec2(amplitudes[vec_idx0].z, amplitudes[vec_idx0].w) : vec2(amplitudes[vec_idx0].x, amplitudes[vec_idx0].y);
+    vec2 psi1 = odd1 ? vec2(amplitudes[vec_idx1].z, amplitudes[vec_idx1].w) : vec2(amplitudes[vec_idx1].x, amplitudes[vec_idx1].y);
+
+    float inv_sqrt2 = 0.7071067811865475;
+    vec2 new_psi0 = inv_sqrt2 * (psi0 + psi1);
+    vec2 new_psi1 = inv_sqrt2 * (psi0 - psi1);
+
+    memoryBarrierBuffer();
+    barrier();
+
+    if (odd0) {
+        amplitudes[vec_idx0].z = new_psi0.x;
+        amplitudes[vec_idx0].w = new_psi0.y;
+    } else {
+        amplitudes[vec_idx0].x = new_psi0.x;
+        amplitudes[vec_idx0].y = new_psi0.y;
+    }
+
+    if (odd1) {
+        amplitudes[vec_idx1].z = new_psi1.x;
+        amplitudes[vec_idx1].w = new_psi1.y;
+    } else {
+        amplitudes[vec_idx1].x = new_psi1.x;
+        amplitudes[vec_idx1].y = new_psi1.y;
+    }
+}

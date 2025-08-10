@@ -26,7 +26,9 @@ void main() {
     // check if the target qubit is 1 in this index
     uint mask = 1u << params.target_qubit;
     if ((gid & mask) != 0) {
-        // apply z gate: negate the amplitude
-        state[gid] = vec2(-state[gid].x, -state[gid].y);
+        // apply s gate: phase shift by i
+        // complex multiplication: (a+bi)(i) = -b + ai
+        vec2 current_amp = state[gid];
+        state[gid] = vec2(-current_amp.y, current_amp.x);
     }
 }

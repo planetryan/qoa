@@ -11,7 +11,6 @@ use rand::rngs::StdRng;
 const NOISE_PROBABILITY: f64 = 0.01; // chance of an error after each gate
 const MAX_REGISTERS: u8 = 255; // Using u8, so this is the natural limit
 
-// Opcodes for the binary .qexe format, improving readability over magic numbers
 mod opcodes {
     pub const QINIT: u8 = 0x01;
     pub const QGATE: u8 = 0x02;
@@ -40,12 +39,10 @@ pub struct DecodeError {
 }
 
 
-// --- Core Data  ---
-
 #[derive(Debug)]
 enum Instruction {
     QInit(u8),
-    QGate(u8, String), // Using String for gate name to support various gates
+    QGate(u8, String),
     QMeas(u8),
     CharLoad(u8, u8),
     RegSet(u8, i64),
@@ -71,8 +68,6 @@ impl QuantumState {
         QuantumState { n_qubits, state }
     }
     
-    /// This is the gate application logic
-    /// It correctly applies a single qubit gate by transforming amplitude pairs
     fn apply_single_qubit_gate(&mut self, qubit_idx: usize, gate_matrix: &[[Complex64; 2]; 2]) {
         if qubit_idx >= self.n_qubits { return; }
         
@@ -152,7 +147,6 @@ impl QuantumState {
         result
     }
 
-    /// Resets the quantum state to the ground state |0...0>.
     fn init_qubit(&mut self, _qubit: u8) {
         self.state.fill(Complex64::new(0.0, 0.0));
         if !self.state.is_empty() {
@@ -160,8 +154,6 @@ impl QuantumState {
         }
     }
 
-    /// Normalizes the state vector to have a magnitude of 1.
-    /// Crucial for maintaining stability with floating point errors and noise.
     fn normalize(&mut self) {
         let norm_sq: f64 = self.state.iter().map(|c| c.norm_sqr()).sum();
         if norm_sq.abs() < 1e-9 { return; }
@@ -173,7 +165,6 @@ impl QuantumState {
     }
 }
 
-// --- Gate Matrix Definitions ---
 
 fn hadamard() -> [[Complex64; 2]; 2] {
     let f = 1.0 / (2.0f64).sqrt();
@@ -197,14 +188,13 @@ fn identity() -> [[Complex64; 2]; 2] {
 }
 
 
-// --- Emulator Logic ---
 
 struct Emulator {
     registers: HashMap<u8, i64>,
     state: QuantumState,
     max_qubit: u8,
     loop_stack: Vec<usize>,
-    rng: Box<dyn Rng>, // Use a trait object for deterministic testing
+    rng: Box<dyn Rng>,
 }
 
 impl Emulator {
@@ -215,15 +205,14 @@ impl Emulator {
         };
         Emulator {
             registers: HashMap::new(),
-            state: QuantumState::new(8), // Default size
+            state: QuantumState::new(8),
             max_qubit: 7,
             loop_stack: Vec::new(),
             rng,
         }
     }
     
-    /// Helper function to apply random Pauli noise to a qubit.
-    /// This avoids repeating the same logic multiple times.
+
     fn apply_pauli_noise(&mut self, qubit: u8) {
         if self.rng.gen::<f64>() < NOISE_PROBABILITY {
             let error_type = self.rng.gen_range(0..3);
@@ -234,7 +223,7 @@ impl Emulator {
             };
             println!("! Applying Pauli-{} noise on qubit {}", noise_name, qubit);
             self.state.apply_single_qubit_gate(qubit as usize, &noise_matrix);
-            self.state.normalize(); // Normalize after non unitary noise operation
+            self.state.normalize();
         }
     }
 
@@ -347,10 +336,6 @@ impl Emulator {
     }
 }
 
-
-// --- Parsing and Compilation ---
-
-/// Decodes binary instructions from a byte slice. Returns a Result for robust error handling.
 fn decode_instruction(bytes: &[u8], position: usize) -> Result<(Instruction, usize), DecodeError> {
     if bytes.is_empty() {
         return Err(DecodeError { position, message: "Unexpected end of file".into() });
@@ -408,7 +393,6 @@ fn decode_instruction(bytes: &[u8], position: usize) -> Result<(Instruction, usi
     }
 }
 
-/// Parses a slice of bytes into a vector of instructions.
 fn parse_instructions(data: &[u8]) -> Result<Vec<Instruction>, DecodeError> {
     let mut instructions = Vec::new();
     let mut i = 0;
@@ -420,7 +404,6 @@ fn parse_instructions(data: &[u8]) -> Result<Vec<Instruction>, DecodeError> {
     Ok(instructions)
 }
 
-/// Compiles .qoa source text into a vector of instructions. Returns a Result for robust error handling.
 fn compile_qoa_source(source: &str) -> Result<Vec<Instruction>, ParseError> {
     let mut instructions = Vec::new();
 
@@ -497,10 +480,9 @@ fn compile_qoa_source(source: &str) -> Result<Vec<Instruction>, ParseError> {
     Ok(instructions)
 }
 
-/// Writes a vector of instructions to a .qexe binary file.
 fn write_qexe_file(path: &str, instructions: &[Instruction]) -> io::Result<()> {
     let mut file = File::create(path)?;
-    file.write_all(b"QEXE")?; // Magic bytes
+    file.write_all(b"QEXE")?;
     file.write_all(&[1u8])?; // Version
     file.write_all(&(instructions.len() as u32).to_le_bytes())?;
 
@@ -510,7 +492,7 @@ fn write_qexe_file(path: &str, instructions: &[Instruction]) -> io::Result<()> {
             Instruction::QGate(reg, name) => {
                 let mut bytes = vec![opcodes::QGATE, *reg];
                 let mut gate_bytes = name.clone().into_bytes();
-                gate_bytes.resize(8, 0); // Pad/truncate to 8 bytes
+                gate_bytes.resize(8, 0);
                 bytes.extend(gate_bytes);
                 file.write_all(&bytes)?;
             }
@@ -533,8 +515,6 @@ fn write_qexe_file(path: &str, instructions: &[Instruction]) -> io::Result<()> {
     Ok(())
 }
 
-
-// --- Main Application Logic ---
 
 fn handle_compile_command(mut args: env::Args) -> io::Result<()> {
     let input = args.next().ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "Missing input file path for 'compile'"))?;

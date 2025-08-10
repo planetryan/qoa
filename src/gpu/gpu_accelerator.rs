@@ -202,6 +202,397 @@ impl GpuAccelerator {
     #[cfg(feature = "vulkan")]
     fn initialize_vulkan_devices(&self) -> Result<Vec<GpuDevice>, String> {
         use ash::{Entry, Instance, vk};
+        use std::ffi::{CStr, CString};
+        
+        let mut devices = Vec::new();
+        let mut contexts = self.vulkan_contexts.write().unwrap();
+        
+        // Create Vulkan entry
+        let entry = match Entry::load() {
+            Ok(e) => e,
+            Err(e) => return Err(format!("Failed to load Vulkan entry: {}", e))
+        };
+        
+        // Application info
+        let app_info = vk::ApplicationInfo::builder()
+            .application_name(unsafe { CStr::from_bytes_with_nul_unchecked(b"QOA\0") })
+            .application_version(vk::make_api_version(0, 1, 0, 0))
+            .engine_name(unsafe { CStr::from_bytes_with_nul_unchecked(b"QOA Engine\0") })
+            .engine_version(vk::make_api_version(0, 1, 0, 0))
+            .api_version(vk::make_api_version(0, 1, 2, 0));
+            
+        // Validation layers
+        let validation_layers_cstrs = [unsafe { CStr::from_bytes_with_nul_unchecked(b"VK_LAYER_KHRONOS_validation\0") }];
+        let enable_validation_layers = Self::check_validation_layer_support(&entry, &validation_layers_cstrs);
+        let validation_layers_ptrs: Vec<*const i8> = validation_layers_cstrs.iter().map(|&s| s.as_ptr()).collect();
+        
+        // Instance extensions
+        let mut instance_extensions_ptrs = vec![];
+        if enable_validation_layers {
+            instance_extensions_ptrs.push(ash::extensions::ext::DebugUtils::name().as_ptr());
+        }
+        
+        // Debug messenger create info
+        let mut debug_messenger_create_info = vk::DebugUtilsMessengerCreateInfoEXT::builder()
+            .message_severity(
+                vk::DebugUtilsMessageSeverityFlagsEXT::ERROR
+                    | vk::DebugUtilsMessageSeverityFlagsEXT::WARNING
+                    | vk::DebugUtilsMessageSeverityFlagsEXT::INFO
+            )
+            .message_type(
+                vk::DebugUtilsMessageTypeFlagsEXT::GENERAL
+                    | vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION
+                    | vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE
+            )
+            .pfn_user_callback(Some(vulkan_debug_callback));
+        
+        // Instance create info
+        let mut create_info = vk::InstanceCreateInfo::builder()
+            .application_info(&app_info)
+            .enabled_extension_names(&instance_extensions_ptrs);
+        
+        if enable_validation_layers {
+            create_info = create_info.enabled_layer_names(&validation_layers_ptrs)
+                .push_next(&mut debug_messenger_create_info);
+        }
+        
+        // Create instance
+        let instance = unsafe { entry.create_instance(&create_info, None) }
+            .map_err(|e| format!("Failed to create Vulkan instance: {}", e))?;
+        
+        // Setup debug messenger
+        let debug_utils_loader = if enable_validation_layers {
+            Some(ash::extensions::ext::DebugUtils::new(&entry, &instance))
+        } else {
+            None
+        };
+        
+        let debug_messenger = if enable_validation_layers {
+            Some(unsafe { debug_utils_loader.as_ref().unwrap().create_debug_utils_messenger(&debug_messenger_create_info, None) }
+                .map_err(|e| format!("Failed to set up debug messenger: {}", e))?)
+        } else {
+            None
+        };
+        
+        // Enumerate physical devices
+        let physical_devices = unsafe { instance.enumerate_physical_devices() }
+            .map_err(|e| format!("Failed to enumerate Vulkan physical devices: {}", e))?;
+        
+        for (idx, &physical_device) in physical_devices.iter().enumerate() {
+            if !Self::is_device_suitable(&instance, physical_device) {
+                continue;
+            }
+            
+            // Get device properties
+            let device_properties = unsafe { instance.get_physical_device_properties(physical_device) };
+            let device_name = unsafe { CStr::from_ptr(device_properties.device_name.as_ptr()) }.to_string_lossy().into_owned();
+            
+            // Get memory properties
+            let memory_properties = unsafe { instance.get_physical_device_memory_properties(physical_device) };
+            let mut total_memory = 0;
+            for heap in &memory_properties.memory_heaps[..memory_properties.memory_heap_count as usize] {
+                if heap.flags.contains(vk::MemoryHeapFlags::DEVICE_LOCAL) {
+                    total_memory += heap.size;
+                }
+            }
+            
+            // Get queue family properties
+            let queue_family_props = unsafe { instance.get_physical_device_queue_family_properties(physical_device) };
+            let compute_queue_idx = queue_family_props.iter().enumerate()
+                .find(|(_, props)| props.queue_flags.contains(vk::QueueFlags::COMPUTE))
+                .map(|(idx, _)| idx as u32);
+                
+            if let Some(queue_idx) = compute_queue_idx {
+                // Queue priorities
+                let priorities = [1.0f32];
+                
+                // Queue create info
+                let queue_create_infos = [vk::DeviceQueueCreateInfo::builder()
+                    .queue_family_index(queue_idx)
+                    .queue_priorities(&priorities)
+                    .build()];
+                
+                // Device features
+                let device_features = vk::PhysicalDeviceFeatures::builder().build();
+                
+                // Device create info
+                let mut device_create_info = vk::DeviceCreateInfo::builder()
+                    .queue_create_infos(&queue_create_infos)
+                    .enabled_features(&device_features);
+                
+                if enable_validation_layers {
+                    device_create_info = device_create_info.enabled_layer_names(&validation_layers_ptrs);
+                }
+                
+                // Create logical device
+                let logical_device = unsafe { instance.create_device(physical_device, &device_create_info, None) }
+                    .map_err(|e| format!("Failed to create Vulkan logical device for {}: {}", device_name, e))?;
+                
+                // Create command pool
+                let command_pool_info = vk::CommandPoolCreateInfo::builder()
+                    .queue_family_index(queue_idx)
+                    .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER);
+                
+                let command_pool = unsafe { logical_device.create_command_pool(&command_pool_info, None) }
+                    .map_err(|e| format!("Failed to create Vulkan command pool for {}: {}", device_name, e))?;
+                
+                // Create a VulkanContext for this device
+                let context = Arc::new(VulkanContext {
+                    entry: entry.clone(),
+                    instance: instance.clone(),
+                    physical_device,
+                    device: logical_device,
+                    queue_family_index: queue_idx,
+                    compute_queue: unsafe { logical_device.get_device_queue(queue_idx, 0) },
+                    command_pool,
+                    descriptor_pool: vk::DescriptorPool::null(),
+                    descriptor_set_layout: vk::DescriptorSetLayout::null(),
+                    pipeline_layout: vk::PipelineLayout::null(),
+                    compute_pipeline: vk::Pipeline::null(),
+                    #[cfg(debug_assertions)]
+                    debug_utils_loader: debug_utils_loader.clone(),
+                    #[cfg(debug_assertions)]
+                    debug_messenger,
+                });
+                
+                // Calculate a performance score based on device properties
+                let score = match device_properties.device_type {
+                    vk::PhysicalDeviceType::DISCRETE_GPU => 1000.0,
+                    vk::PhysicalDeviceType::INTEGRATED_GPU => 500.0,
+                    vk::PhysicalDeviceType::VIRTUAL_GPU => 300.0,
+                    vk::PhysicalDeviceType::CPU => 100.0,
+                    _ => 50.0,
+                } + (total_memory / (1024 * 1024)) as f32 * 0.01;
+                
+                // Store the context
+                contexts.insert(idx, context);
+                
+                // Create device info
+                let device_info = GpuDevice {
+                    id: idx,
+                    name: device_name,
+                    memory_mb: (total_memory / (1024 * 1024)) as usize,
+                    compute_units: device_properties.limits.max_compute_work_group_count[0] as usize,
+                    backend: GpuBackend::Vulkan,
+                    score,
+                    is_available: true,
+                    features: HashSet::new(),
+                    last_benchmark: None,
+                    max_workgroup_size: device_properties.limits.max_compute_work_group_invocations as usize,
+                };
+                
+                devices.push(device_info);
+            }
+        }
+        
+        Ok(devices)
+    }
+    
+    #[cfg(feature = "vulkan")]
+    fn is_device_suitable(instance: &ash::Instance, physical_device: vk::PhysicalDevice) -> bool {
+        let properties = unsafe { instance.get_physical_device_properties(physical_device) };
+        let queue_family_props = unsafe { instance.get_physical_device_queue_family_properties(physical_device) };
+        
+        let has_compute_queue = queue_family_props.iter().any(|props| props.queue_flags.contains(vk::QueueFlags::COMPUTE));
+        
+        properties.device_type == vk::PhysicalDeviceType::DISCRETE_GPU && has_compute_queue
+    }
+    
+    #[cfg(feature = "vulkan")]
+    fn check_validation_layer_support(entry: &ash::Entry, validation_layers: &[&CStr]) -> bool {
+        let available_layers = match entry.enumerate_instance_layer_properties() {
+            Ok(layers) => layers,
+            Err(_) => return false,
+        };
+
+        for &required in validation_layers {
+            let mut found = false;
+            for layer in &available_layers {
+                let layer_name = unsafe { CStr::from_ptr(layer.layer_name.as_ptr()) };
+                if required == layer_name {
+                    found = true;
+                    break;
+                }
+            }
+            if !found {
+                return false;
+            }
+        }
+        true
+    }
+    
+    #[cfg(feature = "vulkan")]
+    unsafe extern "system" fn vulkan_debug_callback(
+        message_severity: vk::DebugUtilsMessageSeverityFlagsEXT,
+        message_type: vk::DebugUtilsMessageTypeFlagsEXT,
+        p_callback_data: *const vk::DebugUtilsMessengerCallbackDataEXT,
+        _user_data: *mut std::os::raw::c_void,
+    ) -> vk::Bool32 {
+        let callback_data = *p_callback_data;
+        let message_id_number = callback_data.message_id_number;
+        let message_id_name = if callback_data.p_message_id_name.is_null() {
+            CString::new("unknown").unwrap()
+        } else {
+            CString::new(CStr::from_ptr(callback_data.p_message_id_name).to_bytes()).unwrap()
+        };
+        let message = if callback_data.p_message.is_null() {
+            CString::new("unknown").unwrap()
+        } else {
+            CString::new(CStr::from_ptr(callback_data.p_message).to_bytes()).unwrap()
+        };
+
+        println!(
+            "{:?}: {:?} [{} ({})] : {}",
+            message_severity,
+            message_type,
+            message_id_name.to_string_lossy(),
+            message_id_number,
+            message.to_string_lossy(),
+        );
+
+        vk::FALSE
+    }
+}
+
+impl GpuAccelerator {
+    pub fn new() -> Self {
+        let backends = Self::detect_preferred_backend_order();
+        
+        Self {
+            devices: PLRwLock::new(Vec::new()),
+            preferred_backends: RwLock::new(backends),
+            performance_cache: RwLock::new(HashMap::new()),
+            initialized: Mutex::new(false),
+            
+            #[cfg(feature = "vulkan")]
+            vulkan_contexts: RwLock::new(HashMap::new()),
+            
+            #[cfg(feature = "cuda")]
+            cuda_contexts: RwLock::new(HashMap::new()),
+            
+            #[cfg(feature = "opencl")]
+            opencl_contexts: RwLock::new(HashMap::new()),
+        }
+    }
+    
+    // Get the global GPU accelerator instance
+    pub fn global() -> Arc<Self> {
+        GLOBAL_GPU_ACCELERATOR.clone()
+    }
+    
+    // Initialize GPU backends and devices
+    pub fn initialize(&self) -> Result<(), String> {
+        let mut initialized = self.initialized.lock().unwrap();
+        if *initialized {
+            return Ok(());
+        }
+        
+        info!("Initializing GPU acceleration backends");
+        let mut devices = Vec::new();
+        let mut device_id = 0;
+        
+        // Try initializing Vulkan first
+        #[cfg(feature = "vulkan")]
+        {
+            match self.initialize_vulkan_devices() {
+                Ok(vulkan_devices) => {
+                    info!("Detected {} Vulkan-compatible devices", vulkan_devices.len());
+                    for mut device in vulkan_devices {
+                        device.id = device_id;
+                        devices.push(device);
+                        device_id += 1;
+                    }
+                }
+                Err(e) => {
+                    warn!("Failed to initialize Vulkan: {}", e);
+                }
+            }
+        }
+        
+        // Then try CUDA
+        #[cfg(feature = "cuda")]
+        {
+            match self.initialize_cuda_devices() {
+                Ok(cuda_devices) => {
+                    info!("Detected {} CUDA-compatible devices", cuda_devices.len());
+                    for mut device in cuda_devices {
+                        device.id = device_id;
+                        devices.push(device);
+                        device_id += 1;
+                    }
+                }
+                Err(e) => {
+                    warn!("Failed to initialize CUDA: {}", e);
+                }
+            }
+        }
+        
+        // Then OpenCL
+        #[cfg(feature = "opencl")]
+        {
+            match self.initialize_opencl_devices() {
+                Ok(opencl_devices) => {
+                    info!("Detected {} OpenCL-compatible devices", opencl_devices.len());
+                    for mut device in opencl_devices {
+                        device.id = device_id;
+                        devices.push(device);
+                        device_id += 1;
+                    }
+                }
+                Err(e) => {
+                    warn!("Failed to initialize OpenCL: {}", e);
+                }
+            }
+        }
+        
+        // Sort devices by score (highest first)
+        devices.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        
+        if devices.is_empty() {
+            warn!("No GPU acceleration devices detected, CPU fallback will be used");
+        } else {
+            for device in &devices {
+                info!("GPU device: {} ({}), Memory: {}MB, Score: {}, Backend: {:?}", 
+                     device.id, device.name, device.memory_mb, device.score, device.backend);
+            }
+        }
+        
+        *self.devices.write() = devices;
+        *initialized = true;
+        
+        Ok(())
+    }
+    
+    // Detect optimal backend order based on system capabilities
+    fn detect_preferred_backend_order() -> Vec<GpuBackend> {
+        let mut backends = Vec::new();
+        
+        // Check for CUDA first as it generally has the best performance
+        #[cfg(feature = "cuda")]
+        backends.push(GpuBackend::Cuda);
+        
+        // Vulkan next, as it's widely supported
+        #[cfg(feature = "vulkan")]
+        backends.push(GpuBackend::Vulkan);
+        
+        // OpenCL as a fallback
+        #[cfg(feature = "opencl")]
+        backends.push(GpuBackend::OpenCL);
+        
+        // Metal for macOS systems
+        #[cfg(feature = "metal")]
+        backends.push(GpuBackend::Metal);
+        
+        // Add CPU fallback
+        backends.push(GpuBackend::None);
+        
+        backends
+    }
+    
+    // Initialize Vulkan devices
+    #[cfg(feature = "vulkan")]
+    fn initialize_vulkan_devices(&self) -> Result<Vec<GpuDevice>, String> {
+        use ash::{Entry, Instance, vk};
         use std::ffi::CStr;
         
         let mut devices = Vec::new();
@@ -305,6 +696,7 @@ impl GpuAccelerator {
                     queue_family_index: queue_idx,
                     compute_queue: unsafe { logical_device.get_device_queue(queue_idx, 0) },
                     command_pool,
+                    memory_properties,
                     descriptor_pool: vk::DescriptorPool::null(),
                     descriptor_set_layout: vk::DescriptorSetLayout::null(),
                     pipeline_layout: vk::PipelineLayout::null(),
@@ -650,68 +1042,14 @@ impl GpuAccelerator {
                 let execution_time = start_time.elapsed().as_secs_f64();
                 self.update_performance(&operation_key, device.backend, execution_time);
                 return Ok(());
+            } else {
+                return result;
             }
-            
-            // If the preferred backend failed, try CPU fallback
-            warn!("GPU execution failed for {}: {}", operation_key, result.unwrap_err());
-        }
-        
-        // Fallback to CPU implementation
-        debug!("Using CPU fallback for gate operation {}", gate_type);
-        self.execute_gate_operation_cpu(gate_type, amplitudes, qubit_indices, params)
-    }
-    
-    // Execute a gate operation on CPU
-    fn execute_gate_operation_cpu(
-        &self,
-        gate_type: &str,
-        amplitudes: &mut [Complex64],
-        qubit_indices: &[usize],
-        params: &[f64]
-    ) -> Result<(), String> {
-        // CPU implementation of quantum gates
-        match gate_type {
-            "h" | "hadamard" => apply_hadamard_cpu(amplitudes, qubit_indices[0]),
-            "x" | "not" => apply_x_gate_cpu(amplitudes, qubit_indices[0]),
-            "y" => apply_y_gate_cpu(amplitudes, qubit_indices[0]),
-            "z" => apply_z_gate_cpu(amplitudes, qubit_indices[0]),
-            "rx" => {
-                if params.is_empty() {
-                    return Err("rx gate requires an angle parameter".to_string());
-                }
-                apply_rx_gate_cpu(amplitudes, qubit_indices[0], params[0])
-            },
-            "ry" => {
-                if params.is_empty() {
-                    return Err("ry gate requires an angle parameter".to_string());
-                }
-                apply_ry_gate_cpu(amplitudes, qubit_indices[0], params[0])
-            },
-            "rz" => {
-                if params.is_empty() {
-                    return Err("rz gate requires an angle parameter".to_string());
-                }
-                apply_rz_gate_cpu(amplitudes, qubit_indices[0], params[0])
-            },
-            "cnot" => {
-                if qubit_indices.len() < 2 {
-                    return Err("cnot gate requires control and target qubits".to_string());
-                }
-                apply_cnot_gate_cpu(amplitudes, qubit_indices[0], qubit_indices[1])
-            },
-            "cz" => {
-                if qubit_indices.len() < 2 {
-                    return Err("cz gate requires control and target qubits".to_string());
-                }
-                apply_cz_gate_cpu(amplitudes, qubit_indices[0], qubit_indices[1])
-            },
-            // Add more gates as needed
-            _ => Err(format!("Unsupported gate type: {}", gate_type))
+        } else {
+            return self.execute_gate_operation_cpu(gate_type, amplitudes, qubit_indices, params);
         }
     }
     
-    // Execute a gate operation using Vulkan
-    #[cfg(feature = "vulkan")]
     fn execute_gate_operation_vulkan(
         &self,
         context: &Arc<VulkanContext>,
@@ -722,159 +1060,176 @@ impl GpuAccelerator {
     ) -> Result<(), String> {
         use std::mem::size_of;
         use ash::vk;
-        
+
         let device = &context.device;
-        
-        // Prepare gate matrix based on gate type
+        let memory_properties = &context.memory_properties;
+
         let gate_matrix = get_gate_matrix(gate_type, params)?;
-        let gate_data_size = gate_matrix.len() * size_of::<Complex64>();
-        
-        // Create buffers
-        let buffer_info = vk::BufferCreateInfo::builder()
-            .size((amplitudes.len() * size_of::<Complex64>()) as u64)
-            .usage(vk::BufferUsageFlags::STORAGE_BUFFER)
-            .sharing_mode(vk::SharingMode::EXCLUSIVE);
-        
-        let state_buffer = unsafe { device.create_buffer(&buffer_info, None) }
+
+        // Prepare indices as u32
+        let indices_u32: Vec<u32> = qubit_indices.iter().map(|&i| i as u32).collect();
+
+        // Create state buffer in device local memory
+        let state_size = amplitudes.len() as u64 * size_of::<Complex64>() as u64;
+        let state_buffer_info = vk::BufferCreateInfo::builder()
+            .size(state_size)
+            .usage(vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::TRANSFER_SRC | vk::BufferUsageFlags::TRANSFER_DST)
+            .sharing_mode(vk::SharingMode::EXCLUSIVE)
+            .build();
+        let state_buffer = unsafe { device.create_buffer(&state_buffer_info, None) }
             .map_err(|e| format!("Failed to create state buffer: {}", e))?;
-        
-        // Create gate matrix buffer
-        let gate_buffer_info = vk::BufferCreateInfo::builder()
-            .size(gate_data_size as u64)
-            .usage(vk::BufferUsageFlags::STORAGE_BUFFER)
-            .sharing_mode(vk::SharingMode::EXCLUSIVE);
-        
-        let gate_buffer = unsafe { device.create_buffer(&gate_buffer_info, None) }
-            .map_err(|e| format!("Failed to create gate buffer: {}", e))?;
-        
-        // Create qubit indices buffer
-        let indices_buffer_info = vk::BufferCreateInfo::builder()
-            .size((qubit_indices.len() * size_of::<u32>()) as u64)
-            .usage(vk::BufferUsageFlags::STORAGE_BUFFER)
-            .sharing_mode(vk::SharingMode::EXCLUSIVE);
-        
-        let indices_buffer = unsafe { device.create_buffer(&indices_buffer_info, None) }
-            .map_err(|e| format!("Failed to create indices buffer: {}", e))?;
-        
-        // Get memory requirements and allocate memory
-        let state_mem_req = unsafe { device.get_buffer_memory_requirements(state_buffer) };
-        let gate_mem_req = unsafe { device.get_buffer_memory_requirements(gate_buffer) };
-        let indices_mem_req = unsafe { device.get_buffer_memory_requirements(indices_buffer) };
-        
-        // Allocate memory for state buffer
-        let mem_properties = unsafe { context.instance.get_physical_device_memory_properties(context.physical_device) };
-        
-        let state_mem_type_idx = find_memory_type_index(
-            &mem_properties, 
-            state_mem_req.memory_type_bits, 
-            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT
-        ).ok_or("Failed to find suitable memory type for state buffer")?;
-        
+        let state_req = unsafe { device.get_buffer_memory_requirements(state_buffer) };
+        let state_mem_type = find_memory_type_index(
+            memory_properties,
+            state_req.memory_type_bits,
+            vk::MemoryPropertyFlags::DEVICE_LOCAL,
+        ).ok_or("Failed to find device local memory type".to_string())?;
         let state_alloc_info = vk::MemoryAllocateInfo::builder()
-            .allocation_size(state_mem_req.size)
-            .memory_type_index(state_mem_type_idx);
-        
+            .allocation_size(state_req.size)
+            .memory_type_index(state_mem_type)
+            .build();
         let state_memory = unsafe { device.allocate_memory(&state_alloc_info, None) }
             .map_err(|e| format!("Failed to allocate state memory: {}", e))?;
-        
-        // Bind state memory
         unsafe { device.bind_buffer_memory(state_buffer, state_memory, 0) }
             .map_err(|e| format!("Failed to bind state memory: {}", e))?;
-        
-        // Allocate memory for gate buffer
-        let gate_mem_type_idx = find_memory_type_index(
-            &mem_properties, 
-            gate_mem_req.memory_type_bits, 
-            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT
-        ).ok_or("Failed to find suitable memory type for gate buffer")?;
-        
+
+        // Create staging buffer for state
+        let staging_buffer_info = vk::BufferCreateInfo::builder()
+            .size(state_size)
+            .usage(vk::BufferUsageFlags::TRANSFER_SRC | vk::BufferUsageFlags::TRANSFER_DST)
+            .sharing_mode(vk::SharingMode::EXCLUSIVE)
+            .build();
+        let staging_buffer = unsafe { device.create_buffer(&staging_buffer_info, None) }
+            .map_err(|e| format!("Failed to create staging buffer: {}", e))?;
+        let staging_req = unsafe { device.get_buffer_memory_requirements(staging_buffer) };
+        let staging_mem_type = find_memory_type_index(
+            memory_properties,
+            staging_req.memory_type_bits,
+            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
+        ).ok_or("Failed to find host visible memory type".to_string())?;
+        let staging_alloc_info = vk::MemoryAllocateInfo::builder()
+            .allocation_size(staging_req.size)
+            .memory_type_index(staging_mem_type)
+            .build();
+        let staging_memory = unsafe { device.allocate_memory(&staging_alloc_info, None) }
+            .map_err(|e| format!("Failed to allocate staging memory: {}", e))?;
+        unsafe { device.bind_buffer_memory(staging_buffer, staging_memory, 0) }
+            .map_err(|e| format!("Failed to bind staging memory: {}", e))?;
+
+        // Copy host to staging for state
+        let mut state_ptr = unsafe { device.map_memory(staging_memory, 0, state_size, vk::MemoryMapFlags::empty()) }
+            .map_err(|e| format!("Failed to map staging memory for upload: {}", e))?;
+        std::ptr::copy_nonoverlapping(amplitudes.as_ptr() as *const u8, state_ptr as *mut u8, state_size as usize);
+        unsafe { device.unmap_memory(staging_memory) };
+
+        // Create gate buffer in device local
+        let gate_size = gate_matrix.len() as u64 * size_of::<Complex64>() as u64;
+        let gate_buffer_info = vk::BufferCreateInfo::builder()
+            .size(gate_size)
+            .usage(vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::TRANSFER_DST)
+            .sharing_mode(vk::SharingMode::EXCLUSIVE)
+            .build();
+        let gate_buffer = unsafe { device.create_buffer(&gate_buffer_info, None) }
+            .map_err(|e| format!("Failed to create gate buffer: {}", e))?;
+        let gate_req = unsafe { device.get_buffer_memory_requirements(gate_buffer) };
+        let gate_mem_type = find_memory_type_index(
+            memory_properties,
+            gate_req.memory_type_bits,
+            vk::MemoryPropertyFlags::DEVICE_LOCAL,
+        ).ok_or("Failed to find device local memory type for gate".to_string())?;
         let gate_alloc_info = vk::MemoryAllocateInfo::builder()
-            .allocation_size(gate_mem_req.size)
-            .memory_type_index(gate_mem_type_idx);
-        
+            .allocation_size(gate_req.size)
+            .memory_type_index(gate_mem_type)
+            .build();
         let gate_memory = unsafe { device.allocate_memory(&gate_alloc_info, None) }
             .map_err(|e| format!("Failed to allocate gate memory: {}", e))?;
-        
-        // Bind gate memory
         unsafe { device.bind_buffer_memory(gate_buffer, gate_memory, 0) }
             .map_err(|e| format!("Failed to bind gate memory: {}", e))?;
-        
-        // Allocate memory for indices buffer
-        let indices_mem_type_idx = find_memory_type_index(
-            &mem_properties, 
-            indices_mem_req.memory_type_bits, 
-            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT
-        ).ok_or("Failed to find suitable memory type for indices buffer")?;
-        
+
+        // Staging for gate
+        let gate_staging_info = vk::BufferCreateInfo::builder()
+            .size(gate_size)
+            .usage(vk::BufferUsageFlags::TRANSFER_SRC)
+            .sharing_mode(vk::SharingMode::EXCLUSIVE)
+            .build();
+        let gate_staging_buffer = unsafe { device.create_buffer(&gate_staging_info, None) }
+            .map_err(|e| format!("Failed to create gate staging buffer: {}", e))?;
+        let gate_staging_req = unsafe { device.get_buffer_memory_requirements(gate_staging_buffer) };
+        let gate_staging_mem_type = find_memory_type_index(
+            memory_properties,
+            gate_staging_req.memory_type_bits,
+            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
+        ).ok_or("Failed to find host visible memory type for gate".to_string())?;
+        let gate_staging_alloc = vk::MemoryAllocateInfo::builder()
+            .allocation_size(gate_staging_req.size)
+            .memory_type_index(gate_staging_mem_type)
+            .build();
+        let gate_staging_memory = unsafe { device.allocate_memory(&gate_staging_alloc, None) }
+            .map_err(|e| format!("Failed to allocate gate staging memory: {}", e))?;
+        unsafe { device.bind_buffer_memory(gate_staging_buffer, gate_staging_memory, 0) }
+            .map_err(|e| format!("Failed to bind gate staging memory: {}", e))?;
+
+        // Copy to gate staging
+        let mut gate_ptr = unsafe { device.map_memory(gate_staging_memory, 0, gate_size, vk::MemoryMapFlags::empty()) }
+            .map_err(|e| format!("Failed to map gate staging: {}", e))?;
+        std::ptr::copy_nonoverlapping(gate_matrix.as_ptr() as *const u8, gate_ptr as *mut u8, gate_size as usize);
+        unsafe { device.unmap_memory(gate_staging_memory) };
+
+        // Create indices buffer
+        let indices_size = indices_u32.len() as u64 * size_of::<u32>() as u64;
+        let indices_buffer_info = vk::BufferCreateInfo::builder()
+            .size(indices_size)
+            .usage(vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::TRANSFER_DST)
+            .sharing_mode(vk::SharingMode::EXCLUSIVE)
+            .build();
+        let indices_buffer = unsafe { device.create_buffer(&indices_buffer_info, None) }
+            .map_err(|e| format!("Failed to create indices buffer: {}", e))?;
+        let indices_req = unsafe { device.get_buffer_memory_requirements(indices_buffer) };
+        let indices_mem_type = find_memory_type_index(
+            memory_properties,
+            indices_req.memory_type_bits,
+            vk::MemoryPropertyFlags::DEVICE_LOCAL,
+        ).ok_or("Failed to find device local memory type for indices".to_string())?;
         let indices_alloc_info = vk::MemoryAllocateInfo::builder()
-            .allocation_size(indices_mem_req.size)
-            .memory_type_index(indices_mem_type_idx);
-        
+            .allocation_size(indices_req.size)
+            .memory_type_index(indices_mem_type)
+            .build();
         let indices_memory = unsafe { device.allocate_memory(&indices_alloc_info, None) }
             .map_err(|e| format!("Failed to allocate indices memory: {}", e))?;
-        
-        // Bind indices memory
         unsafe { device.bind_buffer_memory(indices_buffer, indices_memory, 0) }
             .map_err(|e| format!("Failed to bind indices memory: {}", e))?;
-        
-        // Map and copy state data
-        unsafe {
-            let state_ptr = device.map_memory(
-                    state_memory,
-                    0,
-                    vk::WHOLE_SIZE,
-                    vk::MemoryMapFlags::empty()
-                )
-                .map_err(|e| format!("Failed to map state memory: {}", e))?;
-            
-            std::ptr::copy_nonoverlapping(
-                amplitudes.as_ptr() as *const u8,
-                state_ptr as *mut u8,
-                amplitudes.len() * size_of::<Complex64>()
-            );
-            
-            device.unmap_memory(state_memory);
-            
-            // Map and copy gate data
-            let gate_ptr = device.map_memory(
-                    gate_memory,
-                    0,
-                    vk::WHOLE_SIZE,
-                    vk::MemoryMapFlags::empty()
-                )
-                .map_err(|e| format!("Failed to map gate memory: {}", e))?;
-            
-            std::ptr::copy_nonoverlapping(
-                gate_matrix.as_ptr() as *const u8,
-                gate_ptr as *mut u8,
-                gate_data_size
-            );
-            
-            device.unmap_memory(gate_memory);
-            
-            // Map and copy indices data
-            let indices_ptr = device.map_memory(
-                    indices_memory,
-                    0,
-                    vk::WHOLE_SIZE,
-                    vk::MemoryMapFlags::empty()
-                )
-                .map_err(|e| format!("Failed to map indices memory: {}", e))?;
-            
-            // Convert usize indices to u32
-            let qubit_indices_u32: Vec<u32> = qubit_indices.iter().map(|&idx| idx as u32).collect();
-            
-            std::ptr::copy_nonoverlapping(
-                qubit_indices_u32.as_ptr() as *const u8,
-                indices_ptr as *mut u8,
-                qubit_indices.len() * size_of::<u32>()
-            );
-            
-            device.unmap_memory(indices_memory);
-        }
-        
+
+        // Staging for indices
+        let indices_staging_info = vk::BufferCreateInfo::builder()
+            .size(indices_size)
+            .usage(vk::BufferUsageFlags::TRANSFER_SRC)
+            .sharing_mode(vk::SharingMode::EXCLUSIVE)
+            .build();
+        let indices_staging_buffer = unsafe { device.create_buffer(&indices_staging_info, None) }
+            .map_err(|e| format!("Failed to create indices staging buffer: {}", e))?;
+        let indices_staging_req = unsafe { device.get_buffer_memory_requirements(indices_staging_buffer) };
+        let indices_staging_mem_type = find_memory_type_index(
+            memory_properties,
+            indices_staging_req.memory_type_bits,
+            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
+        ).ok_or("Failed to find host visible memory type for indices".to_string())?;
+        let indices_staging_alloc = vk::MemoryAllocateInfo::builder()
+            .allocation_size(indices_staging_req.size)
+            .memory_type_index(indices_staging_mem_type)
+            .build();
+        let indices_staging_memory = unsafe { device.allocate_memory(&indices_staging_alloc, None) }
+            .map_err(|e| format!("Failed to allocate indices staging memory: {}", e))?;
+        unsafe { device.bind_buffer_memory(indices_staging_buffer, indices_staging_memory, 0) }
+            .map_err(|e| format!("Failed to bind indices staging memory: {}", e))?;
+
+        // Copy to indices staging
+        let mut indices_ptr = unsafe { device.map_memory(indices_staging_memory, 0, indices_size, vk::MemoryMapFlags::empty()) }
+            .map_err(|e| format!("Failed to map indices staging: {}", e))?;
+        std::ptr::copy_nonoverlapping(indices_u32.as_ptr() as *const u8, indices_ptr as *mut u8, indices_size as usize);
+        unsafe { device.unmap_memory(indices_staging_memory) };
+
         // Create descriptor set layout
-        let descriptor_set_layout_bindings = [
+        let bindings = [
             vk::DescriptorSetLayoutBinding::builder()
                 .binding(0)
                 .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
@@ -894,197 +1249,210 @@ impl GpuAccelerator {
                 .stage_flags(vk::ShaderStageFlags::COMPUTE)
                 .build(),
         ];
-        
         let descriptor_set_layout_info = vk::DescriptorSetLayoutCreateInfo::builder()
-            .bindings(&descriptor_set_layout_bindings);
-        
+            .bindings(&bindings)
+            .build();
         let descriptor_set_layout = unsafe { device.create_descriptor_set_layout(&descriptor_set_layout_info, None) }
             .map_err(|e| format!("Failed to create descriptor set layout: {}", e))?;
-        
+
         // Create descriptor pool
-        let descriptor_pool_sizes = [
+        let pool_sizes = [
             vk::DescriptorPoolSize::builder()
                 .ty(vk::DescriptorType::STORAGE_BUFFER)
                 .descriptor_count(3)
-                .build()
+                .build(),
         ];
-        
         let descriptor_pool_info = vk::DescriptorPoolCreateInfo::builder()
-            .pool_sizes(&descriptor_pool_sizes)
-            .max_sets(1);
-        
+            .pool_sizes(&pool_sizes)
+            .max_sets(1)
+            .build();
         let descriptor_pool = unsafe { device.create_descriptor_pool(&descriptor_pool_info, None) }
             .map_err(|e| format!("Failed to create descriptor pool: {}", e))?;
-        
+
         // Allocate descriptor set
-        let descriptor_set_alloc_info = vk::DescriptorSetAllocateInfo::builder()
+        let alloc_info = vk::DescriptorSetAllocateInfo::builder()
             .descriptor_pool(descriptor_pool)
-            .set_layouts(&[descriptor_set_layout]);
-        
-        let descriptor_sets = unsafe { device.allocate_descriptor_sets(&descriptor_set_alloc_info) }
-            .map_err(|e| format!("Failed to allocate descriptor sets: {}", e))?;
-        
-        let descriptor_set = descriptor_sets[0];
-        
+            .set_layouts(&[descriptor_set_layout])
+            .build();
+        let descriptor_set = unsafe { device.allocate_descriptor_sets(&alloc_info) }
+            .map_err(|e| format!("Failed to allocate descriptor set: {}", e))?[0];
+
         // Update descriptor set
         let state_buffer_info = vk::DescriptorBufferInfo::builder()
             .buffer(state_buffer)
             .offset(0)
-            .range(vk::WHOLE_SIZE);
-        
+            .range(vk::WHOLE_SIZE)
+            .build();
         let gate_buffer_info = vk::DescriptorBufferInfo::builder()
             .buffer(gate_buffer)
             .offset(0)
-            .range(vk::WHOLE_SIZE);
-        
+            .range(vk::WHOLE_SIZE)
+            .build();
         let indices_buffer_info = vk::DescriptorBufferInfo::builder()
             .buffer(indices_buffer)
             .offset(0)
-            .range(vk::WHOLE_SIZE);
-        
-        let descriptor_writes = [
+            .range(vk::WHOLE_SIZE)
+            .build();
+        let writes = [
             vk::WriteDescriptorSet::builder()
                 .dst_set(descriptor_set)
                 .dst_binding(0)
                 .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-                .buffer_info(&[state_buffer_info.build()])
+                .buffer_info(&[state_buffer_info])
                 .build(),
             vk::WriteDescriptorSet::builder()
                 .dst_set(descriptor_set)
                 .dst_binding(1)
                 .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-                .buffer_info(&[gate_buffer_info.build()])
+                .buffer_info(&[gate_buffer_info])
                 .build(),
             vk::WriteDescriptorSet::builder()
                 .dst_set(descriptor_set)
                 .dst_binding(2)
                 .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-                .buffer_info(&[indices_buffer_info.build()])
+                .buffer_info(&[indices_buffer_info])
                 .build(),
         ];
-        
-        unsafe { device.update_descriptor_sets(&descriptor_writes, &[]) };
-        
+        unsafe { device.update_descriptor_sets(&writes, &[]) };
+
         // Create pipeline layout
         let pipeline_layout_info = vk::PipelineLayoutCreateInfo::builder()
-            .set_layouts(&[descriptor_set_layout]);
-        
+            .set_layouts(&[descriptor_set_layout])
+            .build();
         let pipeline_layout = unsafe { device.create_pipeline_layout(&pipeline_layout_info, None) }
             .map_err(|e| format!("Failed to create pipeline layout: {}", e))?;
-        
-        // Create compute shader module
-        // We select the appropriate shader based on the gate type
+
+        // Create shader module
         let shader_code = get_vulkan_shader_for_gate(gate_type)?;
-        
         let shader_module_info = vk::ShaderModuleCreateInfo::builder()
-            .code(&shader_code);
-        
+            .code(&shader_code)
+            .build();
         let shader_module = unsafe { device.create_shader_module(&shader_module_info, None) }
             .map_err(|e| format!("Failed to create shader module: {}", e))?;
-        
+
         // Create compute pipeline
-        let shader_stage_info = vk::PipelineShaderStageCreateInfo::builder()
+        let entry_name = unsafe { CStr::from_bytes_with_nul_unchecked(b"main\0") };
+        let stage = vk::PipelineShaderStageCreateInfo::builder()
             .stage(vk::ShaderStageFlags::COMPUTE)
             .module(shader_module)
-            .name(unsafe { std::ffi::CStr::from_bytes_with_nul_unchecked(b"main\0") });
-        
-        let compute_pipeline_info = vk::ComputePipelineCreateInfo::builder()
-            .stage(shader_stage_info.build())
-            .layout(pipeline_layout);
-        
-        let compute_pipeline = unsafe { 
-            device.create_compute_pipelines(vk::PipelineCache::null(), &[compute_pipeline_info.build()], None)
-        }
-        .map_err(|e| format!("Failed to create compute pipeline: {}", e))?[0];
-        
+            .name(entry_name)
+            .build();
+        let pipeline_info = vk::ComputePipelineCreateInfo::builder()
+            .stage(stage)
+            .layout(pipeline_layout)
+            .build();
+        let compute_pipeline = unsafe { device.create_compute_pipelines(vk::PipelineCache::null(), &[pipeline_info], None) }
+            .map_err(|e| format!("Failed to create compute pipeline: {}", e))?[0];
+
         // Create command buffer
-        let command_buffer_alloc_info = vk::CommandBufferAllocateInfo::builder()
+        let cb_alloc_info = vk::CommandBufferAllocateInfo::builder()
             .command_pool(context.command_pool)
             .level(vk::CommandBufferLevel::PRIMARY)
-            .command_buffer_count(1);
-        
-        let command_buffers = unsafe { device.allocate_command_buffers(&command_buffer_alloc_info) }
-            .map_err(|e| format!("Failed to allocate command buffers: {}", e))?;
-        
-        let command_buffer = command_buffers[0];
-        
-        // Begin command buffer
-        let command_buffer_begin_info = vk::CommandBufferBeginInfo::builder()
-            .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
-        
-        unsafe { device.begin_command_buffer(command_buffer, &command_buffer_begin_info) }
+            .command_buffer_count(1)
+            .build();
+        let command_buffer = unsafe { device.allocate_command_buffers(&cb_alloc_info) }
+            .map_err(|e| format!("Failed to allocate command buffer: {}", e))?[0];
+
+        let begin_info = vk::CommandBufferBeginInfo::builder()
+            .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT)
+            .build();
+        unsafe { device.begin_command_buffer(command_buffer, &begin_info) }
             .map_err(|e| format!("Failed to begin command buffer: {}", e))?;
-        
-        // Bind pipeline and descriptor set
+
+        // Copy from staging to device buffers
+        let state_copy = vk::BufferCopy::builder().size(state_size).build();
+        unsafe { device.cmd_copy_buffer(command_buffer, staging_buffer, state_buffer, &[state_copy]) };
+        let gate_copy = vk::BufferCopy::builder().size(gate_size).build();
+        unsafe { device.cmd_copy_buffer(command_buffer, gate_staging_buffer, gate_buffer, &[gate_copy]) };
+        let indices_copy = vk::BufferCopy::builder().size(indices_size).build();
+        unsafe { device.cmd_copy_buffer(command_buffer, indices_staging_buffer, indices_buffer, &[indices_copy]) };
+
+        // Barrier transfer to compute
+        let barrier = vk::MemoryBarrier::builder()
+            .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
+            .dst_access_mask(vk::AccessFlags::SHADER_READ | vk::AccessFlags::SHADER_WRITE)
+            .build();
+        unsafe { device.cmd_pipeline_barrier(
+            command_buffer,
+            vk::PipelineStageFlags::TRANSFER,
+            vk::PipelineStageFlags::COMPUTE_SHADER,
+            vk::DependencyFlags::empty(),
+            &[barrier],
+            &[],
+            &[],
+        ) };
+
+        // Bind and dispatch
         unsafe {
             device.cmd_bind_pipeline(command_buffer, vk::PipelineBindPoint::COMPUTE, compute_pipeline);
-            device.cmd_bind_descriptor_sets(
-                command_buffer,
-                vk::PipelineBindPoint::COMPUTE,
-                pipeline_layout,
-                0,
-                &[descriptor_set],
-                &[]
-            );
-            
-            // Calculate workgroup size
-            let workgroup_size = 256;
-            let num_workgroups = (amplitudes.len() + workgroup_size - 1) / workgroup_size;
-            
-            // Dispatch compute shader
-            device.cmd_dispatch(command_buffer, num_workgroups as u32, 1, 1);
-            
-            // End command buffer
-            device.end_command_buffer(command_buffer)
-                .map_err(|e| format!("Failed to end command buffer: {}", e))?;
-            
-            // Submit command buffer
-            let submit_info = vk::SubmitInfo::builder()
-                .command_buffers(&[command_buffer]);
-            
-            let fence_info = vk::FenceCreateInfo::builder();
-            let fence = device.create_fence(&fence_info, None)
-                .map_err(|e| format!("Failed to create fence: {}", e))?;
-            
-            device.queue_submit(context.compute_queue, &[submit_info.build()], fence)
-                .map_err(|e| format!("Failed to submit queue: {}", e))?;
-            
-            // Wait for computation to complete
-            device.wait_for_fences(&[fence], true, u64::MAX)
-                .map_err(|e| format!("Failed to wait for fence: {}", e))?;
-            
-            // Map and read back the results
-            let state_ptr = device.map_memory(
-                    state_memory,
-                    0,
-                    vk::WHOLE_SIZE,
-                    vk::MemoryMapFlags::empty()
-                )
-                .map_err(|e| format!("Failed to map state memory for reading: {}", e))?;
-            
-            std::ptr::copy_nonoverlapping(
-                state_ptr as *const u8,
-                amplitudes.as_mut_ptr() as *mut u8,
-                amplitudes.len() * size_of::<Complex64>()
-            );
-            
-            device.unmap_memory(state_memory);
-            
-            // Cleanup
-            device.destroy_fence(fence, None);
-            device.destroy_shader_module(shader_module, None);
-            device.destroy_pipeline(compute_pipeline, None);
-            device.destroy_pipeline_layout(pipeline_layout, None);
-            device.destroy_descriptor_set_layout(descriptor_set_layout, None);
-            device.destroy_descriptor_pool(descriptor_pool, None);
-            device.free_memory(indices_memory, None);
-            device.free_memory(gate_memory, None);
-            device.free_memory(state_memory, None);
-            device.destroy_buffer(indices_buffer, None);
-            device.destroy_buffer(gate_buffer, None);
-            device.destroy_buffer(state_buffer, None);
+            device.cmd_bind_descriptor_sets(command_buffer, vk::PipelineBindPoint::COMPUTE, pipeline_layout, 0, &[descriptor_set], &[]);
+            device.cmd_dispatch(command_buffer, (amplitudes.len() as u32 + 31) / 32, 1, 1);
         }
-        
+
+        // Barrier compute to transfer
+        let barrier2 = vk::MemoryBarrier::builder()
+            .src_access_mask(vk::AccessFlags::SHADER_WRITE)
+            .dst_access_mask(vk::AccessFlags::TRANSFER_READ)
+            .build();
+        unsafe { device.cmd_pipeline_barrier(
+            command_buffer,
+            vk::PipelineStageFlags::COMPUTE_SHADER,
+            vk::PipelineStageFlags::TRANSFER,
+            vk::DependencyFlags::empty(),
+            &[barrier2],
+            &[],
+            &[],
+        ) };
+
+        // Copy back state
+        unsafe { device.cmd_copy_buffer(command_buffer, state_buffer, staging_buffer, &[state_copy]) };
+
+        unsafe { device.end_command_buffer(command_buffer) }
+            .map_err(|e| format!("Failed to end command buffer: {}", e))?;
+
+        // Submit
+        let submit_info = vk::SubmitInfo::builder()
+            .command_buffers(&[command_buffer])
+            .build();
+        let fence_info = vk::FenceCreateInfo::builder().build();
+        let fence = unsafe { device.create_fence(&fence_info, None) }
+            .map_err(|e| format!("Failed to create fence: {}", e))?;
+        unsafe { device.queue_submit(context.compute_queue, &[submit_info], fence) }
+            .map_err(|e| format!("Failed to submit queue: {}", e))?;
+
+        // Wait
+        unsafe { device.wait_for_fences(&[fence], true, u64::MAX) }
+            .map_err(|e| format!("Failed to wait for fence: {}", e))?;
+
+        // Copy back from staging
+        let state_ptr = unsafe { device.map_memory(staging_memory, 0, state_size, vk::MemoryMapFlags::empty()) }
+            .map_err(|e| format!("Failed to map staging memory for reading: {}", e))?;
+        std::ptr::copy_nonoverlapping(state_ptr as *const u8, amplitudes.as_mut_ptr() as *mut u8, state_size as usize);
+        unsafe { device.unmap_memory(staging_memory) };
+
+        // Cleanup
+        unsafe { device.free_command_buffers(context.command_pool, &[command_buffer]) };
+        unsafe { device.destroy_fence(fence, None) };
+        unsafe { device.destroy_shader_module(shader_module, None) };
+        unsafe { device.destroy_pipeline(compute_pipeline, None) };
+        unsafe { device.destroy_pipeline_layout(pipeline_layout, None) };
+        unsafe { device.destroy_descriptor_set_layout(descriptor_set_layout, None) };
+        unsafe { device.destroy_descriptor_pool(descriptor_pool, None) };
+
+        unsafe { device.free_memory(indices_memory, None) };
+        unsafe { device.free_memory(gate_memory, None) };
+        unsafe { device.free_memory(state_memory, None) };
+        unsafe { device.destroy_buffer(indices_buffer, None) };
+        unsafe { device.destroy_buffer(gate_buffer, None) };
+        unsafe { device.destroy_buffer(state_buffer, None) };
+
+        unsafe { device.free_memory(indices_staging_memory, None) };
+        unsafe { device.free_memory(gate_staging_memory, None) };
+        unsafe { device.free_memory(staging_memory, None) };
+        unsafe { device.destroy_buffer(indices_staging_buffer, None) };
+        unsafe { device.destroy_buffer(gate_staging_buffer, None) };
+        unsafe { device.destroy_buffer(staging_buffer, None) };
+
         Ok(())
     }
     
@@ -1713,6 +2081,7 @@ pub struct VulkanContext {
     pub queue_family_index: u32,
     pub compute_queue: ash::vk::Queue,
     pub command_pool: ash::vk::CommandPool,
+    pub memory_properties: ash::vk::PhysicalDeviceMemoryProperties,
     pub descriptor_pool: ash::vk::DescriptorPool,
     pub descriptor_set_layout: ash::vk::DescriptorSetLayout,
     pub pipeline_layout: ash::vk::PipelineLayout,

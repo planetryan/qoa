@@ -1,12 +1,13 @@
 #version 450
+
 layout(local_size_x = 32, local_size_y = 1, local_size_z = 1) in;
 
-// state vector (complex numbers stored as pairs of floats)
+// State vector (complex numbers stored as pairs of floats)
 layout(std430, binding = 0) buffer StateVector {
     vec2 state[];
 };
 
-// gate parameters
+// Gate parameters
 layout(std140, binding = 1) uniform GateParams {
     uint gate_type;
     uint target_qubit;
@@ -17,16 +18,16 @@ layout(std140, binding = 1) uniform GateParams {
 void main() {
     uint gid = gl_GlobalInvocationID.x;
     uint state_size = 1u << params.num_qubits;
-
-    // return if index is out of bounds
+    
+    // Return if index is out of bounds
     if (gid >= state_size) {
         return;
     }
-
-    // check if the target qubit is 1 in this index
+    
+    // Check if the target qubit is 1 in this index
     uint mask = 1u << params.target_qubit;
     if ((gid & mask) != 0) {
-        // apply z gate: negate the amplitude
+        // Apply Z gate: negate the amplitude
         state[gid] = vec2(-state[gid].x, -state[gid].y);
     }
 }
