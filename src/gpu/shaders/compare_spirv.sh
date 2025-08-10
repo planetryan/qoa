@@ -1,23 +1,30 @@
 #!/bin/bash
 
-if [[ ! -f hadamard.spv ]]; then
-  echo "hadamard.spv not found!"
+if [[ $# -ne 2 ]]; then
+  echo "usage: $0 <original_shader.spv> <dumped_shader.spv>"
   exit 1
 fi
 
-if [[ ! -f dumped.spv ]]; then
-  echo "dumped.spv not found! Dump your loaded SPIR-V buffer first."
+original="$1"
+dumped="$2"
+
+if [[ ! -f "$original" ]]; then
+  echo "error: '$original' not found!"
   exit 1
 fi
 
-xxd hadamard.spv > hadamard_original.hex
+if [[ ! -f "$dumped" ]]; then
+  echo "error: '$dumped' not found! dump your loaded SPIR-V buffer first."
+  exit 1
+fi
 
-xxd dumped.spv > hadamard_dumped.hex
+xxd "$original" > original.hex
+xxd "$dumped" > dumped.hex
 
-diff hadamard_original.hex hadamard_dumped.hex
+diff original.hex dumped.hex
 
-echo "Byte differences (if any):"
+echo "byte differences (if any):"
+cmp -l "$original" "$dumped" || echo "no differences found."
 
-cmp -l hadamard.spv dumped.spv || echo "No differences found."
-
-# rm hadamard_original.hex hadamard_dumped.hex
+# cleanup
+# rm original.hex dumped.hex
