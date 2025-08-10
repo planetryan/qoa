@@ -1,7 +1,0 @@
-Instruction count: 0
-
-Original binary size:
--rw------- 1 rayan rayan 1,3K  8 d’ag.    20:08 /tmp/tmp.KkI8l8GOV2
-
-Optimized binary size:
--rw------- 1 rayan rayan 1,3K  8 d’ag.    20:08 /tmp/tmp.AtKYhi0kcq
