@@ -1,11 +1,3 @@
-; this qoa code implements a 26-qubit grover's algorithm,
-; a practical example for understanding the principles of quantum search.
-
-; it cannot decrypt real-world aes encryption due to fundamental limitations
-; and the immense scale required for such tasks.
-; a real aes decryption circuit would be vastly more complex and require
-; significantly more qubits and gate depth than this demonstration.
-
 ; --- parameters ---
 ; n=26: number of data qubits (representing a 26-bit key).
 ; secret key: for demonstration, the oracle logic is omitted.

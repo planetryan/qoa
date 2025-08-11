@@ -1,17 +1,19 @@
 #![feature(portable_simd)]
 #![feature(stdarch_x86_mm_shuffle)] // if not using x86_64, comment out this line!
 // if you get compiling errors on x86_64, enable this line!
-
+#[allow(unused_imports)]
 use std::borrow::Cow;
 
 #[allow(unused_imports)]
 use std::error::Error;
-
+#[allow(unused_imports)]
 use std::ffi::{c_char, c_void, CStr, CString};
 use std::fs::{self, File};
 use std::io::{self, BufRead, BufReader, Write};
+#[allow(unused_imports)]
 use std::mem;
 use std::path::PathBuf;
+#[allow(unused_imports)]
 use std::sync::Arc;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use crate::visualizer::SpectrumDirection;
