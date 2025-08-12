@@ -17,7 +17,7 @@
 I have created this guide for researchers, developers and students who will use QOA in practical applications. I have designed it to interact with quantum and/or optical systems in the same way classical RISC‑syntax based assembly could manipulate electrons in transistors. I hope whoever reads this guide finds it useful.
 
 *Sincerely,*  
-**Rayan**
+**Ryan**
 
 ---
 
@@ -332,4 +332,4 @@ HALT
 ### This is all for now. If you would like to follow development, please star the repository.
 
 ### Thanks for reading!
-### *— Rayan (@planetryan)*
+### *— Ryan (@planetryan)*
