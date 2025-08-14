@@ -2,14 +2,10 @@
 
 **THIS TODO LIST WILL DECREASE IN SIZE AS I FINISH IT**
 
-- Create quantum math library for all ISAS > ALMOST DONE
-- add multi-GPU support for quantum state simulation (via CUDA/OpenCL/Rust-CUDA, Vulkan, etc.) > NEEDS INTERGATION
+- add multi-GPU support for quantum state simulation (via CUDA/OpenCL/Rust-CUDA, Vulkan, etc.) > ALMOST DONE
 - add multi-threaded CPU+GPU coordination for hybrid workloads > STARTED NOT DONE
 
 - Design and implement distributed simulation across multiple systems > STARTED NOT DONE
-  - Include state vector partitioning logic
-  - Gate synchronization protocol between nodes
-  - MPI or custom TCP backend for inter-node communication
 
 - Add support for frame-sliced distributed rendering in QOA visualizer
   - Assign time or frame ranges per system

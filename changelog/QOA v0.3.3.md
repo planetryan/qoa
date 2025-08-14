@@ -48,5 +48,5 @@ QOA v0.3.3 adds expanded quantum computing math support, adds helpful debugging 
 
 **Thank you for using QOA.**
 
-— *Rayan*
+— *Ryan*
 

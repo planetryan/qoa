@@ -1,9 +1,9 @@
 #![allow(clippy::many_single_char_names)]
 
 #[cfg(feature = "vulkan")]
-use ash::{self, Device, Entry, Instance, vk};
-#[cfg(feature = "vulkan")]
 use ash::extensions::ext::DebugUtils;
+#[cfg(feature = "vulkan")]
+use ash::{self, Device, Entry, Instance, vk};
 #[cfg(feature = "vulkan")]
 use std::ffi::{CStr, c_void};
 #[cfg(feature = "vulkan")]
@@ -122,8 +122,9 @@ impl VulkanContext {
 
             println!("debug: available instance extensions:");
             for ext in &available_extensions {
-                let name =
-                    CStr::from_ptr(ext.extension_name.as_ptr()).to_str().unwrap_or("invalid");
+                let name = CStr::from_ptr(ext.extension_name.as_ptr())
+                    .to_str()
+                    .unwrap_or("invalid");
                 println!("  - {}", name);
             }
 
@@ -133,16 +134,20 @@ impl VulkanContext {
                 .map_err(|e| format!("failed to enumerate instance layers: {}", e))?;
             println!("debug: available instance layers:");
             for layer in &available_layers {
-                let name =
-                    CStr::from_ptr(layer.layer_name.as_ptr()).to_str().unwrap_or("invalid");
+                let name = CStr::from_ptr(layer.layer_name.as_ptr())
+                    .to_str()
+                    .unwrap_or("invalid");
                 println!("  - {}", name);
             }
 
             // validation layers (debug builds only)
             let validation_layers: Vec<&CStr> = if cfg!(debug_assertions) {
-                let requested =
-                    CStr::from_bytes_with_nul(b"VK_LAYER_KHRONOS_validation\0").map_err(|e| {
-                        format!("invalid validation layer name literal (shouldn't happen): {}", e)
+                let requested = CStr::from_bytes_with_nul(b"VK_LAYER_KHRONOS_validation\0")
+                    .map_err(|e| {
+                        format!(
+                            "invalid validation layer name literal (shouldn't happen): {}",
+                            e
+                        )
                     })?;
                 let has = available_layers.iter().any(|layer| {
                     let layer_name = CStr::from_ptr(layer.layer_name.as_ptr());
@@ -215,7 +220,10 @@ impl VulkanContext {
 
             // create instance
             println!("debug: creating vulkan instance...");
-            println!("debug: using {} validation layers", validation_layer_pointers.len());
+            println!(
+                "debug: using {} validation layers",
+                validation_layer_pointers.len()
+            );
             println!("debug: using {} extensions", extension_pointers.len());
 
             let create_info = vk::InstanceCreateInfo::builder()
@@ -231,39 +239,37 @@ impl VulkanContext {
 
             // debug messenger (debug builds)
             #[cfg(debug_assertions)]
-            let (debug_utils, debug_messenger) = if !validation_layers.is_empty() && extension_pointers.len() > 0
-            {
-                println!("debug: setting up debug messenger...");
-                let debug_utils = DebugUtils::new(&entry, &instance);
-                let create_info = vk::DebugUtilsMessengerCreateInfoEXT::builder()
-                    .message_severity(
-                        vk::DebugUtilsMessageSeverityFlagsEXT::ERROR
-                            | vk::DebugUtilsMessageSeverityFlagsEXT::WARNING,
-                    )
-                    .message_type(
-                        vk::DebugUtilsMessageTypeFlagsEXT::GENERAL
-                            | vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION
-                            | vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE,
-                    )
-                    .pfn_user_callback(Some(vulkan_debug_callback));
-                let debug_messenger = debug_utils
-                    .create_debug_utils_messenger(&create_info, None)
-                    .map_err(|e| format!("failed to set up debug messenger: {}", e))?;
-                println!("debug: debug messenger created successfully");
-                (Some(debug_utils), debug_messenger)
-            } else {
-                println!("debug: skipping debug messenger setup");
-                (None, vk::DebugUtilsMessengerEXT::null())
-            };
+            let (debug_utils, debug_messenger) =
+                if !validation_layers.is_empty() && extension_pointers.len() > 0 {
+                    println!("debug: setting up debug messenger...");
+                    let debug_utils = DebugUtils::new(&entry, &instance);
+                    let create_info = vk::DebugUtilsMessengerCreateInfoEXT::builder()
+                        .message_severity(
+                            vk::DebugUtilsMessageSeverityFlagsEXT::ERROR
+                                | vk::DebugUtilsMessageSeverityFlagsEXT::WARNING,
+                        )
+                        .message_type(
+                            vk::DebugUtilsMessageTypeFlagsEXT::GENERAL
+                                | vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION
+                                | vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE,
+                        )
+                        .pfn_user_callback(Some(vulkan_debug_callback));
+                    let debug_messenger = debug_utils
+                        .create_debug_utils_messenger(&create_info, None)
+                        .map_err(|e| format!("failed to set up debug messenger: {}", e))?;
+                    println!("debug: debug messenger created successfully");
+                    (Some(debug_utils), debug_messenger)
+                } else {
+                    println!("debug: skipping debug messenger setup");
+                    (None, vk::DebugUtilsMessengerEXT::null())
+                };
 
             // enumerate devices
             println!("debug: enumerating physical devices...");
-            let physical_devices = instance
-                .enumerate_physical_devices()
-                .map_err(|e| {
-                    eprintln!("error: failed to enumerate physical devices: {}", e);
-                    format!("failed to enumerate physical devices: {}", e)
-                })?;
+            let physical_devices = instance.enumerate_physical_devices().map_err(|e| {
+                eprintln!("error: failed to enumerate physical devices: {}", e);
+                format!("failed to enumerate physical devices: {}", e)
+            })?;
 
             if physical_devices.is_empty() {
                 return Err("no vulkan-compatible devices found".to_string());
@@ -289,7 +295,11 @@ impl VulkanContext {
                 let _device_extensions = instance
                     .enumerate_device_extension_properties(device)
                     .map_err(|e| format!("failed to enumerate device extensions: {}", e))?;
-                println!("debug: device {} has {} extensions", i, _device_extensions.len());
+                println!(
+                    "debug: device {} has {} extensions",
+                    i,
+                    _device_extensions.len()
+                );
             }
 
             let physical_device = physical_devices
@@ -312,7 +322,10 @@ impl VulkanContext {
                 return Err("no queue families found".to_string());
             }
 
-            println!("debug: found {} queue families", queue_family_properties.len());
+            println!(
+                "debug: found {} queue families",
+                queue_family_properties.len()
+            );
             for (i, props) in queue_family_properties.iter().enumerate() {
                 println!(
                     "debug: queue family {}: flags={:?}, count={}",
@@ -341,13 +354,14 @@ impl VulkanContext {
             let mut dynamic_indexing_supported = false;
 
             // use stable literals for device extension names
-            let maintenance3_name =
-                CStr::from_bytes_with_nul(b"VK_KHR_maintenance3\0").map_err(|e| {
-                    format!("invalid extension name literal (maintenance3): {}", e)
-                })?;
+            let maintenance3_name = CStr::from_bytes_with_nul(b"VK_KHR_maintenance3\0")
+                .map_err(|e| format!("invalid extension name literal (maintenance3): {}", e))?;
             let descriptor_indexing_name =
                 CStr::from_bytes_with_nul(b"VK_EXT_descriptor_indexing\0").map_err(|e| {
-                    format!("invalid extension name literal (descriptor_indexing): {}", e)
+                    format!(
+                        "invalid extension name literal (descriptor_indexing): {}",
+                        e
+                    )
                 })?;
 
             let has_maintenance3 = available_device_extensions.iter().any(|ext| {
@@ -371,7 +385,9 @@ impl VulkanContext {
             }
 
             if !dynamic_indexing_supported {
-                return Err("required extension VK_EXT_descriptor_indexing not available".to_string());
+                return Err(
+                    "required extension VK_EXT_descriptor_indexing not available".to_string(),
+                );
             }
 
             println!(
@@ -391,16 +407,21 @@ impl VulkanContext {
             println!("debug: requesting device features...");
 
             // Feature structure for descriptor indexing
-            let mut dynamic_indexing_features = vk::PhysicalDeviceDescriptorIndexingFeaturesEXT::builder()
-                .shader_storage_buffer_array_non_uniform_indexing(dynamic_indexing_supported)
-                .shader_uniform_buffer_array_non_uniform_indexing(dynamic_indexing_supported)
-                .shader_storage_texel_buffer_array_non_uniform_indexing(dynamic_indexing_supported)
-                .shader_uniform_texel_buffer_array_non_uniform_indexing(dynamic_indexing_supported)
-                .descriptor_binding_uniform_buffer_update_after_bind(true)
-                .descriptor_binding_storage_buffer_update_after_bind(true)
-                .descriptor_binding_partially_bound(true)
-                .descriptor_binding_variable_descriptor_count(true)
-                .runtime_descriptor_array(true);
+            let mut dynamic_indexing_features =
+                vk::PhysicalDeviceDescriptorIndexingFeaturesEXT::builder()
+                    .shader_storage_buffer_array_non_uniform_indexing(dynamic_indexing_supported)
+                    .shader_uniform_buffer_array_non_uniform_indexing(dynamic_indexing_supported)
+                    .shader_storage_texel_buffer_array_non_uniform_indexing(
+                        dynamic_indexing_supported,
+                    )
+                    .shader_uniform_texel_buffer_array_non_uniform_indexing(
+                        dynamic_indexing_supported,
+                    )
+                    .descriptor_binding_uniform_buffer_update_after_bind(true)
+                    .descriptor_binding_storage_buffer_update_after_bind(true)
+                    .descriptor_binding_partially_bound(true)
+                    .descriptor_binding_variable_descriptor_count(true)
+                    .runtime_descriptor_array(true);
 
             let mut features2 = vk::PhysicalDeviceFeatures2::builder();
             features2 = features2.push_next(&mut dynamic_indexing_features);
@@ -488,8 +509,13 @@ impl VulkanContext {
     // query device limits + descriptor indexing props
     pub fn query_device_limits(
         &self,
-    ) -> Result<(vk::PhysicalDeviceLimits, vk::PhysicalDeviceDescriptorIndexingPropertiesEXT), String>
-    {
+    ) -> Result<
+        (
+            vk::PhysicalDeviceLimits,
+            vk::PhysicalDeviceDescriptorIndexingPropertiesEXT,
+        ),
+        String,
+    > {
         unsafe {
             let mut descriptor_indexing_properties =
                 vk::PhysicalDeviceDescriptorIndexingPropertiesEXT::builder();
@@ -507,7 +533,10 @@ impl VulkanContext {
                 props2.properties.limits.max_push_constants_size
             );
 
-            Ok((props2.properties.limits, descriptor_indexing_properties.build()))
+            Ok((
+                props2.properties.limits,
+                descriptor_indexing_properties.build(),
+            ))
         }
     }
 }
@@ -519,7 +548,8 @@ impl Drop for VulkanContext {
             println!("debug: dropping vulkancontext...");
 
             // teardown in reverse order
-            self.device.destroy_descriptor_pool(self.descriptor_pool, None);
+            self.device
+                .destroy_descriptor_pool(self.descriptor_pool, None);
             self.device.destroy_command_pool(self.command_pool, None);
             self.device.destroy_device(None);
 

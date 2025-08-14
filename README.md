@@ -14,6 +14,13 @@
 
 ---
 
+## Community
+
+Join my Discord server to discuss QOA, get updates, or ask questions:  
+[**QOA Discord Server**](https://discord.gg/W8HQdxmMG8)
+
+---
+
 I have created this guide for researchers, developers and students who will use QOA in practical applications. I have designed it to interact with quantum and/or optical systems in the same way classical RISC‑syntax based assembly could manipulate electrons in transistors. I hope whoever reads this guide finds it useful.
 
 *Sincerely,*  

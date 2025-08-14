@@ -170,10 +170,8 @@ impl VulkanContext {
                 .ok_or_else(|| "failed to find a graphics queue family".to_string())?;
 
             let device_extensions = [ash::extensions::khr::Swapchain::name()];
-            let device_extension_pointers: Vec<*const i8> = device_extensions
-                .iter()
-                .map(|&ext| ext.as_ptr())
-                .collect();
+            let device_extension_pointers: Vec<*const i8> =
+                device_extensions.iter().map(|&ext| ext.as_ptr()).collect();
 
             let queue_priorities = [1.0f32];
             // information for creating the device queue.

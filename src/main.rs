@@ -4,18 +4,6 @@
 #[allow(unused_imports)]
 use std::borrow::Cow;
 
-#[allow(unused_imports)]
-use std::error::Error;
-#[allow(unused_imports)]
-use std::ffi::{c_char, c_void, CStr, CString};
-use std::fs::{self, File};
-use std::io::{self, BufRead, BufReader, Write};
-#[allow(unused_imports)]
-use std::mem;
-use std::path::PathBuf;
-#[allow(unused_imports)]
-use std::sync::Arc;
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use crate::visualizer::SpectrumDirection;
 use clap::{Parser, Subcommand};
 use log::{debug, error, info, warn};
@@ -26,16 +14,28 @@ use rand::{Rng, SeedableRng};
 use rand_distr::StandardNormal;
 use rayon::prelude::*;
 use serde_json::to_writer_pretty;
+#[allow(unused_imports)]
+use std::error::Error;
+#[allow(unused_imports)]
+use std::ffi::{CStr, CString, c_char, c_void};
+use std::fs::{self, File};
+use std::io::{self, BufRead, BufReader, Write};
+#[allow(unused_imports)]
+use std::mem;
+use std::path::PathBuf;
+#[allow(unused_imports)]
+use std::sync::Arc;
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 // these are behind a feature flag
-#[cfg(feature = "vulkan")]
-use ash::{self, vk, Device, Entry, Instance};
 #[allow(unused_imports)]
 #[cfg(feature = "vulkan")]
 use ash::extensions::ext::DebugUtils;
 #[allow(unused_imports)]
 #[cfg(feature = "vulkan")]
-use ash::extensions::khr::{Maintenance3};
+use ash::extensions::khr::Maintenance3;
+#[cfg(feature = "vulkan")]
+use ash::{self, Device, Entry, Instance, vk};
 #[cfg(feature = "vulkan")]
 use num_complex::Complex64;
 
@@ -128,7 +128,9 @@ struct VulkanDescriptorSetLayout {
 impl Drop for VulkanDescriptorSetLayout {
     fn drop(&mut self) {
         unsafe {
-            self.context.device.destroy_descriptor_set_layout(self.layout, None);
+            self.context
+                .device
+                .destroy_descriptor_set_layout(self.layout, None);
         }
     }
 }
@@ -144,7 +146,9 @@ struct VulkanPipelineLayout {
 impl Drop for VulkanPipelineLayout {
     fn drop(&mut self) {
         unsafe {
-            self.context.device.destroy_pipeline_layout(self.layout, None);
+            self.context
+                .device
+                .destroy_pipeline_layout(self.layout, None);
         }
     }
 }
@@ -187,14 +191,16 @@ impl VulkanContext {
     pub fn new() -> Result<Arc<Self>, String> {
         unsafe {
             println!("debug: starting vulkancontext::new()");
-            
+
             // step 1: load vulkan entry
             println!("debug: loading vulkan entry...");
             let entry = Entry::load().map_err(|e| e.to_string())?;
-            
+
             // create app info for the vulkan instance
-            let app_name = CStr::from_bytes_with_nul(b"qoa quantum\0").map_err(|e| e.to_string())?;
-            let engine_name = CStr::from_bytes_with_nul(b"qoa engine\0").map_err(|e| e.to_string())?;
+            let app_name =
+                CStr::from_bytes_with_nul(b"qoa quantum\0").map_err(|e| e.to_string())?;
+            let engine_name =
+                CStr::from_bytes_with_nul(b"qoa engine\0").map_err(|e| e.to_string())?;
             let app_info = vk::ApplicationInfo::builder()
                 .application_name(app_name)
                 .application_version(vk::make_api_version(0, 0, 1, 0))
@@ -204,20 +210,16 @@ impl VulkanContext {
 
             // get required extensions
             let required_extensions = get_required_extensions().map_err(|e| e.to_string())?;
-            let extension_pointers: Vec<*const c_char> = required_extensions
-                .iter()
-                .map(|&s| s.as_ptr())
-                .collect();
-            
+            let extension_pointers: Vec<*const c_char> =
+                required_extensions.iter().map(|&s| s.as_ptr()).collect();
+
             // set up validation layers for debug mode
             #[cfg(debug_assertions)]
             let validation_layers = get_validation_layers().map_err(|e| e.to_string())?;
             #[cfg(debug_assertions)]
-            let validation_layer_pointers: Vec<*const c_char> = validation_layers
-                .iter()
-                .map(|&s| s.as_ptr())
-                .collect();
-            
+            let validation_layer_pointers: Vec<*const c_char> =
+                validation_layers.iter().map(|&s| s.as_ptr()).collect();
+
             // configure instance create info
             let mut create_info = vk::InstanceCreateInfo::builder()
                 .application_info(&app_info)
@@ -225,32 +227,45 @@ impl VulkanContext {
 
             #[cfg(debug_assertions)]
             {
-                create_info = create_info
-                    .enabled_layer_names(&validation_layer_pointers);
+                create_info = create_info.enabled_layer_names(&validation_layer_pointers);
             }
 
             // create the vulkan instance
-            let instance = entry.create_instance(&create_info, None).map_err(|e| e.to_string())?;
+            let instance = entry
+                .create_instance(&create_info, None)
+                .map_err(|e| e.to_string())?;
 
             // setup debug messenger for debug mode
             #[cfg(debug_assertions)]
             let (debug_utils, debug_messenger) = {
                 let debug_utils = ash::extensions::ext::DebugUtils::new(&entry, &instance);
                 let debug_messenger_create_info = vk::DebugUtilsMessengerCreateInfoEXT::builder()
-                    .message_severity(vk::DebugUtilsMessageSeverityFlagsEXT::ERROR | vk::DebugUtilsMessageSeverityFlagsEXT::WARNING | vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE)
-                    .message_type(vk::DebugUtilsMessageTypeFlagsEXT::GENERAL | vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION | vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE)
+                    .message_severity(
+                        vk::DebugUtilsMessageSeverityFlagsEXT::ERROR
+                            | vk::DebugUtilsMessageSeverityFlagsEXT::WARNING
+                            | vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE,
+                    )
+                    .message_type(
+                        vk::DebugUtilsMessageTypeFlagsEXT::GENERAL
+                            | vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION
+                            | vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE,
+                    )
                     .pfn_user_callback(Some(vulkan_debug_callback));
-                let debug_messenger = debug_utils.create_debug_utils_messenger(&debug_messenger_create_info, None).map_err(|e| e.to_string())?;
+                let debug_messenger = debug_utils
+                    .create_debug_utils_messenger(&debug_messenger_create_info, None)
+                    .map_err(|e| e.to_string())?;
                 (Some(debug_utils), debug_messenger)
             };
-            
+
             // find and select a suitable physical device
-            let physical_devices = instance.enumerate_physical_devices().map_err(|e| e.to_string())?;
+            let physical_devices = instance
+                .enumerate_physical_devices()
+                .map_err(|e| e.to_string())?;
             let physical_device = *physical_devices
                 .iter()
                 .find(|&device| is_device_suitable(&instance, *device))
                 .ok_or("no suitable physical device found".to_string())?;
-            
+
             // get queue family properties
             let queue_family_index = instance
                 .get_physical_device_queue_family_properties(physical_device)
@@ -266,21 +281,20 @@ impl VulkanContext {
                 .ok_or("no graphics queue family found".to_string())?;
 
             // get device extensions
-            let device_extensions = get_device_extensions(&instance, physical_device).map_err(|e| e.to_string())?;
-            let device_extension_pointers: Vec<*const c_char> = device_extensions
-                .iter()
-                .map(|&s| s.as_ptr())
-                .collect();
+            let device_extensions =
+                get_device_extensions(&instance, physical_device).map_err(|e| e.to_string())?;
+            let device_extension_pointers: Vec<*const c_char> =
+                device_extensions.iter().map(|&s| s.as_ptr()).collect();
 
             // configure device queue create info
             let queue_create_info = vk::DeviceQueueCreateInfo::builder()
                 .queue_family_index(queue_family_index)
                 .queue_priorities(&[1.0])
                 .build();
-            
+
             // get physical device features
             let physical_device_features = vk::PhysicalDeviceFeatures::builder();
-            
+
             // configure device create info
             let device_create_info = vk::DeviceCreateInfo::builder()
                 .queue_create_infos(&[queue_create_info])
@@ -289,15 +303,19 @@ impl VulkanContext {
                 .build();
 
             // create the logical device
-            let device = instance.create_device(physical_device, &device_create_info, None).map_err(|e| e.to_string())?;
+            let device = instance
+                .create_device(physical_device, &device_create_info, None)
+                .map_err(|e| e.to_string())?;
             let graphics_queue = device.get_device_queue(queue_family_index, 0);
 
             // create command pool
             let command_pool_create_info = vk::CommandPoolCreateInfo::builder()
                 .queue_family_index(queue_family_index)
                 .build();
-            let command_pool = device.create_command_pool(&command_pool_create_info, None).map_err(|e| e.to_string())?;
-            
+            let command_pool = device
+                .create_command_pool(&command_pool_create_info, None)
+                .map_err(|e| e.to_string())?;
+
             // create descriptor pool
             let descriptor_pool_size = vk::DescriptorPoolSize::builder()
                 .ty(vk::DescriptorType::STORAGE_BUFFER)
@@ -307,7 +325,9 @@ impl VulkanContext {
                 .pool_sizes(&[descriptor_pool_size])
                 .max_sets(1)
                 .build();
-            let descriptor_pool = device.create_descriptor_pool(&descriptor_pool_create_info, None).map_err(|e| e.to_string())?;
+            let descriptor_pool = device
+                .create_descriptor_pool(&descriptor_pool_create_info, None)
+                .map_err(|e| e.to_string())?;
 
             Ok(Arc::new(Self {
                 entry,
@@ -351,11 +371,7 @@ unsafe extern "system" fn vulkan_debug_callback(
 
     println!(
         "debug: {:?}: {:?} [{} ({})] : {}",
-        message_severity,
-        message_type,
-        message_id_name,
-        callback_data.message_id_number,
-        message,
+        message_severity, message_type, message_id_name, callback_data.message_id_number, message,
     );
 
     vk::FALSE
@@ -366,26 +382,27 @@ unsafe extern "system" fn vulkan_debug_callback(
 fn is_device_suitable(instance: &Instance, physical_device: vk::PhysicalDevice) -> bool {
     let properties = unsafe { instance.get_physical_device_properties(physical_device) };
     let _features = unsafe { instance.get_physical_device_features(physical_device) };
-    
+
     // accept any device type for now
     let suitable_type = matches!(
         properties.device_type,
-        vk::PhysicalDeviceType::DISCRETE_GPU 
-        | vk::PhysicalDeviceType::INTEGRATED_GPU 
-        | vk::PhysicalDeviceType::VIRTUAL_GPU
-        | vk::PhysicalDeviceType::CPU
+        vk::PhysicalDeviceType::DISCRETE_GPU
+            | vk::PhysicalDeviceType::INTEGRATED_GPU
+            | vk::PhysicalDeviceType::VIRTUAL_GPU
+            | vk::PhysicalDeviceType::CPU
     );
 
-    println!("debug: device suitability check - type: {:?}, suitable: {}", 
-             properties.device_type, suitable_type);
+    println!(
+        "debug: device suitability check - type: {:?}, suitable: {}",
+        properties.device_type, suitable_type
+    );
 
     suitable_type
 }
 
 // gets the required extensions
 #[cfg(feature = "vulkan")]
-fn get_required_extensions<'a>(
-) -> Result<Vec<&'a CStr>, String> {
+fn get_required_extensions<'a>() -> Result<Vec<&'a CStr>, String> {
     let mut extensions = vec![];
     #[cfg(debug_assertions)]
     {
@@ -396,13 +413,14 @@ fn get_required_extensions<'a>(
 
 // gets the required validation layers
 #[cfg(feature = "vulkan")]
-fn get_validation_layers<'a>(
-) -> Result<Vec<&'a CStr>, String> {
+fn get_validation_layers<'a>() -> Result<Vec<&'a CStr>, String> {
     let mut layers = vec![];
     #[cfg(debug_assertions)]
     {
-        layers.push(CStr::from_bytes_with_nul(b"VK_LAYER_KHRONOS_validation\0")
-            .map_err(|e| e.to_string())?);
+        layers.push(
+            CStr::from_bytes_with_nul(b"VK_LAYER_KHRONOS_validation\0")
+                .map_err(|e| e.to_string())?,
+        );
     }
     Ok(layers)
 }
@@ -413,11 +431,10 @@ fn get_device_extensions(
     instance: &Instance,
     physical_device: vk::PhysicalDevice,
 ) -> Result<Vec<&'static std::ffi::CStr>, String> {
-
     // fallback: use the canonical Vulkan extension name literals so this
     // doesn't break against different ash versions.
-    let maintenance3_name = CStr::from_bytes_with_nul(b"VK_KHR_maintenance3\0")
-        .expect("embedded CStr missing nul");
+    let maintenance3_name =
+        CStr::from_bytes_with_nul(b"VK_KHR_maintenance3\0").expect("embedded CStr missing nul");
     let descriptor_indexing_name = CStr::from_bytes_with_nul(b"VK_EXT_descriptor_indexing\0")
         .expect("embedded CStr missing nul");
 
@@ -449,18 +466,18 @@ fn get_device_extensions(
     Ok(extensions)
 }
 
-
 #[cfg(feature = "vulkan")]
 impl Drop for VulkanContext {
     fn drop(&mut self) {
         unsafe {
             println!("debug: dropping vulkancontext...");
-            
+
             // drop resources in reverse order of creation
-            self.device.destroy_descriptor_pool(self.descriptor_pool, None);
+            self.device
+                .destroy_descriptor_pool(self.descriptor_pool, None);
             self.device.destroy_command_pool(self.command_pool, None);
             self.device.destroy_device(None);
-            
+
             #[cfg(debug_assertions)]
             {
                 if let Some(ref debug_utils) = self.debug_utils {
@@ -469,7 +486,7 @@ impl Drop for VulkanContext {
                     }
                 }
             }
-            
+
             self.instance.destroy_instance(None);
             println!("debug: vulkancontext dropped successfully");
         }
@@ -920,9 +937,11 @@ fn run_compute_shader(
             .begin_command_buffer(command_buffer, &command_buffer_begin_info)
             .map_err(|e| format!("failed to begin command buffer: {}", e))?;
 
-        context
-            .device
-            .cmd_bind_pipeline(command_buffer, vk::PipelineBindPoint::COMPUTE, pipeline.pipeline);
+        context.device.cmd_bind_pipeline(
+            command_buffer,
+            vk::PipelineBindPoint::COMPUTE,
+            pipeline.pipeline,
+        );
         context.device.cmd_bind_descriptor_sets(
             command_buffer,
             vk::PipelineBindPoint::COMPUTE,
@@ -983,7 +1002,12 @@ fn vulkan_apply_gate_in_place(
         // map memory and copy data for state buffer
         let mapped_ptr = context
             .device
-            .map_memory(state_buffer.memory, 0, vk::WHOLE_SIZE, vk::MemoryMapFlags::empty())
+            .map_memory(
+                state_buffer.memory,
+                0,
+                vk::WHOLE_SIZE,
+                vk::MemoryMapFlags::empty(),
+            )
             .map_err(|e| format!("failed to map memory: {}", e))?;
         std::ptr::copy_nonoverlapping(
             quantum_state_amps.as_ptr(),
@@ -1094,7 +1118,12 @@ fn initialize_gpu_benchmark(
         unsafe {
             let mapped_ptr = context
                 .device
-                .map_memory(gate_buffer.memory, 0, vk::WHOLE_SIZE, vk::MemoryMapFlags::empty())
+                .map_memory(
+                    gate_buffer.memory,
+                    0,
+                    vk::WHOLE_SIZE,
+                    vk::MemoryMapFlags::empty(),
+                )
                 .map_err(|e| format!("failed to map memory: {}", e))?;
             std::ptr::copy_nonoverlapping(
                 hadamard_gate_matrix.as_ptr(),
@@ -1115,13 +1144,13 @@ fn initialize_gpu_benchmark(
         debug!("Allocating descriptor sets...");
         let descriptor_sets = unsafe {
             context
-            .device
-            .allocate_descriptor_sets(
-                &vk::DescriptorSetAllocateInfo::builder()
-                    .descriptor_pool(context.descriptor_pool)
-                    .set_layouts(&[descriptor_set_layout.layout]),
-            )
-            .map_err(|e| format!("failed to allocate descriptor sets: {}", e))?
+                .device
+                .allocate_descriptor_sets(
+                    &vk::DescriptorSetAllocateInfo::builder()
+                        .descriptor_pool(context.descriptor_pool)
+                        .set_layouts(&[descriptor_set_layout.layout]),
+                )
+                .map_err(|e| format!("failed to allocate descriptor sets: {}", e))?
         };
         if descriptor_sets.is_empty() {
             return Err("failed to allocate descriptor sets: none were returned".to_string());
@@ -1333,7 +1362,12 @@ fn gpu_cli_main(qubits: u32, qubit_index: u32) -> Result<(), String> {
         unsafe {
             let mapped_ptr = context_arc
                 .device
-                .map_memory(gate_buffer.memory, 0, vk::WHOLE_SIZE, vk::MemoryMapFlags::empty())
+                .map_memory(
+                    gate_buffer.memory,
+                    0,
+                    vk::WHOLE_SIZE,
+                    vk::MemoryMapFlags::empty(),
+                )
                 .map_err(|e| format!("failed to map memory: {}", e))?;
             std::ptr::copy_nonoverlapping(
                 hadamard_gate_matrix.as_ptr(),
@@ -1350,13 +1384,13 @@ fn gpu_cli_main(qubits: u32, qubit_index: u32) -> Result<(), String> {
 
         let descriptor_sets = unsafe {
             context_arc
-            .device
-            .allocate_descriptor_sets(
-                &vk::DescriptorSetAllocateInfo::builder()
-                    .descriptor_pool(context_arc.descriptor_pool)
-                    .set_layouts(&[descriptor_set_layout.layout]),
-            )
-            .map_err(|e| format!("failed to allocate descriptor sets: {}", e))?
+                .device
+                .allocate_descriptor_sets(
+                    &vk::DescriptorSetAllocateInfo::builder()
+                        .descriptor_pool(context_arc.descriptor_pool)
+                        .set_layouts(&[descriptor_set_layout.layout]),
+                )
+                .map_err(|e| format!("failed to allocate descriptor sets: {}", e))?
         };
         let descriptor_set = descriptor_sets[0];
         update_descriptor_set(
@@ -1410,7 +1444,7 @@ fn get_device_name_from_context(context: &VulkanContext) -> String {
 
 #[cfg(feature = "vulkan")]
 fn get_gpu_device_name() -> Option<String> {
-    use ash::{vk, Entry};
+    use ash::{Entry, vk};
     use std::ffi::CStr;
 
     // try to get gpu name via vulkan.
@@ -1476,7 +1510,6 @@ fn get_gpu_device_name() -> Option<String> {
     None
 }
 
-
 // -- NON GPU STUFF BEGINS HERE ---
 
 #[global_allocator]
@@ -1495,7 +1528,7 @@ const XEXE: &[u8; 4] = b"XEXE";
 const QX: &[u8; 4] = b"QX\0\0";
 
 const QOA_VERSION: &str = "0.3.4";
-const QOA_AUTHOR: &str = "Rayan (@planetryan on github)";
+const QOA_AUTHOR: &str = "Ryan (@planetryan on github)";
 
 #[derive(Parser, Debug)]
 #[command(name = "qoa", author = QOA_AUTHOR, version = QOA_VERSION,
@@ -1623,7 +1656,6 @@ enum Commands {
     // Show available flags
     Flags,
 }
-
 
 // helper function to parse resolution string
 #[allow(dead_code)]

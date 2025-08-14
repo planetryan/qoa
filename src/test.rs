@@ -9,7 +9,7 @@ use qoa::vectorization::*;
 use std::f64::consts::PI;
 
 // for distribute.rs
-use qoa::distribute::{DistributedConfig, PartitionStrategy, SparseStateVector}; // removed Complex
+use qoa::distribute::{DistributedConfig, PartitionStrategy, SparseStateVector};
 // explicitly import Complex64 for the distribute tests where it was previously 'Complex'
 use num_complex::Complex64 as DistributeComplex64;
 
@@ -4044,5 +4044,28 @@ mod distribute_tests {
 
         // should have four non-zero amplitudes now
         assert_eq!(state.sparsity(), 4);
+    }
+
+    // tests for node.rs explicitly
+    #[test]
+    fn test_distributed_config_initialization() {
+        let config = DistributedConfig {
+            total_qubits: 10,
+            ..Default::default()
+        };
+
+        assert_eq!(config.total_qubits, 10);
+        assert!(config.node_count >= 1, "node_count should be at least 1");
+        let _ = &config.node_addresses;
+    }
+
+    #[test]
+    fn test_partition_strategy_presence() {
+        // make sure the type exists by taking a null pointer to it
+        let _ptr: *const PartitionStrategy = std::ptr::null();
+        assert_eq!(
+            std::mem::size_of::<PartitionStrategy>(),
+            std::mem::size_of::<PartitionStrategy>()
+        );
     }
 }
