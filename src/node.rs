@@ -18,6 +18,25 @@ use mio::{Events, Interest, Poll, Token};
 #[cfg(feature = "profile")]
 use pprof::ProfilerGuard;
 
+#[cfg(feature = "mpi")]
+use mpi::prelude::*;
+
+// For Vulkan
+use vulkano::{
+    buffer::{Buffer, BufferCreateInfo, BufferUsage},
+    command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, PrimaryAutoCommandBuffer},
+    descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet},
+    device::{Device, DeviceCreateInfo, Queue, QueueCreateInfo, physical::{PhysicalDevice, PhysicalDeviceType}},
+    instance::{Instance, InstanceCreateInfo},
+    memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator, StandardDescriptorSetAllocator},
+    pipeline::{ComputePipeline, Pipeline, PipelineBindPoint, PipelineLayout, PipelineShaderStageCreateInfo, compute::ComputePipelineCreateInfo},
+    sync::{self, GpuFuture},
+    VulkanLibrary,
+};
+use vulkano::descriptor_set::allocator::StandardDescriptorSetAllocator;
+use vulkano::command_buffer::allocator::StandardCommandBufferAllocator;
+use vulkano::pipeline::layout::PipelineDescriptorSetLayoutCreateInfo;
+
 // configuration for the distributed simulation with network optimizations
 pub struct DistributedConfig {
     // number of qubits in the simulation
@@ -69,6 +88,8 @@ pub struct DistributedConfig {
     pub ip_tos: u8,
     // enable tcp fast open
     pub tcp_fast_open: bool,
+    // enable hybrid computing (GPU/CPU/DPU/TPU)
+    pub use_hybrid_computing: bool,
 }
 
 impl Default for DistributedConfig {
@@ -99,6 +120,7 @@ impl Default for DistributedConfig {
             use_io_uring: true,
             ip_tos: 0x10, // low delay tos
             tcp_fast_open: true,
+            use_hybrid_computing: false,
         }
     }
 }
@@ -510,7 +532,7 @@ impl OptimizedConnection {
 pub struct DistributedSimulation {
     config: DistributedConfig,
     // local partition of the state vector
-    local_state: Arc<PLRwLock<StateVector>>, // optimization: changed to use soa statevector
+    local_state: Arc<PLRwLock<StateVector>>,
     // maps global qubit indices to node ids
     qubit_mapping: HashMap<usize, usize>,
     // optimized connections for tcp mode
@@ -544,6 +566,46 @@ pub struct DistributedSimulation {
     node_status: Arc<NodeStatusTracker>,
     // heartbeat manager
     heartbeat_manager: Arc<HeartbeatManager>,
+    // Vulkan context
+    vulkan_device: Option<Arc<Device>>,
+    vulkan_queue: Option<Arc<Queue>>,
+    vulkan_memory_allocator: Option<Arc<StandardMemoryAllocator>>,
+    vulkan_descriptor_set_allocator: Option<Arc<StandardDescriptorSetAllocator>>,
+    vulkan_command_buffer_allocator: Option<Arc<StandardCommandBufferAllocator>>,
+    #[cfg(feature = "mpi")]
+    mpi_world: Option<SystemCommunicator>,
+}
+
+// Shader module
+mod cs {
+    vulkano_shaders::shader!{
+        ty: "compute",
+        src: r"
+#version 460
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+layout(set = 0, binding = 0) buffer ReData {
+    float data[];
+} re_buf;
+
+layout(set = 0, binding = 1) buffer ImData {
+    float data[];
+} im_buf;
+
+layout(set = 0, binding = 2) buffer OutputData {
+    uvec4 data[];
+} out_buf;
+
+void main() {
+    uint idx = gl_GlobalInvocationID.x;
+    float re = re_buf.data[idx];
+    float im = im_buf.data[idx];
+    float prob = re * re + im * im;
+    uint intensity = uint(min(prob, 1.0) * 255.0);
+    out_buf.data[idx] = uvec4(intensity, intensity, intensity, 255u);
+}
+        "
+    }
 }
 
 // network performance metrics
@@ -593,7 +655,7 @@ struct HeartbeatManager {
 struct MemoryManager {
     max_memory: usize,
     current_usage: Arc<AtomicUsize>,
-    cached_states: PLRwLock<HashMap<usize, StateVector>>, // optimization: changed to use soa statevector
+    cached_states: PLRwLock<HashMap<usize, StateVector>>,
     numa_regions: Vec<NumaRegion>,
     allocator: Option<Arc<CustomAllocator>>,
 }
@@ -664,6 +726,28 @@ pub struct Complex {
     imag: f64,
 }
 
+impl Complex {
+    #[inline(always)]
+    fn new(real: f64, imag: f64) -> Self {
+        Self { real, imag }
+    }
+    
+    #[inline(always)]
+    fn zero() -> Self {
+        Self { real: 0.0, imag: 0.0 }
+    }
+    
+    #[inline(always)]
+    fn one() -> Self {
+        Self { real: 1.0, imag: 0.0 }
+    }
+    
+    #[inline(always)]
+    fn abs_squared(&self) -> f64 {
+        self.real * self.real + self.imag * self.imag
+    }
+}
+
 // optimization: use a struct-of-arrays (soa) layout for the state vector.
 // this improves cache performance and is more amenable to simd operations,
 // as real and imaginary components are stored in contiguous memory blocks.
@@ -697,29 +781,6 @@ impl StateVector {
     }
 }
 
-
-impl Complex {
-    #[inline(always)]
-    fn new(real: f64, imag: f64) -> Self {
-        Self { real, imag }
-    }
-    
-    #[inline(always)]
-    fn zero() -> Self {
-        Self { real: 0.0, imag: 0.0 }
-    }
-    
-    #[inline(always)]
-    fn one() -> Self {
-        Self { real: 1.0, imag: 0.0 }
-    }
-    
-    #[inline(always)]
-    fn abs_squared(&self) -> f64 {
-        self.real * self.real + self.imag * self.imag
-    }
-}
-
 // internal barrier state for synchronization
 struct BarrierState {
     count: AtomicUsize,
@@ -728,7 +789,7 @@ struct BarrierState {
 }
 
 impl DistributedSimulation {
-    // create a new distributed simulation with extreme network optimizations
+    // create a new distributed simulation with network optimizations
     pub fn new(config: DistributedConfig) -> Result<Self, String> {
         let num_nodes = config.nodes.len();
         if num_nodes == 0 {
@@ -795,6 +856,51 @@ impl DistributedSimulation {
             }
         }
         
+        let (vulkan_device, vulkan_queue, vulkan_memory_allocator, vulkan_descriptor_set_allocator, vulkan_command_buffer_allocator) = if config.use_hybrid_computing {
+            let library = VulkanLibrary::new().map_err(|e| format!("failed to load Vulkan library: {}", e))?;
+            let instance = Instance::new(library, InstanceCreateInfo::default()).map_err(|e| format!("failed to create Vulkan instance: {}", e))?;
+            let physical_device = instance
+                .enumerate_physical_devices()
+                .map_err(|e| format!("failed to enumerate physical devices: {}", e))?
+                .min_by_key(|p| match p.properties().device_type {
+                    PhysicalDeviceType::DiscreteGpu => 0,
+                    PhysicalDeviceType::IntegratedGpu => 1,
+                    PhysicalDeviceType::Cpu => 2,
+                    _ => 3,
+                }).ok_or("no Vulkan physical device found".to_string())?;
+            let queue_family_index = physical_device
+                .queue_family_properties()
+                .iter()
+                .enumerate()
+                .position(|(_, q)| q.queue_flags.compute)
+                .ok_or("no compute queue family found".to_string())? as u32;
+            let (device, mut queues) = Device::new(
+                physical_device,
+                DeviceCreateInfo {
+                    queue_create_infos: vec![QueueCreateInfo {
+                        queue_family_index,
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                },
+            ).map_err(|e| format!("failed to create Vulkan device: {}", e))?;
+            let queue = queues.next().ok_or("no Vulkan queue created".to_string())?;
+            let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
+            let descriptor_set_allocator = Arc::new(StandardDescriptorSetAllocator::new(device.clone(), Default::default()));
+            let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(device.clone(), Default::default()));
+            (Some(Arc::new(device)), Some(Arc::new(queue)), Some(memory_allocator), Some(descriptor_set_allocator), Some(command_buffer_allocator))
+        } else {
+            (None, None, None, None, None)
+        };
+        
+        #[cfg(feature = "mpi")]
+        let mpi_world = if matches!(config.backend, CommunicationBackend::MPI) {
+            let universe = mpi::initialize().map_err(|e| format!("MPI init failed: {}", e))?;
+            Some(universe.world())
+        } else {
+            None
+        };
+
         let mut sim = DistributedSimulation {
             config,
             local_state: Arc::new(PLRwLock::new(StateVector::new(local_state_size))),
@@ -839,6 +945,13 @@ impl DistributedSimulation {
             }),
             node_status,
             heartbeat_manager,
+            vulkan_device,
+            vulkan_queue,
+            vulkan_memory_allocator,
+            vulkan_descriptor_set_allocator,
+            vulkan_command_buffer_allocator,
+            #[cfg(feature = "mpi")]
+            mpi_world,
         };
         
         // initialize the qubit mapping (which qubit is on which node)
@@ -1178,6 +1291,12 @@ impl DistributedSimulation {
             let result_tx = self.result_tx.as_ref().unwrap().clone();
             let local_state = Arc::clone(&self.local_state);
             let steal_queues_clone = Arc::clone(&steal_queues);
+            let vulkan_device = self.vulkan_device.clone();
+            let vulkan_queue = self.vulkan_queue.clone();
+            let vulkan_memory_allocator = self.vulkan_memory_allocator.clone();
+            let vulkan_descriptor_set_allocator = self.vulkan_descriptor_set_allocator.clone();
+            let vulkan_command_buffer_allocator = self.vulkan_command_buffer_allocator.clone();
+            let use_hybrid = self.config.use_hybrid_computing;
             
             let handle = thread::Builder::new()
                 .name(format!("render-worker-{}", worker_id))
@@ -1198,6 +1317,12 @@ impl DistributedSimulation {
                         result_tx,
                         local_state,
                         steal_queues_clone,
+                        vulkan_device,
+                        vulkan_queue,
+                        vulkan_memory_allocator,
+                        vulkan_descriptor_set_allocator,
+                        vulkan_command_buffer_allocator,
+                        use_hybrid,
                     );
                 })
                 .map_err(|e| format!("failed to spawn worker thread: {}", e))?;
@@ -1209,17 +1334,23 @@ impl DistributedSimulation {
         Ok(())
     }
     
-    // worker thread function for rendering with work stealing
+    // worker thread function for rendering with work stealing and hybrid computing
     fn render_worker_loop_with_stealing(
         worker_id: usize,
         work_rx: Arc<PLMutex<Receiver<RenderWorkItem>>>,
         result_tx: Sender<RenderChunk>,
         local_state: Arc<PLRwLock<StateVector>>,
         steal_queues: Arc<PLRwLock<Vec<(cb::Sender<RenderWorkItem>, cb::Receiver<RenderWorkItem>)>>>,
+        vulkan_device: Option<Arc<Device>>,
+        vulkan_queue: Option<Arc<Queue>>,
+        vulkan_memory_allocator: Option<Arc<StandardMemoryAllocator>>,
+        vulkan_descriptor_set_allocator: Option<Arc<StandardDescriptorSetAllocator>>,
+        vulkan_command_buffer_allocator: Option<Arc<StandardCommandBufferAllocator>>,
+        use_hybrid: bool,
     ) {
-        log::info!("render worker {} started with work stealing", worker_id);
+        log::info!("render worker {} started with work stealing and hybrid computing: {}", worker_id, use_hybrid);
         
-        let (_our_send, our_recv) = {
+        let (our_send, our_recv) = {
             let queues = steal_queues.read();
             queues[worker_id].clone()
         };
@@ -1248,7 +1379,7 @@ impl DistributedSimulation {
                 }
                 
                 let mut result_buffer = Vec::new(); // buffer is local to the task
-                Self::process_work_item(worker_id, work_item, &mut result_buffer, &local_state, &result_tx);
+                Self::process_work_item(worker_id, work_item, &mut result_buffer, &local_state, &result_tx, vulkan_device.as_ref(), vulkan_queue.as_ref(), vulkan_memory_allocator.as_ref(), vulkan_descriptor_set_allocator.as_ref(), vulkan_command_buffer_allocator.as_ref(), use_hybrid);
             } else {
                 // if no work is found, yield to avoid busy-waiting
                 thread::yield_now();
@@ -1256,13 +1387,19 @@ impl DistributedSimulation {
         }
     }
     
-    // process a single work item
+    // process a single work item with hybrid computing support
     fn process_work_item(
         worker_id: usize,
         work_item: RenderWorkItem,
         result_buffer: &mut Vec<u8>,
         local_state: &Arc<PLRwLock<StateVector>>,
         result_tx: &Sender<RenderChunk>,
+        vulkan_device: Option<&Arc<Device>>,
+        vulkan_queue: Option<&Arc<Queue>>,
+        vulkan_memory_allocator: Option<&Arc<StandardMemoryAllocator>>,
+        vulkan_descriptor_set_allocator: Option<&Arc<StandardDescriptorSetAllocator>>,
+        vulkan_command_buffer_allocator: Option<&Arc<StandardCommandBufferAllocator>>,
+        use_hybrid: bool,
     ) {
         let start_time = Instant::now();
         log::debug!("worker {} processing range {}..{}", worker_id, work_item.start_idx, work_item.end_idx);
@@ -1270,13 +1407,15 @@ impl DistributedSimulation {
         result_buffer.clear();
         {
             let state = local_state.read();
-            Self::render_state_segment_optimized(
-                &state, 
-                work_item.start_idx, 
-                work_item.end_idx, 
-                &work_item.parameters,
-                result_buffer
-            );
+            if use_hybrid && work_item.parameters.use_gpu {
+                if let (Some(device), Some(queue), Some(memory_allocator), Some(descriptor_set_allocator), Some(command_buffer_allocator)) = (vulkan_device, vulkan_queue, vulkan_memory_allocator, vulkan_descriptor_set_allocator, vulkan_command_buffer_allocator) {
+                    Self::render_state_segment_vulkan(&state, work_item.start_idx, work_item.end_idx, &work_item.parameters, result_buffer, device, queue, memory_allocator, descriptor_set_allocator, command_buffer_allocator);
+                } else {
+                    Self::render_state_segment_optimized(&state, work_item.start_idx, work_item.end_idx, &work_item.parameters, result_buffer);
+                }
+            } else {
+                Self::render_state_segment_optimized(&state, work_item.start_idx, work_item.end_idx, &work_item.parameters, result_buffer);
+            }
         }
         
         let chunk = RenderChunk {
@@ -1291,6 +1430,130 @@ impl DistributedSimulation {
         
         log::debug!("worker {} completed range {}..{} in {:?}", 
                   worker_id, work_item.start_idx, work_item.end_idx, start_time.elapsed());
+    }
+    
+    fn render_state_segment_vulkan(
+        state: &StateVector,
+        start_idx: usize,
+        end_idx: usize,
+        params: &RenderParams,
+        result: &mut Vec<u8>,
+        device: &Arc<Device>,
+        queue: &Arc<Queue>,
+        memory_allocator: &Arc<StandardMemoryAllocator>,
+        descriptor_set_allocator: &Arc<StandardDescriptorSetAllocator>,
+        command_buffer_allocator: &Arc<StandardCommandBufferAllocator>,
+    ) {
+        let len = (end_idx - start_idx) as u64;
+        if len == 0 {
+            return;
+        }
+
+        // Create buffers
+        let re_buffer = Buffer::from_iter(
+            memory_allocator.clone(),
+            BufferCreateInfo {
+                usage: BufferUsage::STORAGE_BUFFER,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                ..Default::default()
+            },
+            state.re[start_idx..end_idx].iter().cloned(),
+        ).unwrap();
+
+        let im_buffer = Buffer::from_iter(
+            memory_allocator.clone(),
+            BufferCreateInfo {
+                usage: BufferUsage::STORAGE_BUFFER,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                ..Default::default()
+            },
+            state.im[start_idx..end_idx].iter().cloned(),
+        ).unwrap();
+
+        let out_buffer = Buffer::new_slice::<u32>(
+            memory_allocator.clone(),
+            BufferCreateInfo {
+                usage: BufferUsage::STORAGE_BUFFER,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE | MemoryTypeFilter::HOST_RANDOM_ACCESS,
+                ..Default::default()
+            },
+            len * 4,
+        ).unwrap();
+
+        // Load shader
+        let shader = cs::load(device.clone()).unwrap();
+
+        let cs = shader.entry_point("main").unwrap();
+        let stage = PipelineShaderStageCreateInfo::new(cs);
+        let layout = PipelineLayout::new(
+            device.clone(),
+            PipelineDescriptorSetLayoutCreateInfo::from_stages([&stage])
+                .into_pipeline_layout_create_info(device.clone())
+                .unwrap(),
+        ).unwrap();
+        let compute_pipeline = ComputePipeline::new(
+            device.clone(),
+            None,
+            ComputePipelineCreateInfo::stage_layout(stage, layout),
+        ).unwrap();
+
+        // Descriptor set
+        let descriptor_set = PersistentDescriptorSet::new(
+            descriptor_set_allocator,
+            compute_pipeline.layout().set_layouts()[0].clone(),
+            [
+                WriteDescriptorSet::buffer(0, re_buffer.clone()),
+                WriteDescriptorSet::buffer(1, im_buffer.clone()),
+                WriteDescriptorSet::buffer(2, out_buffer.clone()),
+            ],
+            [],
+        ).unwrap();
+
+        // Command buffer
+        let mut builder = AutoCommandBufferBuilder::primary(
+            command_buffer_allocator,
+            queue.queue_family_index(),
+            CommandBufferUsage::OneTimeSubmit,
+        ).unwrap();
+
+        builder
+            .bind_pipeline_compute(compute_pipeline.clone())
+            .bind_descriptor_sets(
+                PipelineBindPoint::Compute,
+                compute_pipeline.layout().clone(),
+                0,
+                descriptor_set,
+            )
+            .dispatch([(len as u32 + 63) / 64, 1, 1])
+            .unwrap();
+
+        let command_buffer = builder.build().unwrap();
+
+        let future = sync::now(device.clone())
+            .then_execute(queue.clone(), command_buffer)
+            .unwrap()
+            .then_signal_fence_and_flush()
+            .unwrap();
+
+        future.wait(None).unwrap();
+
+        // Read back
+        let out_content = out_buffer.read().unwrap();
+        result.resize(len as usize * 4, 0);
+        let mut i = 0;
+        for &val in out_content.iter() {
+            result[i] = (val & 0xFF) as u8;
+            i += 1;
+        }
     }
     
     // optimized rendering of a state vector segment.
@@ -1313,7 +1576,7 @@ impl DistributedSimulation {
 
         match params.visualization_type {
             VisualizationType::Probability => {
-                // optimization: use rayon to parallelize the rendering calculation across available cores.
+                // use rayon to parallelize the rendering calculation across available cores.
                 // zip the real and imaginary parts with the output pixel buffer for efficient processing.
                 re_segment.par_iter().zip(im_segment.par_iter()).zip(pixel_chunks)
                     .for_each(|((&re, &im), pixel)| {
@@ -1625,8 +1888,16 @@ impl DistributedSimulation {
         #[cfg(feature = "mpi")]
         {
             log::info!("initializing mpi backend");
-            // mpi initialization code here
-            todo!("mpi backend implementation")
+            if let Some(world) = &self.mpi_world {
+                let rank = world.rank() as usize;
+                if rank != self.config.node_id {
+                    return Err("MPI rank mismatch".to_string());
+                }
+                // Additional MPI setup, e.g., creating communicators
+                Ok(())
+            } else {
+                Err("MPI world not initialized".to_string())
+            }
         }
         
         #[cfg(not(feature = "mpi"))]
@@ -1761,7 +2032,7 @@ impl DistributedSimulation {
         }
         
         let chunk_size = self.config.render_chunk_size;
-        let work_tx = self.work_tx.as_ref().ok_or("work channel not available")?;
+        let work_tx = self.work_tx.as_ref().unwrap();
 
         for start_idx in (0..total_size).step_by(chunk_size) {
             let end_idx = (start_idx + chunk_size).min(total_size);
@@ -1790,7 +2061,7 @@ impl DistributedSimulation {
         let chunk_size = self.config.render_chunk_size;
         let expected_chunks = (total_size + chunk_size - 1) / chunk_size;
         
-        let result_rx = self.result_rx.as_ref().ok_or("result channel not available")?;
+        let result_rx = self.result_rx.as_ref().unwrap();
         let rx_lock = result_rx.lock();
 
         let mut collected_chunks = HashMap::with_capacity(expected_chunks);
@@ -1888,17 +2159,15 @@ pub enum Gate {
     CNOT = 4,
     CZ = 5,
     SWAP = 6,
-    // add other gates as needed
 }
 
-// example usage function showing distributed rendering
-pub fn run_distributed_rendering_example() -> Result<(), String> {
+pub fn run_distributed_rendering() -> Result<(), String> {
     let config = DistributedConfig {
         total_qubits: 24,
         backend: CommunicationBackend::TCP,
         nodes: vec![
             "localhost".to_string(),
-            // add other node addresses here if running in a real distributed environment
+            // add other node addresses here if you want
             // "node1.example.com".to_string(),
             // "node2.example.com".to_string(),
             // "node3.example.com".to_string(),
@@ -1910,6 +2179,7 @@ pub fn run_distributed_rendering_example() -> Result<(), String> {
         compression_level: 3,
         streams_per_node: 8,
         ip_tos: 0x10, // minimize delay
+        use_hybrid_computing: true,
         ..Default::default()
     };
     
@@ -1917,12 +2187,12 @@ pub fn run_distributed_rendering_example() -> Result<(), String> {
     
     sim.apply_single_qubit_gate(0, Gate::H)?;
     sim.apply_single_qubit_gate(1, Gate::H)?;
-    // apply more gates as needed
-    
+    // H gates for now
+
     let render_params = RenderParams {
         resolution: (1024, 1024),
         depth: 8,
-        use_gpu: false, // assuming cpu rendering for this example
+        use_gpu: true, // Use GPU if available
         visualization_type: VisualizationType::Probability,
     };
     

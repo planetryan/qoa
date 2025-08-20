@@ -1925,7 +1925,7 @@ impl Instruction {
             "T" => "APPLYTGATE",
             "S" => "APPLYSGATE",
             "P" => "PHASESHIFT",
-            "RST" | "RSTQ" => "RESET", // Changed RT to RSTQ
+            "RST" | "RSTQ" => "RESET", 
             "CSWAP" | "CS" => "CONTROLLEDSWAP",
             "EBELL" | "EB" => "ENTANGLEBELL",
             "EMULTI" | "EM" => "ENTANGLEMULTI",
@@ -1937,7 +1937,7 @@ impl Instruction {
             "MEASB" | "MIB" => "MEASUREINBASIS",
             "RSTALL" | "RSA" => "RESETALL",
             "VLOG" | "VL" => "VERBOSELOG",
-            "SETP" | "SPH" => "SETPHASE", // Changed STP to SPH
+            "SETP" | "SPH" => "SETPHASE", 
             "AGATE" | "AG" => "APPLYGATE",
             "MEAS" | "M" => "MEASURE",
             "QINITQ" | "IQ" => "INITQUBIT",
@@ -1966,7 +1966,7 @@ impl Instruction {
             "JIO" => "JUMPIFONE",
             "CALL_LABEL" => "CallLabel",
             "BR" => "BARRIER",
-            "RET" => "RETURN", // Changed RT to RET
+            "RET" => "RETURN", 
             "TDELAY" | "TD" => "TIMEDELAY",
             "RN" => "RAND",
             "SR" => "SQRT",

@@ -221,6 +221,7 @@ impl VulkanContext {
                 validation_layers.iter().map(|&s| s.as_ptr()).collect();
 
             // configure instance create info
+            #[allow(unused_mut)] // CONDITONALLY MUTABLE
             let mut create_info = vk::InstanceCreateInfo::builder()
                 .application_info(&app_info)
                 .enabled_extension_names(&extension_pointers);
@@ -349,6 +350,7 @@ impl VulkanContext {
 }
 
 // this is the debug callback for vulkan
+#[allow(dead_code)] // DEBUG!!!
 #[cfg(feature = "vulkan")]
 unsafe extern "system" fn vulkan_debug_callback(
     message_severity: vk::DebugUtilsMessageSeverityFlagsEXT,
@@ -403,6 +405,7 @@ fn is_device_suitable(instance: &Instance, physical_device: vk::PhysicalDevice) 
 // gets the required extensions
 #[cfg(feature = "vulkan")]
 fn get_required_extensions<'a>() -> Result<Vec<&'a CStr>, String> {
+    #[allow(unused_mut)] // CONDITIONALLY MUTABLE
     let mut extensions = vec![];
     #[cfg(debug_assertions)]
     {
@@ -412,8 +415,10 @@ fn get_required_extensions<'a>() -> Result<Vec<&'a CStr>, String> {
 }
 
 // gets the required validation layers
+#[allow(dead_code)] // CONDITIONALLY USED!
 #[cfg(feature = "vulkan")]
 fn get_validation_layers<'a>() -> Result<Vec<&'a CStr>, String> {
+    #[allow(unused_mut)] // CONDITIONALLY MUTABLE!
     let mut layers = vec![];
     #[cfg(debug_assertions)]
     {
@@ -1527,7 +1532,7 @@ const QOX: &[u8; 4] = b"QOX ";
 const XEXE: &[u8; 4] = b"XEXE";
 const QX: &[u8; 4] = b"QX\0\0";
 
-const QOA_VERSION: &str = "0.3.4";
+const QOA_VERSION: &str = "0.3.5";
 const QOA_AUTHOR: &str = "Ryan (@planetryan on github)";
 
 #[derive(Parser, Debug)]
