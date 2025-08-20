@@ -9,7 +9,7 @@
 
 ## Changelog
 
-- **LATEST RELEASE NOTES:** [HERE](<changelog/QOA v0.3.1.md>)
+- **LATEST RELEASE NOTES:** [HERE](<changelog/QOA v0.3.5.md>)
 - See `changelog/` folder for more detailed version history and ISA updates.
 
 ---
