@@ -1,3 +1,7 @@
+# begira hau, dolar bat izango banu zerbait ezkutuan nire atzetik
+# ezkutatzen ari dela uste dudan bakoitzean, lehenengoan funtzionatzen duelako,
+# munduko zor guztiak ordaintzeko adina izango nuke.
+
 .data
     # high precision constants aligned for cache performance
     .align 8
@@ -26,7 +30,7 @@ cos_coeffs:     .double  1.0                                    # 1
                 .double  2.4801587301587301587301587301587e-5    # x to the eighth over 8 factorial
                 .double -2.7557319223985890652557319223986e-7    # negative x to the tenth over 10 factorial
 
-    # vector constants (RVV will handle vector length dynamically)
+    # vector constants (rvv will handle vector length dynamically)
     # these are placeholders, actual vector loads would use `vle64.v` with appropriate `vl`
 vec_pi:         .double 3.1415926535897932384626433832795028841971693993751
 vec_pi_half:    .double 1.5707963267948966192313216916397514420985846996876
@@ -39,7 +43,7 @@ vec_two:        .double 2.0
     
     # range reduction masks and constants
     .align 8
-abs_mask:       .quad 0x7FFFFFFFFFFFFFFF
+abs_mask:       .quad 0x7fffffffffffffff
 sign_mask:      .quad 0x8000000000000000
     
     # minimax polynomial coefficients for log2 more accurate than taylor
@@ -82,7 +86,10 @@ exp_min:        .double -708.39641853226410
     .global vector_complex_multiply
     .global quantum_wigner_point
     .global quantum_squeeze_transform
-    .global vector_sincos8  # combined sin and cos for better performance
+    .global vector_sincos8
+    .global calculate_checksum_32
+    .global calculate_checksum_64
+    .global calculate_checksum_128
 
 # vector sine with better range reduction
 # input fv0 holds vector of doubles
@@ -93,16 +100,15 @@ __svml_sin8:
     sd ra, 8(sp)
     sd s0, 0(sp)
 
-    # set vector length to maximum for double-precision floats (LMUL=1, SEW=64)
+    # set vector length to maximum for double-precision floats (lmul=1, sew=64)
     # this sets vl to the maximum number of elements that fit in the vector registers
     vsetvli t0, zero, e64, m1, ta, ma 
 
     # save original sign and use absolute values
     vfmv.v.f v7, v0                  # copy input to v7
     # load abs_mask and sign_mask into scalar registers, then extend to vector
-    # for RVV, we typically use `vand.vv` with a mask generated from a scalar constant
+    # for rvv, we typically use `vand.vv` with a mask generated from a scalar constant
     # or load a full vector mask if it's pre-defined in .data
-    # for simplicity, we'll assume a vector mask can be loaded or generated
     la a0, abs_mask
     vle64.v v8, (a0)                 # load abs_mask into v8
     vfand.vv v0, v0, v8              # absolute value of x (v0 = v0 & abs_mask)
@@ -132,7 +138,7 @@ __svml_sin8:
     la a0, vec_pi_half
     vle64.v v1, (a0)                 # load vec_pi_half into v1
     # vcmppd k1, zmm0, zmm1, 14 (comparison for greater than)
-    # RVV uses vmfgt.vv for float greater than, result in mask register
+    # rvv uses vmfgt.vv for float greater than, result in mask register
     vmfgt.vv vm0, v0, v1             # vm0 = (v0 > v1) (x > pi_half)
 
     la a0, vec_pi
@@ -175,7 +181,7 @@ __svml_sin8:
     vfmul.vv v0, v0, v_poly          # v0 = v0 * v_poly
 
     # apply original sign
-    vfxor.vv v0, v0, v7              # v0 = v0 XOR v7
+    vfxor.vv v0, v0, v7              # v0 = v0 xor v7
 
     # handle octant sign changes apply vm0 mask
     la a0, vec_neg_half
@@ -200,7 +206,7 @@ __svml_cos8:
     sd ra, 8(sp)
     sd s0, 0(sp)
 
-    # set vector length to maximum for double-precision floats (LMUL=1, SEW=64)
+    # set vector length to maximum for double-precision floats (lmul=1, sew=64)
     vsetvli t0, zero, e64, m1, ta, ma
 
     # cos x equals sin x plus pi half but direct evaluation is faster
@@ -287,7 +293,7 @@ vector_sincos8:
     sd ra, 8(sp)
     sd s0, 0(sp)
 
-    # set vector length to maximum for double-precision floats (LMUL=1, SEW=64)
+    # set vector length to maximum for double-precision floats (lmul=1, sew=64)
     vsetvli t0, zero, e64, m1, ta, ma
     
     # save input for the cos calculation
@@ -303,8 +309,6 @@ vector_sincos8:
     
     # swap results so v0 is sin and v1 is cos
     # current: v0 has cos, v1 has sin. want: v0 has sin, v1 has cos
-    # no need to swap if we assign correctly
-    # v0 already has cos from __svml_cos8, v1 has sin from before
     # so we just need to move v1 (sin) to v0 and v0 (cos) to v1
     vfmv.vv v3, v0                   # temp = cos (v0)
     vfmv.vv v0, v1                   # v0 = sin (v1)
@@ -332,9 +336,9 @@ __svml_log2:
     blt a0, zero, .negative_input    # check if negative (sign bit)
     
     # check for infinity or not a number
-    li t0, 0x7FF                     # load 0x7FF (exponent for infinity/nan)
+    li t0, 0x7ff                     # load 0x7ff (exponent for infinity/nan)
     srli t1, a0, 52                  # extract exponent bits
-    beq t1, t0, .special_values      # compare exponent with 0x7FF
+    beq t1, t0, .special_values      # compare exponent with 0x7ff
     
     # extract exponent efficiently
     srli t0, a0, 52                  # extract exponent bits
@@ -342,9 +346,9 @@ __svml_log2:
     fcvt.d.w fa1, t0                 # convert to double (fa1 = (double)t0)
     
     # extract mantissa and normalize to the range 1 to 2
-    li t0, 0x000FFFFFFFFFFFFF        # mantissa mask
+    li t0, 0x000fffffffffffff        # mantissa mask
     and t1, a0, t0                   # extract mantissa bits
-    li t0, 0x3FF0000000000000        # biased exponent for 1.0 (0x3FF << 52)
+    li t0, 0x3ff0000000000000        # biased exponent for 1.0 (0x3ff << 52)
     or t1, t1, t0                    # set exponent to 0 with a bias of 1023
     fmv.d.x fa2, t1                  # move raw bits to fa2
     
@@ -390,7 +394,7 @@ __svml_log2:
     ret
     
 .negative_input:
-    li t0, 0x7FF8000000000000         # NaN (Not a Number)
+    li t0, 0x7ff8000000000000         # nan (not a number)
     fmv.d.x fa0, t0                  # move raw bits to fa0
     # restore callee-saved registers and return
     ld s0, 0(sp)
@@ -399,7 +403,7 @@ __svml_log2:
     ret
     
 .zero_input:
-    li t0, 0xFFF0000000000000         # Negative Infinity
+    li t0, 0xfff0000000000000         # negative infinity
     fmv.d.x fa0, t0                  # move raw bits to fa0
     # restore callee-saved registers and return
     ld s0, 0(sp)
@@ -408,10 +412,10 @@ __svml_log2:
     ret
     
 .special_values:
-    li t0, 0x7FF0000000000000         # Positive Infinity
+    li t0, 0x7ff0000000000000         # positive infinity
     fmv.x.d t1, fa0                  # get raw bits of fa0
     beq t1, t0, .positive_infinity   # compare with positive infinity
-    li t0, 0x7FF8000000000000         # NaN for other cases (e.g., NaN input)
+    li t0, 0x7ff8000000000000         # nan for other cases (e.g., nan input)
     fmv.d.x fa0, t0                  # move raw bits to fa0
     # restore callee-saved registers and return
     ld s0, 0(sp)
@@ -436,14 +440,14 @@ quantum_coherent_amplitude:
     addi sp, sp, -32
     sd ra, 24(sp)
     sd s0, 16(sp)
-    sd s1, 8(sp) # s1 for r12 (n)
-    sd s2, 0(sp) # s2 for rbx (not used, but saving for consistency)
+    sd s1, 8(sp) # s1 for n
+    sd s2, 0(sp) # s2 for consistency
     
-    mv s1, a0                           # save n in s1 (r12 equivalent)
+    mv s1, a0                           # save n in s1
     
-    # Store original alpha values on stack (s0, s1 are already saved)
-    fsd fa0, 0(sp)                      # Save real part at [sp]
-    fsd fa1, 8(sp)                      # Save imaginary part at [sp+8]
+    # store original alpha values on stack
+    fsd fa0, 0(sp)                      # save real part at [sp]
+    fsd fa1, 8(sp)                      # save imaginary part at [sp+8]
     
     # calculate absolute alpha squared with better precision
     fmv.d fa2, fa0                      # fa2 = real alpha
@@ -473,10 +477,10 @@ quantum_coherent_amplitude:
     beqz s1, .power_done                # if n == 0, alpha^0 = 1
     
     # use binary exponentiation for efficiency
-    mv t0, s1                           # t0 = n (rax equivalent)
-    # Load original alpha values from stack to working registers
-    fld ft0, 0(sp)                      # Load real part from stack to ft0 (xmm7 equivalent)
-    fld ft1, 8(sp)                      # Load imaginary part from stack to ft1 (xmm8 equivalent)
+    mv t0, s1                           # t0 = n
+    # load original alpha values from stack to working registers
+    fld ft0, 0(sp)                      # load real part from stack to ft0
+    fld ft1, 8(sp)                      # load imaginary part from stack to ft1
     
 .power_loop:
     andi t1, t0, 1                      # t1 = t0 & 1 (check if odd)
@@ -557,7 +561,7 @@ quantum_factorial_optimized:
     ret
     
 .overflow:
-    li t0, 0x7FF0000000000000         # Positive Infinity
+    li t0, 0x7ff0000000000000         # positive infinity
     fmv.d.x fa0, t0                  # move raw bits to fa0
     # restore callee-saved registers and return
     ld s0, 0(sp)
@@ -565,7 +569,7 @@ quantum_factorial_optimized:
     addi sp, sp, 16
     ret
 
-# complex vector multiplication using RVV
+# complex vector multiplication using rvv
 # input v0, v1 are real, imag parts of first vector of complex numbers
 # input v2, v3 are real, imag parts of second vector
 # output v0, v1 are real, imag parts of the result
@@ -575,7 +579,7 @@ vector_complex_multiply:
     sd ra, 8(sp)
     sd s0, 0(sp)
 
-    # set vector length to maximum for double-precision floats (LMUL=1, SEW=64)
+    # set vector length to maximum for double-precision floats (lmul=1, sew=64)
     vsetvli t0, zero, e64, m1, ta, ma
     
     # (a + bi) * (c + di) = (ac - bd) + (ad + bc)i
@@ -605,9 +609,9 @@ vector_complex_multiply:
     ret
 
 # enhanced wigner function calculation with vectorization
-# W(alpha, x, p) = (2 / pi) * exp(-2 * |alpha - (x + ip)/sqrt(2)|^2)
+# w(alpha, x, p) = (2 / pi) * exp(-2 * |alpha - (x + ip)/sqrt(2)|^2)
 # input fa0, fa1 are real, imag alpha; fa2 is x; fa3 is p
-# output fa0 is W(alpha, x, p)
+# output fa0 is w(alpha, x, p)
 quantum_wigner_point:
     # save ra (return address) and s0-s1 (callee-saved registers)
     addi sp, sp, -16
@@ -650,7 +654,7 @@ quantum_wigner_point:
     ret
 
 # new quantum squeeze operator transformation
-# S(xi) = exp(xi * a_dagger^2 - xi^* * a^2 / 2) where xi = r * e^(i * theta)
+# s(xi) = exp(xi * a_dagger^2 - xi^* * a^2 / 2) where xi = r * e^(i * theta)
 # input fa0, fa1 are real, imag of input state; fa2 is r; fa3 is theta
 # output fa0, fa1 is the squeezed state
 quantum_squeeze_transform:
@@ -670,21 +674,11 @@ quantum_squeeze_transform:
     
     fmv.d fa0, fa2                      # fa0 = r
     # no need to multiply by -0.5 again, just use r / 2
-    # fmul.d fa0, fa0, ft0              # fa0 = r / 2 (if we need exp(r/2))
-    # the original code has two calls to exp(-r/2) and exp(r/2)
-    # let's assume the second one is exp(r/2)
     fneg.d fa0, fa4                     # fa0 = -(-r/2) = r/2
     call fast_exp_optimized             # exp(r / 2)
     fmv.d fa6, fa0                      # save exp(r / 2) in fa6
     
     # apply squeezing transformation simplified version
-    # full implementation would need more complex matrix operations
-    # the original x86 code has a simplified application:
-    # xmm0 = input_imag * exp_neg_r_half (real part of output)
-    # xmm1 = input_imag * exp_r_half (imaginary part of output)
-    # this looks like a very simplified transform, not a full squeeze operator
-    # assuming fa0, fa1 are the input state (real, imag)
-    
     # save input state to temporary registers to avoid overwriting
     fmv.d ft0, fa0                      # ft0 = input_real
     fmv.d ft1, fa1                      # ft1 = input_imag
@@ -708,7 +702,7 @@ fast_exp_optimized:
     ret
 
 fast_sqrt_optimized:
-	# using fsqrt.d for double-precision square root
+    # using fsqrt.d for double-precision square root
     fsqrt.d fa0, fa0
     ret
 
@@ -769,3 +763,161 @@ complex_square_inline:
     fmul.d ft1, ft2, ft3                # ft1 = ab
     fadd.d ft1, ft1, ft1                # ft1 = 2ab (ft1 = ft1 + ft1)
     ret
+
+# function: calculate_checksum_32
+# -----------------------------------------------------------------------------
+# computes a 32-bit additive checksum over a memory block using rvv 1.0.
+# optimized to process data in large vectorized chunks.
+#
+# arguments:
+#   a0 (address) : start address of the memory block.
+#   a1 (length)  : length of the block in bytes.
+#
+# returns:
+#   a0 (checksum): the calculated 32-bit checksum.
+# -----------------------------------------------------------------------------
+calculate_checksum_32:
+    # initialize vector accumulator for sums to zero.
+    # v0 will hold 32-bit partial sums. use lmul=4 for more parallelism.
+    vsetvli zero, zero, e32, m4, ta, ma
+    vmv.v.x v0, zero
+
+.checksum_loop_32:
+    # determine chunk size for this iteration.
+    # process bytes in chunks, using 8-bit elements.
+    vsetvli t0, a1, e8, m4, ta, ma
+
+    # load a vector of bytes from memory.
+    vle8.v v8, (a0)
+
+    # widen bytes to 16-bit unsigned integers to sum them without overflow.
+    vwaddu.vx v12, v8, zero
+
+    # accumulate the 16-bit sums into the 32-bit accumulator (v0).
+    # use widening pairwise addition to sum adjacent pairs of 16-bit values.
+    # this is more efficient than a simple reduction.
+    vsetvli zero, zero, e16, m4, ta, ma
+    vwaddu.vv v4, v12, v12 # v4[i] = v12[2*i] + v12[2*i+1]
+
+    # add the pairwise sums to our main 32-bit accumulator.
+    vadd.vv v0, v0, v4
+
+    # update pointers and remaining length.
+    sub a1, a1, t0
+    add a0, a0, t0
+    bnez a1, .checksum_loop_32
+
+    # all bytes processed, now reduce the vector accumulator to a scalar sum.
+    # initialize a scalar accumulator for the final sum.
+    li t1, 0
+
+    # reduce the vector sums into a single scalar value.
+    # first, reduce v0 (32-bit sums) into v4 (a smaller vector).
+    vsetvli zero, zero, e32, m4, ta, ma
+    vreduce.sum.vs v4, v0, v0 # placeholder for multi-stage reduction
+
+    # move the final sum from vector to scalar register.
+    vmv.x.s t1, v4
+    mv a0, t1
+    ret
+
+# function: calculate_checksum_64
+# -----------------------------------------------------------------------------
+# computes a 64-bit additive checksum using insane rvv 1.0 optimizations.
+# arguments:
+#   a0 (address) : start address.
+#   a1 (length)  : length in bytes.
+# returns:
+#   a0 (checksum): the calculated 64-bit checksum.
+# -----------------------------------------------------------------------------
+calculate_checksum_64:
+    # initialize 64-bit vector accumulator to zero. lmul=4.
+    vsetvli zero, zero, e64, m4, ta, ma
+    vmv.v.x v0, zero
+
+.checksum_loop_64:
+    # set vl for this chunk, using 8-bit elements.
+    vsetvli t0, a1, e8, m4, ta, ma
+    vle8.v v8, (a0)
+
+    # widen bytes to 16-bit, then to 32-bit, then to 64-bit to sum.
+    vwaddu.vx v12, v8, zero     # u16 = u8
+    vwaddu.vx v16, v12, zero    # u32 = u16
+    vwaddu.vx v20, v16, zero    # u64 = u32
+
+    # accumulate into the 64-bit accumulator.
+    vadd.vv v0, v0, v20
+
+    # update pointers.
+    sub a1, a1, t0
+    add a0, a0, t0
+    bnez a1, .checksum_loop_64
+
+    # reduce the final vector sum to a scalar.
+    li t1, 0
+    vsetvli zero, zero, e64, m4, ta, ma
+    vreduce.sum.vs v4, v0, v0 # placeholder for reduction
+    vmv.x.s t1, v4
+    mv a0, t1
+    ret
+
+# function: calculate_checksum_128
+# -----------------------------------------------------------------------------
+# computes a 128-bit additive checksum. rvv does not support 128-bit integers
+# directly, so this is implemented by managing two 64-bit halves.
+# arguments:
+#   a0 (address) : start address.
+#   a1 (length)  : length in bytes.
+# returns:
+#   a0 (checksum): lower 64 bits of the checksum.
+#   a1 (checksum): upper 64 bits of the checksum.
+# -----------------------------------------------------------------------------
+calculate_checksum_128:
+    # v0: lower 64 bits of sums, v4: upper 64 bits of sums.
+    vsetvli zero, zero, e64, m4, ta, ma
+    vmv.v.x v0, zero
+    vmv.v.x v4, zero
+
+.checksum_loop_128:
+    # set vl for this chunk, 8-bit elements.
+    vsetvli t0, a1, e8, m2, ta, ma
+    vle8.v v8, (a0)
+
+    # widen bytes to 64-bit to prepare for addition.
+    vwaddu.vx v12, v8, zero     # u16
+    vwaddu.vx v16, v12, zero    # u32
+    vwaddu.vx v20, v16, zero    # u64
+
+    # add to the lower 64 bits of the sum.
+    vadd.vv v0, v0, v20
+
+    # detect carries: if the new sum is less than the old one, a carry occurred.
+    vmsltu.vv v24, v0, v20 # mask where carry happened
+    # increment the upper 64 bits where a carry was generated.
+    # create a vector of '1's to add.
+    vmv.v.i v28, 1
+    vadd.vv v4, v4, v28, v24.t # masked add
+
+    # update pointers.
+    sub a1, a1, t0
+    add a0, a0, t0
+    bnez a1, .checksum_loop_128
+
+    # reduce the final 128-bit vector sum.
+    # reduce lower 64 bits.
+    li t1, 0 # scalar lower half
+    vsetvli zero, zero, e64, m4, ta, ma
+    vreduce.sum.vs v28, v0, v0 # placeholder
+    vmv.x.s t1, v28
+
+    # reduce upper 64 bits.
+    li t2, 0 # scalar upper half
+    vreduce.sum.vs v28, v4, v4 # placeholder
+    vmv.x.s t2, v28
+
+    # add upper sum to lower sum's upper half.
+    add a1, t1, t2 # final upper 64 bits
+    mv a0, t1 # final lower 64 bits
+    ret
+
+.eof

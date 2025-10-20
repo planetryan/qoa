@@ -1,11 +1,3 @@
-; --- parameters ---
-; n=26: number of data qubits (representing a 26-bit key).
-; secret key: for demonstration, the oracle logic is omitted.
-; in a real scenario, the oracle would mark the correct 26-bit key.
-
-; --- qubit allocation ---
-; qubits 0-25: data qubits (representing the 26-bit key)
-; qubit 26: ancilla qubit for the oracle (initialized to |-> state)
 QINIT 27 ; initialize 27 qubits (26 data + 1 ancilla)
 
 ; --- step 1: create uniform superposition of all possible keys ---
@@ -41,29 +33,6 @@ HAD 25
 HAD 26
 Z 26 ; apply z gate to get |-> = (|0> - |1>)/sqrt(2)
 
-; --- grover iteration (for n=26, many iterations are optimal) ---
-; the number of iterations for grover's is approximately (pi/4) * sqrt(2^n).
-; for n=26 (2^26 states), sqrt(2^26) = 2^13 = 8192.
-; (pi/4)*8192 ~ 6434 iterations are required for optimal probability.
-; this example shows only one conceptual iteration.
-
-; --- step 2: oracle (phase oracle for the "secret key") ---
-; the oracle applies a -1 phase to the amplitude of the target state.
-; for a 26-bit aes key, this oracle would be an incredibly complex
-; quantum circuit implementing the aes encryption function in reverse
-; and marking the state that decrypts to a known plaintext.
-; the specific oracle logic is omitted here due to its complexity.
-
-; placeholder for oracle:
-; in a real grover's for aes, this section would contain the quantum circuit
-; that performs the aes decryption on the superposition of keys and
-; applies a phase flip to the ancilla qubit if the key is correct.
-
-; --- step 3: diffusion operator ---
-; the diffusion operator amplifies the target state's amplitude.
-; for n=26, this involves hadamards, x gates, and a multi-controlled z gate
-; (mcz) on all 26 data qubits, controlled by the ancilla.
-; the full decomposition of a 26-qubit mcz is extremely complex and omitted.
 
 ; apply x gate to all data qubits (q0 to q25)
 X 0

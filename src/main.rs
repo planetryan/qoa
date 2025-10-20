@@ -436,8 +436,6 @@ fn get_device_extensions(
     instance: &Instance,
     physical_device: vk::PhysicalDevice,
 ) -> Result<Vec<&'static std::ffi::CStr>, String> {
-    // fallback: use the canonical Vulkan extension name literals so this
-    // doesn't break against different ash versions.
     let maintenance3_name =
         CStr::from_bytes_with_nul(b"VK_KHR_maintenance3\0").expect("embedded CStr missing nul");
     let descriptor_indexing_name = CStr::from_bytes_with_nul(b"VK_EXT_descriptor_indexing\0")

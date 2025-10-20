@@ -861,6 +861,7 @@ impl Instruction {
                 v.push(0); // null terminator for string
                 v
             }
+
             Instruction::STORE(q, reg) | Instruction::STR(q, reg) => {
                 let mut v = vec![0x3C, *q];
                 v.extend(reg.as_bytes());

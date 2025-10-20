@@ -18,8 +18,6 @@ static GLOBAL_GPU_ACCELERATOR: Lazy<Arc<GpuAccelerator>> = Lazy::new(|| {
     Arc::new(GpuAccelerator::new())
 });
 
-// ===== GPU Acceleration Capability Detection =====
-
 // Information about a detected GPU device
 #[derive(Clone, Debug)]
 pub struct GpuDevice {

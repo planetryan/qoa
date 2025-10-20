@@ -1,0 +1,145 @@
+; --- parameters ---
+; n=16: number of data qubits (representing a 24-bit key).
+; secret key: for demonstration, the oracle logic is omitted.
+; in a real scenario, the oracle would mark the correct 24-bit key.
+
+; --- qubit allocation ---
+; qubits 0-16: data qubits (representing the 16-bit key)
+; qubit 17: ancilla qubit for the oracle (initialized to |-> state)
+QINIT 16 ; initialize 16 qubits (15 data + 1 ancilla)
+
+; --- step 1: create uniform superposition of all possible keys ---
+; apply hadamard to all data qubits (q0 to q25)
+HAD 0
+HAD 1
+HAD 2
+HAD 3
+HAD 4
+HAD 5
+HAD 6
+HAD 7
+HAD 8
+HAD 9
+HAD 10
+HAD 11
+HAD 12
+HAD 13
+HAD 14
+HAD 15
+HAD 16
+
+
+; initialize ancilla qubit (q24) to |-> state
+HAD 24
+Z 24 ; apply z gate to get |-> = (|0> - |1>)/sqrt(2)
+
+; --- grover iteration (for n=24, many iterations are optimal) ---
+; the number of iterations for grover's is approximately (pi/4) * sqrt(2^n).
+; for n=24 (2^24 states), sqrt(2^24) = 2^13 = 8192.
+; (pi/4)*8192 ~ 6434 iterations are required for optimal probability.
+; this example shows only one conceptual iteration.
+
+; --- step 2: oracle (phase oracle for the "secret key") ---
+; the oracle applies a -1 phase to the amplitude of the target state.
+; for a 24-bit aes key, this oracle would be an incredibly complex
+; quantum circuit implementing the aes encryption function in reverse
+; and marking the state that decrypts to a known plaintext.
+; the specific oracle logic is omitted here due to its complexity.
+
+; placeholder for oracle:
+; in a real grover's for aes, this section would contain the quantum circuit
+; that performs the aes decryption on the superposition of keys and
+; applies a phase flip to the ancilla qubit if the key is correct.
+
+; --- step 3: diffusion operator ---
+; the diffusion operator amplifies the target state's amplitude.
+; for n=24, this involves hadamards, x gates, and a multi-controlled z gate
+; (mcz) on all 24 data qubits, controlled by the ancilla.
+; the full decomposition of a 24-qubit mcz is extremely complex and omitted.
+
+; apply x gate to all data qubits (q0 to q25)
+X 0
+X 1
+X 2
+X 3
+X 4
+X 5
+X 6
+X 7
+X 8
+X 9
+X 10
+X 11
+X 12
+X 13
+X 14
+X 15
+X 16
+
+
+; multi-controlled z gate on data qubits (q0-q25) controlled by ancilla (q24)
+; this would be a very large decomposition of cnot and rz gates.
+; for example, a general n-qubit mcz can be decomposed into 2n-1 cnot gates and 2n-1 rz gates.
+; for 24 qubits, this would be 51 cnot and 51 rz gates, plus additional ancillae if not in-place.
+; the specific decomposition is omitted for brevity.
+
+; apply x gate to all data qubits again (q0 to q25)
+X 0
+X 1
+X 2
+X 3
+X 4
+X 5
+X 6
+X 7
+X 8
+X 9
+X 10
+X 11
+X 12
+X 13
+X 14
+X 15
+X 16
+
+; apply hadamard to all data qubits again (q0 to q25)
+HAD 0
+HAD 1
+HAD 2
+HAD 3
+HAD 4
+HAD 5
+HAD 6
+HAD 7
+HAD 8
+HAD 9
+HAD 10
+HAD 11
+HAD 12
+HAD 13
+HAD 14
+HAD 15
+HAD 16
+
+
+; --- step 4: measurement ---
+; measure the data qubits (q0 to q25) to find the "key"
+MEAS 0
+MEAS 1
+MEAS 2
+MEAS 3
+MEAS 4
+MEAS 5
+MEAS 6
+MEAS 7
+MEAS 8
+MEAS 9
+MEAS 10
+MEAS 11
+MEAS 12
+MEAS 13
+MEAS 14
+MEAS 15
+MEAS 16
+
+HALT

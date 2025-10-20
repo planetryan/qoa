@@ -35,13 +35,7 @@ HAD 13
 HAD 14
 HAD 15
 HAD 16
-HAD 17
-HAD 18
-HAD 19
-HAD 20
-HAD 21
-HAD 22
-HAD 23
+
 
 ; initialize ancilla qubit (q24) to |-> state
 HAD 24
@@ -89,13 +83,7 @@ X 13
 X 14
 X 15
 X 16
-X 17
-X 18
-X 19
-X 20
-X 21
-X 22
-X 23
+
 
 ; multi-controlled z gate on data qubits (q0-q25) controlled by ancilla (q24)
 ; this would be a very large decomposition of cnot and rz gates.
@@ -121,13 +109,6 @@ X 13
 X 14
 X 15
 X 16
-X 17
-X 18
-X 19
-X 20
-X 21
-X 22
-X 23
 
 ; apply hadamard to all data qubits again (q0 to q25)
 HAD 0
@@ -147,13 +128,7 @@ HAD 13
 HAD 14
 HAD 15
 HAD 16
-HAD 17
-HAD 18
-HAD 19
-HAD 20
-HAD 21
-HAD 22
-HAD 23
+
 
 ; --- step 4: measurement ---
 ; measure the data qubits (q0 to q25) to find the "key"
@@ -174,12 +149,5 @@ MEAS 13
 MEAS 14
 MEAS 15
 MEAS 16
-MEAS 17
-MEAS 18
-MEAS 19
-MEAS 20
-MEAS 21
-MEAS 22
-MEAS 23
 
 HALT
