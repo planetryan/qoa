@@ -211,6 +211,19 @@ struct Asm {
     qinit_token: Option<Token>,
     // qubit-muga gainditu da: errore bat bakarrik, kaskadarik gabe
     qubit_limit_reported: bool,
+    // izendun erregistroak (QREG, CREG, OREG) eta mota bakoitzeko hurrengo elementu librea
+    named: HashMap<String, Named>,
+    named_next: HashMap<char, u32>,
+    // lehen pasaldian ikusitako etiketa-izenak (minuskulaz): izen hutsak ez dira erregistro gisa irakurtzen
+    label_names: std::collections::HashSet<String>,
+}
+
+// izendun erregistro bat: mota ('q', 'c', 'o'), lehen elementua, tamaina eta adierazpenaren tokena
+struct Named {
+    kind: char,
+    start: u32,
+    size: u32,
+    tok: Token,
 }
 
 // testu osoa programa bihurtu; akatsik badago, guztiak itzultzen ditu
@@ -230,6 +243,9 @@ pub fn assemble(source: &str, name: &str) -> Result<Program, Vec<Diagnostic>> {
         qinit_repeated: false,
         qinit_token: None,
         qubit_limit_reported: false,
+        named: HashMap::new(),
+        named_next: HashMap::new(),
+        label_names: std::collections::HashSet::new(),
     };
 
     // lehen pasaldia: QINIT eta QMODE bilatu, gero indizeak berehala egiaztatu ahal izateko
@@ -238,6 +254,9 @@ pub fn assemble(source: &str, name: &str) -> Result<Program, Vec<Diagnostic>> {
         let Ok(toks) = tokenize(strip_comment(raw), line_no) else {
             continue;
         };
+        if let Some(name) = toks.first().and_then(|t| t.text.strip_suffix(':')) {
+            a.label_names.insert(name.to_ascii_lowercase());
+        }
         let toks = strip_label(&toks);
         let Some(first) = toks.first() else { continue };
         let Some(spec) = isa::lookup(&first.text) else {
@@ -246,7 +265,11 @@ pub fn assemble(source: &str, name: &str) -> Result<Program, Vec<Diagnostic>> {
         if spec.name == "QINIT" || spec.name == "QMODE" {
             a.declaration(spec, first, &toks[1..]);
         }
+        if matches!(spec.name, "QREG" | "CREG" | "OREG") {
+            a.register(spec, first, &toks[1..]);
+        }
     }
+    a.registers_fit();
 
     // bigarren pasaldia: agindu guztiak
     for (n, raw) in source.lines().enumerate() {
@@ -300,7 +323,23 @@ pub fn assemble(source: &str, name: &str) -> Result<Program, Vec<Diagnostic>> {
         if rest.is_empty() {
             continue;
         }
-        a.line(rest);
+        if let Some(renamed) = a.rename(rest) {
+            a.line(&renamed);
+        }
+    }
+
+    // erregistro-izen bat ezin da etiketa bat ere izan (`JUMP data` anbiguoa litzateke)
+    for (name, r) in &a.named {
+        if a.labels.contains_key(&name.to_ascii_lowercase()) {
+            a.diags.push(Diagnostic::at(
+                &r.tok,
+                t!(
+                    "'{}' is both a register and a label; rename one of them",
+                    "'{}' erregistroa eta etiketa da aldi berean; aldatu baten izena",
+                    name
+                ),
+            ));
+        }
     }
 
     // itxi gabeko begiztak
@@ -492,6 +531,235 @@ impl Asm {
         }
     }
 
+    // QREG / CREG / OREG izena tamaina [lehena]
+    fn register(&mut self, spec: &Spec, head: &Token, args: &[Token]) {
+        let kind = match spec.name {
+            "QREG" => 'q',
+            "CREG" => 'c',
+            _ => 'o',
+        };
+        let usage = || {
+            t!(
+                "{0} takes a name, a size and an optional first index, like {0} data 3",
+                "{0}-k izen bat, tamaina bat eta aukerako lehen indize bat hartzen ditu, {0} data 3 bezala",
+                spec.name
+            )
+        };
+        let (name_tok, size_tok, first_tok) = match args {
+            [n, s] => (n, s, None),
+            [n, s, f] => (n, s, Some(f)),
+            _ => {
+                self.error(Diagnostic::at(head, usage()));
+                return;
+            }
+        };
+        let name = name_tok.text.as_str();
+        let shaped = name
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+            && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+        let operand_like = name.len() > 1
+            && name.starts_with(['q', 'Q', 'o', 'O', 'c', 'C', 'r', 'R'])
+            && name[1..].chars().all(|c| c.is_ascii_digit());
+        let reserved = ["pi", "tau", "e", "sqrt", "sin", "cos", "tan", "exp", "ln"]
+            .contains(&name.to_ascii_lowercase().as_str());
+        if !shaped || operand_like || reserved || isa::lookup(name).is_some() {
+            self.error(Diagnostic::at(
+                name_tok,
+                t!(
+                    "'{}' cannot name a register: use letters, digits and _, not an instruction, an operand like q3, or a constant like pi",
+                    "'{}' ezin da erregistro-izena izan: erabili letrak, digituak eta _, ez agindu bat, q3 bezalako eragigai bat edo pi bezalako konstante bat",
+                    name
+                ),
+            ));
+            return;
+        }
+        if self.named.contains_key(name) {
+            self.error(Diagnostic::at(
+                name_tok,
+                t!(
+                    "register '{}' is declared twice",
+                    "'{}' erregistroa bi aldiz adierazita dago",
+                    name
+                ),
+            ));
+            return;
+        }
+        let size = parse_int(&size_tok.text).filter(|n| (1..=4096).contains(n));
+        let Some(size) = size.map(|n| n as u32) else {
+            self.error(Diagnostic::at(
+                size_tok,
+                t!(
+                    "expected a size of at least 1, found '{}'",
+                    "gutxienez 1eko tamaina espero zen, baina '{}' dago",
+                    size_tok.text
+                ),
+            ));
+            return;
+        };
+        let next = *self.named_next.get(&kind).unwrap_or(&0);
+        let start = match first_tok {
+            None => next,
+            Some(f) => match parse_int(&f.text).filter(|&n| n < 4096) {
+                Some(n) => n as u32,
+                None => {
+                    self.error(Diagnostic::at(
+                        f,
+                        t!(
+                            "expected a first index, found '{}'",
+                            "lehen indize bat espero zen, baina '{}' dago",
+                            f.text
+                        ),
+                    ));
+                    return;
+                }
+            },
+        };
+        if let Some((other, r)) = self
+            .named
+            .iter()
+            .find(|(_, r)| r.kind == kind && start < r.start + r.size && r.start < start + size)
+        {
+            let msg = t!(
+                "{} ({}{}..{}{}) overlaps {} ({}{}..{}{})",
+                "{} ({}{}..{}{}) {}-rekin gainjartzen da ({}{}..{}{})",
+                name,
+                kind,
+                start,
+                kind,
+                start + size - 1,
+                other,
+                kind,
+                r.start,
+                kind,
+                r.start + r.size - 1
+            );
+            self.error(Diagnostic::at(name_tok, msg));
+            return;
+        }
+        self.named_next.insert(kind, next.max(start + size));
+        let last = start + size - 1;
+        let max = match kind {
+            'q' => &mut self.max_qubit,
+            'c' => &mut self.max_bit,
+            _ => &mut self.max_mode,
+        };
+        *max = Some(max.map_or(last, |m| m.max(last)));
+        self.named.insert(
+            name.to_string(),
+            Named {
+                kind,
+                start,
+                size,
+                tok: name_tok.clone(),
+            },
+        );
+    }
+
+    // izendun erregistroak QINIT eta QMODE-k adierazitakoaren barruan
+    fn registers_fit(&mut self) {
+        let mut problems = Vec::new();
+        for (name, r) in &self.named {
+            let limit = match r.kind {
+                'q' => self.declared_qubits,
+                'o' => self.declared_modes.map(|m| m.0),
+                _ => None,
+            };
+            if let Some(n) = limit
+                && r.start + r.size > n
+            {
+                let what = if r.kind == 'q' { "QINIT" } else { "QMODE" };
+                problems.push(Diagnostic::at(
+                    &r.tok,
+                    t!(
+                        "{} needs {}{}..{}{}, but {} declares {}",
+                        "{}-k {}{}..{}{} behar ditu, baina {}-k {} adierazten ditu",
+                        name,
+                        r.kind,
+                        r.start,
+                        r.kind,
+                        r.start + r.size - 1,
+                        what,
+                        n
+                    ),
+                ));
+            }
+        }
+        problems.into_iter().for_each(|d| self.error(d));
+    }
+
+    // izendun erregistroak indize arrunt bihurtu: data[1] -> q4, data -> q3..q5 (mnemonikoa eta testuak ez)
+    // errore bat badago, None: lerroa ez da gehiago aztertzen (errore-kaskadarik ez)
+    fn rename(&mut self, toks: &[Token]) -> Option<Vec<Token>> {
+        if self.named.is_empty() {
+            return Some(toks.to_vec());
+        }
+        let mut ok = true;
+        let mut out = Vec::with_capacity(toks.len());
+        for (i, t) in toks.iter().enumerate() {
+            let (base, inner) = match t.text.split_once('[') {
+                Some((b, rest)) => match rest.strip_suffix(']') {
+                    Some(inner) => (b, Some(inner)),
+                    None => (t.text.as_str(), None),
+                },
+                None => (t.text.as_str(), None),
+            };
+            let label = inner.is_none() && self.label_names.contains(&base.to_ascii_lowercase());
+            let reg = (i > 0 && !t.text.starts_with('"') && !label)
+                .then(|| self.named.get(base))
+                .flatten();
+            let Some(r) = reg else {
+                out.push(t.clone());
+                continue;
+            };
+            let (kind, start, size) = (r.kind, r.start, r.size);
+            let range = match inner {
+                None => Some((0, size - 1)),
+                Some(s) => match s.split_once("..") {
+                    Some((a, b)) => parse_int(a).zip(parse_int(b)),
+                    None => parse_int(s).map(|k| (k, k)),
+                }
+                .map(|(a, b)| (a as u32, b as u32)),
+            };
+            match range {
+                Some((a, b)) if a <= b && b < size => {
+                    let text = if a == b {
+                        format!("{}{}", kind, start + a)
+                    } else {
+                        format!("{}{}..{}{}", kind, start + a, kind, start + b)
+                    };
+                    out.push(Token { text, ..t.clone() });
+                }
+                Some((_, b)) if b >= size => {
+                    self.error(Diagnostic::at(
+                        t,
+                        t!(
+                            "{} has {} element(s); index {} is past the end",
+                            "{}-k {} elementu ditu; {} indizea amaieratik kanpo dago",
+                            base,
+                            size,
+                            b
+                        ),
+                    ));
+                    ok = false;
+                }
+                _ => {
+                    self.error(Diagnostic::at(
+                        t,
+                        t!(
+                            "expected an index like {0}[1] or {0}[0..2]",
+                            "{0}[1] edo {0}[0..2] bezalako indize bat espero zen",
+                            base
+                        ),
+                    ));
+                    ok = false;
+                }
+            }
+        }
+        ok.then_some(out)
+    }
+
     // agindu-lerro bat (etiketa kenduta)
     fn line(&mut self, toks: &[Token]) {
         let head = &toks[0];
@@ -530,7 +798,10 @@ impl Asm {
             return;
         }
         // deklarazioak lehen pasaldian landu dira
-        if spec.name == "QINIT" || spec.name == "QMODE" || spec.name == "COMMENT" {
+        if matches!(
+            spec.name,
+            "QINIT" | "QMODE" | "QREG" | "CREG" | "OREG" | "COMMENT"
+        ) {
             return;
         }
         let args = &toks[1..];

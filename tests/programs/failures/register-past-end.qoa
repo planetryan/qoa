@@ -1,0 +1,4 @@
+; nahita huts egiten duen proba
+; expect-error: data has 2 element(s); index 2 is past the end
+QREG data 2
+H data[2]

@@ -111,8 +111,9 @@ LOOPSTART 3                 ; loops, subroutines (CALL/RETSUB), arithmetic (ADD,
 LOOPEND
 ```
 
-Mnemonics are case-insensitive, and the long names from QOA 0.3 (`APPLYHADAMARD`, `PHOTONEMIT`, ...) still
-work as aliases. `qoa isa NAME` explains any instruction; [docs/ISA.md](docs/ISA.md) lists them all.
+Registers can be named if you like (`QREG data 2`, `CREG flags 2`, `OREG arm 2`, then `data[1]`, or `data`
+for all of them); `q0`, `c0` and `o0` keep working. Mnemonics are case-insensitive, and the long names from
+QOA 0.3 (`APPLYHADAMARD`, `PHOTONEMIT`, ...) still work as aliases. `qoa isa NAME` explains any instruction; [docs/ISA.md](docs/ISA.md) lists them all.
 Errors point at the exact spot:
 
 ```
@@ -131,8 +132,25 @@ The same language can also be written densely, many statements per line, in `.qg
 Q{2}; #C{2}; H/Q[0]; CX/Q[0],Q[1]; M/Q$>#C; PF"bell: {}\n"%#C;
 ```
 
-`qoa import file.qg` shows the plain QOA it stands for, and errors point at the glyph. It is a draft open
-for review: see [docs/glyph.md](docs/glyph.md).
+`qoa import file.qg` shows the plain QOA it stands for, `qoa export --to glyph file.qoa` goes the other
+way, and errors point at the glyph. `CC[0x10]%a%b$>#2` calls a classical routine at an address, with its
+arguments on the stack. It is a draft open for review: see [docs/glyph.md](docs/glyph.md).
+
+### Looking inside a program
+
+`qoa export --to <target>` writes a program in other forms, from `.qoa`, `.qg`, `.qasm` or a compiled `.qx`:
+
+| target | what you get |
+|---|---|
+| `qoa` | canonical plain QOA: aliases resolved, ranges expanded, jump targets as `addr_0x..` labels |
+| `listing` | the same, with every operation's address and source line; it still assembles |
+| `json` | the program as data: resources, and each operation's address, line, text and structure |
+| `dot` | the control-flow graph (basic blocks, jumps, loops, calls) for Graphviz: `qoa export --to dot f.qoa \| dot -Tsvg > f.svg` |
+| `glyph` | glyph syntax (`--width`, `--names`, `--long-names`, `--no-ranges`, `--hex`) |
+| `qasm`, `ionq` | for real hardware: [docs/hardware.md](docs/hardware.md) |
+
+Every text export is reassembled and compared with the original before it is written, so a wrong export
+is an error, never a silently different program.
 
 ### How shots are computed
 
@@ -166,7 +184,7 @@ suite against what its comments claim:
 | `heralded-entanglement` | entangling two distant emitters by interfering their photons |
 | `retry`, `sweep` | repeat-until-success; a classical loop around a quantum measurement |
 | `bell.qasm` | OpenQASM run directly |
-| `*.qg` | the glyph syntax: the original concept, Bell, teleportation, HOM with emitters, retry |
+| `*.qg` | the glyph syntax: the original concept, Bell, teleportation, HOM with emitters, retry, and a repetition-code decoder that calls a classical routine (`CC`) |
 | `kerr.rs` | light around a spinning black hole, with its Hawking pairs computed by QOA: `cargo run --release --example kerr -- --still kerr.png` ([docs/kerr.md](docs/kerr.md)) |
 
 ## Real hardware

@@ -113,8 +113,10 @@ LOOPSTART 3                 ; begiztak, azpierrutinak (CALL/RETSUB), aritmetika 
 LOOPEND
 ```
 
-Mnemonikoetan berdin dio maiuskula edo minuskula, eta QOA 0.3-ko izen luzeek (`APPLYHADAMARD`,
-`PHOTONEMIT`...) ezizen gisa funtzionatzen dute oraindik. `qoa isa IZENA`-k edozein agindu azaltzen du;
+Erregistroei izena eman dakieke nahi izanez gero (`QREG data 2`, `CREG flags 2`, `OREG arm 2`, gero
+`data[1]`, edo `data` guztientzat); `q0`, `c0` eta `o0` erabiltzen jarraitzen dute. Mnemonikoetan berdin dio
+maiuskula edo minuskula, eta QOA 0.3-ko izen luzeek (`APPLYHADAMARD`, `PHOTONEMIT`...) ezizen gisa
+funtzionatzen dute oraindik. `qoa isa IZENA`-k edozein agindu azaltzen du;
 [docs/ISA.eu.md](docs/ISA.eu.md)-k guztiak zerrendatzen ditu. Erroreek leku zehatza seinalatzen dute:
 
 ```
@@ -133,8 +135,27 @@ Lengoaia bera modu trinkoan ere idatz daiteke, lerro bakoitzean adierazpen askor
 Q{2}; #C{2}; H/Q[0]; CX/Q[0],Q[1]; M/Q$>#C; PF"bell: {}\n"%#C;
 ```
 
-`qoa import fitxategia.qg`-k ordezkatzen duen QOA arrunta erakusten du, eta erroreek glifoa seinalatzen
-dute. Berrikusteko zirriborro bat da: ikus [docs/glyph.eu.md](docs/glyph.eu.md).
+`qoa import fitxategia.qg`-k ordezkatzen duen QOA arrunta erakusten du, `qoa export --to glyph
+fitxategia.qoa`-k alderantziz egiten du, eta erroreek glifoa seinalatzen dute. `CC[0x10]%a%b$>#2`-k helbide
+bateko errutina klasiko bat deitzen du, argumentuak pilan dituela. Berrikusteko zirriborro bat da: ikus
+[docs/glyph.eu.md](docs/glyph.eu.md).
+
+### Programa baten barrura begiratzea
+
+`qoa export --to <helburua>`-k programa bat beste forma batzuetan idazten du, `.qoa`, `.qg`, `.qasm` edo
+konpilatutako `.qx` batetik:
+
+| helburua | zer lortzen den |
+|---|---|
+| `qoa` | QOA arrunt kanonikoa: ezizenak ebatzita, tarteak zabalduta, jauzi-helburuak `addr_0x..` etiketa gisa |
+| `listing` | bera, eragiketa bakoitzaren helbide eta iturburu-lerroarekin; mihiztatu daiteke oraindik |
+| `json` | programa datu gisa: baliabideak, eta eragiketa bakoitzaren helbidea, lerroa, testua eta egitura |
+| `dot` | kontrol-fluxuaren grafoa (oinarrizko blokeak, jauziak, begiztak, deiak) graphviz-erako: `qoa export --to dot f.qoa \| dot -Tsvg > f.svg` |
+| `glyph` | glifo-sintaxia (`--width`, `--names`, `--long-names`, `--no-ranges`, `--hex`) |
+| `qasm`, `ionq` | hardware errealerako: [docs/hardware.eu.md](docs/hardware.eu.md) |
+
+Testu-esportazio bakoitza berriz mihiztatu eta jatorrizkoarekin konparatzen da idatzi aurretik, beraz
+esportazio oker bat errore bat da, inoiz ez isilean desberdina den programa bat.
 
 ### Nola kalkulatzen diren shot-ak
 
@@ -168,7 +189,7 @@ egiaztatua bere iruzkinek diotenaren aurka:
 | `heralded-entanglement` | urrutiko bi igorle entrelazatu haien fotoiak interferentzian jarriz |
 | `retry`, `sweep` | errepikatu arrakasta lortu arte; neurketa kuantiko baten inguruko begizta klasikoa |
 | `bell.qasm` | OpenQASM zuzenean exekutatuta |
-| `*.qg` | glifo-sintaxia: jatorrizko kontzeptua, bell, teleportazioa, HOM igorleekin, errepikatzea |
+| `*.qg` | glifo-sintaxia: jatorrizko kontzeptua, bell, teleportazioa, HOM igorleekin, errepikatzea, eta errutina klasiko bat deitzen duen (`CC`) errepikapen-kode baten deskodetzailea |
 | `kerr.rs` | argia biraka dagoen zulo beltz baten inguruan, bere hawking bikoteak QOA-k kalkulatuta: `cargo run --release --example kerr -- --still kerr.png` ([docs/kerr.eu.md](docs/kerr.eu.md)) |
 
 ## Hardware erreala

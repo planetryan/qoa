@@ -98,12 +98,42 @@ enum Command {
     Export {
         #[arg(help = ts!("program file", "programa-fitxategia"))]
         file: PathBuf,
-        #[arg(long, value_enum, help = ts!("target format", "helburuko formatua"))]
-        to: ExportFormat,
+        #[arg(long, value_enum, required_unless_present = "to_glyph", help = ts!(
+            "target: qasm (OpenQASM 2.0), ionq (IonQ JSON), glyph (glyph syntax), qoa (canonical plain QOA, also from a .qx binary), listing (qoa with each operation's address and source line), json (the program as data), dot (control-flow graph for Graphviz)",
+            "helburua: qasm (OpenQASM 2.0), ionq (IonQ JSON), glyph (glifo-sintaxia), qoa (QOA arrunt kanonikoa, .qx bitar batetik ere), listing (qoa eragiketa bakoitzaren helbide eta iturburu-lerroarekin), json (programa datu gisa), dot (kontrol-fluxuaren grafoa graphviz-erako)"
+        ))]
+        to: Option<ExportFormat>,
+        #[arg(long, conflicts_with = "to", help = ts!("same as --to glyph", "--to glyph-en berdina"))]
+        to_glyph: bool,
         #[arg(short, long, help = ts!("output file (default: print to the terminal)", "irteera-fitxategia (lehenetsia: terminalean inprimatu)"))]
         output: Option<PathBuf>,
         #[arg(long, default_value_t = 1024, help = ts!("shots to request (IonQ only)", "eskatu beharreko shot-ak (IonQ bakarrik)"))]
         shots: u64,
+        #[arg(long, default_value_t = 100, help_heading = "glyph", help = ts!(
+            "glyph: widest line in characters; statements fill lines up to it (0 = one statement per line)",
+            "glifoa: lerro zabalena karakteretan; adierazpenek lerroak betetzen dituzte hura arte (0 = adierazpen bat lerroko)"
+        ))]
+        width: usize,
+        #[arg(long, default_value = "Q,C,L", help_heading = "glyph", help = ts!(
+            "glyph: names of the qubit, bit and mode registers",
+            "glifoa: qubit, bit eta modu erregistroen izenak"
+        ))]
+        names: String,
+        #[arg(long, help_heading = "glyph", help = ts!(
+            "glyph: write MEASURE and CNOT instead of M and CX",
+            "glifoa: idatzi MEASURE eta CNOT, M eta CX ordez"
+        ))]
+        long_names: bool,
+        #[arg(long, help_heading = "glyph", help = ts!(
+            "glyph: one statement per element instead of ranges like H/Q[0..3]",
+            "glifoa: adierazpen bat elementu bakoitzeko, H/Q[0..3] bezalako tarteen ordez"
+        ))]
+        no_ranges: bool,
+        #[arg(long, help_heading = "glyph", help = ts!(
+            "glyph: write indices in hexadecimal, like Q[0x3]",
+            "glifoa: idatzi indizeak hamaseitarrean, Q[0x3] bezala"
+        ))]
+        hex: bool,
     },
     #[command(about = ts!(
         "Convert an OpenQASM 2.0 file (.qasm) or a glyph-syntax file (.qg) into plain QOA source",
@@ -151,10 +181,22 @@ enum Command {
     },
 }
 
-#[derive(Clone, Copy, Debug, ValueEnum)]
+#[derive(Clone, Copy, Debug, PartialEq, ValueEnum)]
 enum ExportFormat {
+    // openqasm 2.0 (qubit-zatia)
     Qasm,
+    // ionq-ren json formatua
     Ionq,
+    // glifo-sintaxia
+    Glyph,
+    // QOA arrunt kanonikoa (desmihiztatzea)
+    Qoa,
+    // QOA kanonikoa helbide eta iturburu-lerroekin
+    Listing,
+    // programa json gisa
+    Json,
+    // kontrol-fluxuaren grafoa (graphviz)
+    Dot,
 }
 
 fn probability(s: &str) -> Result<f64, String> {
@@ -265,9 +307,20 @@ fn main() -> ExitCode {
         Command::Export {
             file,
             to,
+            to_glyph,
             output,
             shots,
-        } => cmd_export(&file, to, output, shots),
+            width,
+            names,
+            long_names,
+            no_ranges,
+            hex,
+        } => {
+            let to = to.unwrap_or(ExportFormat::Glyph);
+            let _ = to_glyph;
+            glyph_options(to, width, &names, long_names, no_ranges, hex)
+                .and_then(|g| cmd_export(&file, to, output, shots, &g))
+        }
         Command::Import { file, output } => cmd_import(&file, output),
         Command::Isa { name, markdown } => cmd_isa(name, markdown),
         Command::Visual {
@@ -619,23 +672,66 @@ fn write_or_print(output: Option<PathBuf>, text: &str) -> Result<(), String> {
     Ok(())
 }
 
+// `qoa export`-en glifo-aukerak, egiaztatuta
+fn glyph_options(
+    to: ExportFormat,
+    width: usize,
+    names: &str,
+    long_names: bool,
+    no_ranges: bool,
+    hex: bool,
+) -> Result<qoa::disasm::GlyphOptions, String> {
+    let glyph_flags = width != 100 || names != "Q,C,L" || long_names || no_ranges || hex;
+    if glyph_flags && to != ExportFormat::Glyph {
+        return Err(t!(
+            "--width, --names, --long-names, --no-ranges and --hex only apply to --to glyph",
+            "--width, --names, --long-names, --no-ranges eta --hex --to glyph-ekin bakarrik dabiltza"
+        ));
+    }
+    let parts: Vec<&str> = names.split(',').map(str::trim).collect();
+    let [qubits, bits, modes] = parts[..] else {
+        return Err(t!(
+            "--names takes three names separated by commas, like Q,C,L",
+            "--names-ek komaz bereizitako hiru izen hartzen ditu, Q,C,L bezala"
+        ));
+    };
+    Ok(qoa::disasm::GlyphOptions {
+        width,
+        qubits: qubits.into(),
+        bits: bits.into(),
+        modes: modes.into(),
+        long_names,
+        ranges: !no_ranges,
+        hex,
+    })
+}
+
 fn cmd_export(
     file: &Path,
     to: ExportFormat,
     output: Option<PathBuf>,
     shots: u64,
+    glyph: &qoa::disasm::GlyphOptions,
 ) -> Result<(), String> {
     let p = load(file)?;
+    let local = |r: Result<String, String>| r.map_err(|e| format!("{}: {}", p.name, e));
     let result = match to {
         ExportFormat::Qasm => qoa::qasm::from_program(&p),
         ExportFormat::Ionq => qoa::ionq::from_program(&p, shots),
+        ExportFormat::Glyph => {
+            return write_or_print(output, &local(qoa::disasm::to_glyph(&p, glyph))?);
+        }
+        ExportFormat::Qoa => return write_or_print(output, &local(qoa::disasm::to_qoa(&p))?),
+        ExportFormat::Listing => return write_or_print(output, &local(qoa::disasm::listing(&p))?),
+        ExportFormat::Json => return write_or_print(output, &local(qoa::disasm::to_json(&p))?),
+        ExportFormat::Dot => return write_or_print(output, &local(qoa::disasm::to_dot(&p))?),
     };
     match result {
         Ok(text) => write_or_print(output, &text),
         Err(errors) => {
             let target = match to {
                 ExportFormat::Qasm => "OpenQASM 2.0",
-                ExportFormat::Ionq => "IonQ",
+                _ => "IonQ",
             };
             let mut msg = t!(
                 "{} cannot be exported to {}:\n",

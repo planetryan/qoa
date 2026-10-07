@@ -129,6 +129,13 @@ enum Stmt {
         label: String,
     },
     Call(String),
+    // dei klasikoa (ABIa): argumentuak datu-pilan, eskuinetik ezkerrera (deitutakoak lehen argumentua
+    // ateratzen du lehenik), deia, eta emaitza pilatik helmugara. dei-pila bereizia da
+    ClassicalCall {
+        target: String,
+        args: Vec<Operand>,
+        dest: Option<Operand>,
+    },
     Return,
     LoopStart(String),
     LoopEnd,
@@ -361,9 +368,18 @@ impl Parser {
         None
     }
 
-    fn declare(&mut self, name: &str, kind: Kind, size: usize, pos: Pos) -> bool {
+    // erregistro bat adierazi: `at` emanez gero elementu horretan hasten da (`R{3}[0x4]`: q4..q6), bestela
+    // mota bereko aurreko erregistroen ondoren
+    fn declare(
+        &mut self,
+        name: &str,
+        kind: Kind,
+        size: usize,
+        at: Option<usize>,
+        pos: Pos,
+    ) -> bool {
         if let Some(r) = self.regs.get(name) {
-            if r.kind != kind || r.size != size {
+            if r.kind != kind || r.size != size || at.is_some_and(|a| a != r.start) {
                 self.error(
                     pos,
                     name.len() as u32,
@@ -390,17 +406,52 @@ impl Parser {
             return false;
         }
         let k = kind as usize;
-        self.regs.insert(
-            name.to_string(),
-            Register {
-                kind,
-                start: self.counts[k],
-                size,
-            },
-        );
+        let start = at.unwrap_or(self.counts[k]);
+        let clash = self
+            .regs
+            .iter()
+            .find(|(_, r)| r.kind == kind && start < r.start + r.size && r.start < start + size);
+        if let Some((other, r)) = clash {
+            let msg = t!(
+                "{} at {}..{} overlaps {} ({}..{})",
+                "{} ({}..{}) {}-rekin gainjartzen da ({}..{})",
+                name,
+                start,
+                start + size - 1,
+                other,
+                r.start,
+                r.start + r.size - 1
+            );
+            self.error(pos, name.len() as u32, msg);
+            return false;
+        }
+        self.regs
+            .insert(name.to_string(), Register { kind, start, size });
         self.order.push(name.to_string());
-        self.counts[k] += size;
+        self.counts[k] = self.counts[k].max(start + size);
         true
+    }
+
+    // adierazpenaren ondoko `[0x4]`: erregistroaren kokapena (lehen elementua), zenbaki bakarra
+    fn placement(&mut self) -> Option<Option<usize>> {
+        if self.peek() != Some('[') {
+            return Some(None);
+        }
+        let pos = self.pos();
+        let (a, b) = self.index()?;
+        if a != b {
+            self.error(
+                pos,
+                1,
+                ts!(
+                    "a register's location is one number, like [0x4]",
+                    "erregistro baten kokapena zenbaki bakarra da, [0x4] bezala"
+                )
+                .into(),
+            );
+            return None;
+        }
+        Some(Some(a))
     }
 
     // `{n}` tamaina (eta modu-erregistroetan aukerako `%c` muga)
@@ -532,7 +583,8 @@ impl Parser {
     fn named(&mut self, name: String, kind: Option<Kind>, pos: Pos) -> Option<Operand> {
         if self.peek() == Some('{') {
             let size = self.size(kind.unwrap_or(Kind::Qubits))?;
-            if !self.declare(&name, kind.unwrap_or(Kind::Qubits), size, pos) {
+            let at = self.placement()?;
+            if !self.declare(&name, kind.unwrap_or(Kind::Qubits), size, at, pos) {
                 return None;
             }
         }
@@ -563,6 +615,21 @@ impl Parser {
     fn label_name(&mut self) -> Option<String> {
         self.skip_spaces();
         let pos = self.pos();
+        if self.peek().is_some_and(|c| c.is_ascii_digit()) {
+            let n = self.number();
+            if n.is_none() {
+                self.error(
+                    pos,
+                    1,
+                    ts!(
+                        "expected an address like 0x10",
+                        "0x10 bezalako helbide bat espero zen"
+                    )
+                    .into(),
+                );
+            }
+            return n.map(address);
+        }
         let name = self.ident();
         if name.is_none() {
             self.error(
@@ -711,6 +778,24 @@ impl Parser {
                 }
             }
             c if c.is_ascii_alphabetic() || c == '_' => self.op_or_label(pos),
+            // helbide bat etiketa gisa: `0x10:` (CC[0x10] bidez deitzen da)
+            c if c.is_ascii_digit() => {
+                let n = self.number();
+                if let (Some(n), Some(':')) = (n, self.peek()) {
+                    self.bump();
+                    return Some(Stmt::Label(address(n)));
+                }
+                self.error(
+                    pos,
+                    1,
+                    ts!(
+                        "a number starts a statement only as an address label, like 0x10:",
+                        "zenbaki batek helbide-etiketa gisa bakarrik hasten du adierazpen bat, 0x10: bezala"
+                    )
+                    .into(),
+                );
+                None
+            }
             _ => {
                 self.error(
                     pos,
@@ -735,10 +820,14 @@ impl Parser {
             }
             Some('{') => {
                 let size = self.size(Kind::Qubits)?;
-                self.declare(&name, Kind::Qubits, size, pos);
+                let at = self.placement()?;
+                self.declare(&name, Kind::Qubits, size, at, pos);
                 return Some(Stmt::Nothing);
             }
             _ => {}
+        }
+        if name == "CC" {
+            return self.classical_call();
         }
         let mut params = Vec::new();
         if self.peek() == Some('(') {
@@ -778,6 +867,80 @@ impl Parser {
             args,
             dests,
         })
+    }
+
+    // `CC[0x10]%a%b$>#2` edo `CC"izena"%a$>#2`: dei klasikoa (ikus Stmt::ClassicalCall)
+    fn classical_call(&mut self) -> Option<Stmt> {
+        self.skip_spaces();
+        let pos = self.pos();
+        let target = match self.peek() {
+            Some('[') => {
+                let (a, b) = self.index()?;
+                if a != b {
+                    self.error(
+                        pos,
+                        1,
+                        ts!(
+                            "CC calls one address, like [0x10]",
+                            "CC-k helbide bakarra deitzen du, [0x10] bezala"
+                        )
+                        .into(),
+                    );
+                    return None;
+                }
+                address(a)
+            }
+            Some('"') => {
+                let s = self.string()?;
+                let name = s.trim_matches('"').to_string();
+                let ok = name
+                    .chars()
+                    .next()
+                    .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+                    && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+                if !ok {
+                    self.error(
+                        pos,
+                        name.len() as u32 + 2,
+                        t!(
+                            "\"{}\" is not a label name",
+                            "\"{}\" ez da etiketa-izen bat",
+                            name
+                        ),
+                    );
+                    return None;
+                }
+                name
+            }
+            _ => {
+                self.error(
+                    pos,
+                    1,
+                    ts!(
+                        "CC needs what to call: an address like [0x10] or a label like \"name\"",
+                        "CC-k zer deitu behar du: [0x10] bezalako helbide bat edo \"izena\" bezalako etiketa bat"
+                    )
+                    .into(),
+                );
+                return None;
+            }
+        };
+        let mut args = Vec::new();
+        let mut dest = None;
+        loop {
+            self.skip_spaces();
+            if self.peek() == Some('%') {
+                self.bump();
+                args.push(self.operand()?);
+            } else if self.starts_with("$>") {
+                self.bump();
+                self.bump();
+                dest = Some(self.operand()?);
+            } else {
+                break;
+            }
+        }
+        Some(Stmt::ClassicalCall { target, args, dest })
     }
 
     // sarrera osoa: adierazpenak `;`-z amaituta
@@ -861,6 +1024,70 @@ fn split_params(s: &str) -> Vec<String> {
     out
 }
 
+// helbide baten etiketa-izena QOA arruntean: 0x10 -> addr_0x10
+fn address(n: usize) -> String {
+    format!("addr_0x{:x}", n)
+}
+
+// CC-ren argumentu bat datu-pilara: erregistroak bere horretan, bitak zenbaki gisa (PACKBITS), zenbakiak
+// REGSET bidez. R31 aldi baterakoa da
+fn push_lines(
+    regs: &HashMap<String, Register>,
+    a: &Operand,
+    pos: Pos,
+    len: u32,
+) -> Result<Vec<String>, Diagnostic> {
+    let scratch = format!("R{}", SCRATCH_TOP);
+    let quantum = || {
+        diag(
+            pos,
+            len,
+            ts!(
+                "CC passes numbers, registers and bits; a qubit or mode has no classical value until it is measured",
+                "CC-k zenbakiak, erregistroak eta bitak pasatzen ditu; qubit edo modu batek ez du balio klasikorik neurtu arte"
+            )
+            .into(),
+        )
+    };
+    match a {
+        Operand::Reg(k) => Ok(vec![format!("PUSH R{}", k)]),
+        Operand::Named { name, .. } => match regs.get(name).map(|r| r.kind) {
+            Some(Kind::Bits) => {
+                let bits = elements(regs, a)?;
+                Ok(vec![
+                    format!("PACKBITS {} {}", scratch, bits.join(" ")),
+                    format!("PUSH {}", scratch),
+                ])
+            }
+            Some(_) => Err(quantum()),
+            None => elements(regs, a).map(|_| vec![]),
+        },
+        Operand::Raw(s) => {
+            let lower = s.to_ascii_lowercase();
+            let indexed = |p: char| {
+                lower
+                    .strip_prefix(p)
+                    .is_some_and(|d| !d.is_empty() && d.chars().all(|c| c.is_ascii_digit()))
+            };
+            if indexed('r') {
+                Ok(vec![format!("PUSH {}", s)])
+            } else if indexed('c') {
+                Ok(vec![
+                    format!("PACKBITS {} {}", scratch, s),
+                    format!("PUSH {}", scratch),
+                ])
+            } else if indexed('q') || indexed('o') {
+                Err(quantum())
+            } else {
+                Ok(vec![
+                    format!("REGSET {} {}", scratch, s),
+                    format!("PUSH {}", scratch),
+                ])
+            }
+        }
+    }
+}
+
 // glifo-izen laburrak (QOA-k berak ez dituenak)
 fn mnemonic(name: &str) -> &str {
     match name {
@@ -901,6 +1128,31 @@ pub fn expand(src: &str) -> Result<Expanded, Vec<Diagnostic>> {
             Stmt::Label(l) => emit(format!("{}:", l)),
             Stmt::Jump(l) => emit(format!("JUMP {}", l)),
             Stmt::Call(l) => emit(format!("CALL {}", l)),
+            Stmt::ClassicalCall { target, args, dest } => {
+                for a in args.iter().rev() {
+                    match push_lines(&p.regs, a, pos, len) {
+                        Ok(v) => v.into_iter().for_each(&mut emit),
+                        Err(d) => diags.push(d),
+                    }
+                }
+                emit(format!("CALL {}", target));
+                match dest {
+                    None => {}
+                    Some(Operand::Reg(k)) => emit(format!("POP R{}", k)),
+                    Some(Operand::Raw(r)) if r.starts_with(['R', 'r']) && r[1..].parse::<usize>().is_ok() => {
+                        emit(format!("POP {}", r))
+                    }
+                    Some(_) => diags.push(diag(
+                        pos,
+                        len,
+                        ts!(
+                            "the result of CC goes to a register, like $>#2",
+                            "CC-ren emaitza erregistro batera doa, $>#2 bezala"
+                        )
+                        .into(),
+                    )),
+                }
+            }
             Stmt::Return => emit("RETSUB".into()),
             Stmt::Verbatim(s) => emit(s),
             Stmt::LoopStart(n) => {

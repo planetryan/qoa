@@ -167,6 +167,30 @@ pub static SPECS: &[Spec] = &[
         "Declare optical modes, each holding 0..cutoff-1 photons (default cutoff 8). Probability pushed past the cutoff is reported after the run.",
         "Modu optikoak adierazi, bakoitzak 0..muga-1 fotoi gordetzen dituela (muga lehenetsia 8). Mugaz kanpora doan probabilitatea exekuzioaren ondoren jakinarazten da.",
     ),
+    spec(
+        "QREG",
+        &[],
+        "w:name i:size i:first?",
+        Setup,
+        "Name qubits (optional): after QREG data 3, data[0]..data[2] (or data, all three) stand for the next 3 unnamed qubits, or for qubits from `first` if given. q0, q1, ... keep working.",
+        "Qubitei izena eman (aukerakoa): QREG data 3 ondoren, data[0]..data[2]-k (edo data-k, hirurak) izenik gabeko hurrengo 3 qubitak adierazten dituzte, edo `first`-etik hasitakoak emanez gero. q0, q1, ... erabiltzen jarraitzen dute.",
+    ),
+    spec(
+        "CREG",
+        &[],
+        "w:name i:size i:first?",
+        Setup,
+        "Name classical bits (optional), like QREG: CREG flags 2 makes flags[0], flags[1] and flags.",
+        "Bit klasikoei izena eman (aukerakoa), QREG bezala: CREG flags 2-k flags[0], flags[1] eta flags sortzen ditu.",
+    ),
+    spec(
+        "OREG",
+        &[],
+        "w:name i:size i:first?",
+        Setup,
+        "Name optical modes (optional), like QREG: OREG arm 2 makes arm[0], arm[1] and arm.",
+        "Modu optikoei izena eman (aukerakoa), QREG bezala: OREG arm 2-k arm[0], arm[1] eta arm sortzen ditu.",
+    ),
     // ---- qubit-ateak ----
     each(spec(
         "H",
@@ -1489,8 +1513,8 @@ impl Spec {
 pub fn kind_help(kind: char) -> &'static str {
     let (en, eu) = match kind {
         'q' => (
-            "qubit: q3 (or 3); ranges like q0..q3 where allowed",
-            "qubita: q3 (edo 3); q0..q3 bezalako tarteak onartzen diren lekuetan",
+            "qubit: q3 (or 3), or data[1] after QREG; ranges like q0..q3 where allowed",
+            "qubita: q3 (edo 3), edo data[1] QREG ondoren; q0..q3 bezalako tarteak onartzen diren lekuetan",
         ),
         'o' => ("optical mode: o1 (or 1)", "modu optikoa: o1 (edo 1)"),
         'r' => (
@@ -1525,6 +1549,10 @@ pub fn kind_help(kind: char) -> &'static str {
             "oinarria edo ardatza: X, Y edo Z",
         ),
         'g' => ("gate name", "ate-izena"),
+        'w' => (
+            "name: letters, digits and _, not an instruction name",
+            "izena: letrak, digituak eta _, ez agindu-izen bat",
+        ),
         'k' => (
             "character: \"A\" or a character code like 65",
             "karakterea: \"A\" edo 65 bezalako karaktere-kode bat",
@@ -1556,7 +1584,9 @@ pub fn markdown_reference() -> String {
         "| Written as | Meaning |\n|---|---|\n",
         "| Idazkera | Esanahia |\n|---|---|\n",
     ));
-    for k in ['q', 'o', 'r', 'c', 'd', 'v', 'f', 'n', 'l', 's', 'b', 'k'] {
+    for k in [
+        'q', 'o', 'r', 'c', 'd', 'v', 'f', 'n', 'l', 's', 'b', 'k', 'w',
+    ] {
         let example = match k {
             'q' => "`q3`",
             'o' => "`o1`",
@@ -1570,6 +1600,7 @@ pub fn markdown_reference() -> String {
             's' => "`\"text\"`",
             'b' => "`X`",
             'k' => "`\"A\"`",
+            'w' => "`data`",
             _ => "",
         };
         out.push_str(&format!("| {} | {} |\n", example, kind_help(k)));
@@ -1653,7 +1684,7 @@ mod tests {
         for s in SPECS {
             for op in s.operand_specs() {
                 assert!(
-                    "qorcdvfinlsbgk".contains(op.kind),
+                    "qorcdvfinlsbgkw".contains(op.kind),
                     "{}: bad kind {}",
                     s.name,
                     op.kind

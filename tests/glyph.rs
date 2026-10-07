@@ -145,6 +145,59 @@ fn errors_point_at_the_glyph_source() {
     assert!(e[0].2.contains("never closed"), "{:?}", e);
 }
 
+// [0x..] adierazpen baten ondoren: erregistroaren kokapena (memoria-helbidea); beste lekuetan elementu-indizea
+#[test]
+fn a_location_after_a_declaration_places_the_register() {
+    assert_eq!(
+        expand("Q{2}[0x3]; H/Q; X/Q[0x1];"),
+        "QINIT 5\nH q3\nH q4\nX q4\n"
+    );
+    // kokatu gabeko hurrengoa kokatuen ondoren doa
+    assert_eq!(
+        expand("A{1}[0x2]; B{1}; #C{2}[0x4]; X/A; X/B; M/A$>#C[1];"),
+        "QINIT 4\nX q2\nX q3\nMEASURE q2 -> c5\n"
+    );
+    let e = errors("A{2}; B{2}[0x1];");
+    assert!(e[0].2.contains("B at 1..2 overlaps A (0..1)"), "{:?}", e);
+    let e = errors("A{2}[0x0..0x1];");
+    assert!(e[0].2.contains("location is one number"), "{:?}", e);
+}
+
+// CC: dei klasikoa helbide edo etiketa batera, argumentuak datu-pilan eta emaitza erregistro batera
+#[test]
+fn classical_calls_follow_the_stack_convention() {
+    assert_eq!(
+        expand("#C{2}; CC[0x10]%#C[0]%#2%(pi/2)$>#5; END; 0x10:; POP/#1; ^;"),
+        "REGSET R31 pi/2\nPUSH R31\nPUSH R2\nPACKBITS R31 c0\nPUSH R31\nCALL addr_0x10\nPOP R5\nEND\naddr_0x10:\nPOP R1\nRETSUB\n"
+    );
+    // etiketa bat izenez, emaitzarik gabe; jauziak eta deiak helbideetara ere
+    assert_eq!(
+        expand("CC\"bat\"; >0x1f; &0x1F; bat:; ^; 0x1f:;"),
+        "CALL bat\nJUMP addr_0x1f\nCALL addr_0x1f\nbat:\nRETSUB\naddr_0x1f:\n"
+    );
+    let e = errors("Q{1}; CC[0x10]%Q[0]; 0x10:; ^;");
+    assert!(
+        e[0].2.contains("no classical value until it is measured"),
+        "{:?}",
+        e
+    );
+    let e = errors("#C{1}; CC[0x10]$>#C[0]; 0x10:; ^;");
+    assert!(e[0].2.contains("goes to a register"), "{:?}", e);
+    let e = errors("CC; ^;");
+    assert!(e[0].2.contains("CC needs what to call"), "{:?}", e);
+    let e = errors("12; END;");
+    assert!(e[0].2.contains("only as an address label"), "{:?}", e);
+    // exekuzioan: argumentuak ordenan iristen dira eta emaitza itzultzen da
+    let prog = qoa::glyph::assemble(
+        "CC[0x8]%7%2$>#5; PF\"{}\"%#5; END; 0x8:; POP/#1; POP/#2; SUB/#3,#1,#2; PUSH/#3; ^;",
+        "cc.qg",
+    )
+    .unwrap();
+    let mut out = Vec::new();
+    vm::run(&prog, &RunConfig::default(), &mut out).unwrap();
+    assert_eq!(String::from_utf8(out).unwrap(), "5");
+}
+
 #[test]
 fn runtime_messages_name_the_glyph_line() {
     // DUMPSTATE-k eta exekuzio-erroreek glifo-iturburuko lerroa aipatzen dute, ez QOA hedatuarena

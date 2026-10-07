@@ -8,7 +8,7 @@ Mnemonics are case-insensitive. Every alias does exactly what its main name does
 
 | Written as | Meaning |
 |---|---|
-| `q3` | qubit: q3 (or 3); ranges like q0..q3 where allowed |
+| `q3` | qubit: q3 (or 3), or data[1] after QREG; ranges like q0..q3 where allowed |
 | `o1` | optical mode: o1 (or 1) |
 | `R2` | register: R2 (or 2), R0..R31 |
 | `c0` / `c0..c3` | classical bit: c0, or a range like c0..c3 |
@@ -20,6 +20,7 @@ Mnemonics are case-insensitive. Every alias does exactly what its main name does
 | `"text"` | text in double quotes |
 | `X` | basis or axis: X, Y or Z |
 | `"A"` | character: "A" or a character code like 65 |
+| `data` | name: letters, digits and _, not an instruction name |
 
 Instructions marked *simulator only* read information a real device cannot see without disturbing the state.
 
@@ -29,6 +30,9 @@ Instructions marked *simulator only* read information a real device cannot see w
 |---|---|---|
 | `QINIT qubits` | Declare how many qubits the program uses (once). Without it, the count is the highest qubit index used plus one. | QI, INITQUBIT, IQ, QINITQ |
 | `QMODE modes [cutoff]` | Declare optical modes, each holding 0..cutoff-1 photons (default cutoff 8). Probability pushed past the cutoff is reported after the run. | MODES |
+| `QREG name size [first]` | Name qubits (optional): after QREG data 3, data[0]..data[2] (or data, all three) stand for the next 3 unnamed qubits, or for qubits from `first` if given. q0, q1, ... keep working. |  |
+| `CREG name size [first]` | Name classical bits (optional), like QREG: CREG flags 2 makes flags[0], flags[1] and flags. |  |
+| `OREG name size [first]` | Name optical modes (optional), like QREG: OREG arm 2 makes arm[0], arm[1] and arm. |  |
 
 ## Qubit gates
 

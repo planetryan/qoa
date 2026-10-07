@@ -34,6 +34,18 @@ distributed and assembly code was never called. 0.4 fixes all of these.
   linear optics against Quandela's Perceval. See [docs/hardware.md](../docs/hardware.md).
 * **What it is for**: where QOA is useful today, where other tools are better, and what stands in the way of
   adopting it, with the next steps that would help most. See [docs/use-cases.md](../docs/use-cases.md).
+* **Looking inside programs**: `qoa export --to qoa|listing|json|dot|glyph` writes canonical plain QOA (also
+  from a compiled `.qx`), an annotated listing with addresses and source lines, the program as JSON, its
+  control-flow graph for Graphviz, or glyph syntax with options (`--width`, `--names`, `--long-names`,
+  `--no-ranges`, `--hex`). Every text export is reassembled and checked against the original.
+* **Named registers, optional**: `QREG data 3`, `CREG flags 2`, `OREG arm 2` in plain QOA, then `data[1]` or
+  `data`; plain `q0`, `c0`, `o0` keep working.
+* **Glyph syntax decisions**: `CC[0x10]%a%b$>#2` calls a classical routine at an address with a stack
+  calling convention (`0x10:` labels mark addresses); `R{3}[0x4]` places a register at a location; `%`
+  starts and separates values.
+* **CI and releases**: GitHub Actions test every push on Linux, Windows and macOS, and ARM64 and RISC-V under
+  qemu; tagged versions publish binaries for Windows (x64, ARM64), Linux (x86-64, ARM64, RISC-V) and macOS
+  (Intel, Apple Silicon), with `run.sh`, `run.ps1` and `run.cmd` launchers.
 * **Qubit gates on a GPU**: `qoa run --gpu` applies batches of qubit gates through Vulkan, in 64-bit floats,
   in shared-memory tiles (many gates per pass over memory, like the CPU's cache blocks), with cheaper paths
   for diagonal, X and real gates. It errors clearly when no usable device exists. Verified against the CPU
@@ -132,6 +144,20 @@ konpontzen ditu.
   Perceval-en aurka egiaztatzen du. Ikus [docs/hardware.eu.md](../docs/hardware.eu.md).
 * **Zertarako den**: non den QOA baliagarria gaur, non diren beste tresnak hobeak, eta zerk eragozten duen
   hartzea, gehien lagunduko luketen hurrengo urratsekin. Ikus [docs/use-cases.eu.md](../docs/use-cases.eu.md).
+* **Programen barrura begiratzea**: `qoa export --to qoa|listing|json|dot|glyph`-k QOA arrunt kanonikoa
+  idazten du (konpilatutako `.qx` batetik ere), helbide eta iturburu-lerroekiko zerrenda bat, programa JSON
+  gisa, bere kontrol-fluxuaren grafoa graphviz-erako, edo glifo-sintaxia aukerekin (`--width`, `--names`,
+  `--long-names`, `--no-ranges`, `--hex`). Testu-esportazio bakoitza berriz mihiztatu eta jatorrizkoarekin
+  egiaztatzen da.
+* **Erregistro izendunak, aukerakoak**: `QREG data 3`, `CREG flags 2`, `OREG arm 2` QOA arruntean, gero
+  `data[1]` edo `data`; `q0`, `c0`, `o0` arruntek funtzionatzen jarraitzen dute.
+* **Glifo-sintaxiaren erabakiak**: `CC[0x10]%a%b$>#2`-k helbide bateko errutina klasiko bat deitzen du
+  pila-konbentzio batekin (`0x10:` etiketek helbideak markatzen dituzte); `R{3}[0x4]`-k erregistro bat
+  kokapen batean jartzen du; `%`-k balioak hasi eta bereizten ditu.
+* **CI eta argitalpenak**: GitHub Actions-ek push guztiak probatzen ditu linux, windows eta macos-en, eta
+  ARM64 eta RISC-V qemu-n; etiketatutako bertsioek bitarrak argitaratzen dituzte windows (x64, ARM64), linux
+  (x86-64, ARM64, RISC-V) eta macos-erako (Intel, Apple Silicon), `run.sh`, `run.ps1` eta `run.cmd`
+  abiarazleekin.
 * **Qubit-ateak GPU batean**: `qoa run --gpu`-k qubit-ate sortak vulkan bidez aplikatzen ditu, 64 biteko
   koma higikorrean, memoria partekatuko lauzetan (ate asko memoriaren gaineko pasaldi bakoitzean, CPUaren
   cache-blokeak bezala), ate diagonal, X eta errealentzako bide merkeagoekin. Gailu erabilgarririk ez badago

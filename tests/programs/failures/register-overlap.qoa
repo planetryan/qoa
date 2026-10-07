@@ -1,0 +1,5 @@
+; nahita huts egiten duen proba
+; expect-error: b (q1..q2) overlaps a (q0..q1)
+QREG a 2
+QREG b 2 1
+H a

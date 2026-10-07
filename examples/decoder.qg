@@ -1,0 +1,11 @@
+; dei klasikoa (CC) glifo-sintaxian: errepikapen-kode baten deskodetzailea. qubit logiko bat (1) hiru
+; qubitetan kodetzen da, batean errore bat sartzen da (X), hirurak neurtzen dira, eta CC[0x10]-k gehiengoaren
+; bozketa egiten du 0x10 helbideko errutina klasikoan. ABIa: argumentuak datu-pilan, deitutakoak lehena
+; ateratzen du lehenik; emaitza pilan uzten du, eta $>-k erregistro batera eramaten du.
+; expect-only: 101
+; expect-output: deskodetua: 1
+Q{3}; #C{3};
+X/Q[0]; CX/Q[0],Q[1]; CX/Q[0],Q[2]; X/Q[1];
+M/Q$>#C; CC[0x10]%#C[0]%#C[1]%#C[2]$>#5; PF"deskodetua: {}\n"%#5; END;
+; 0x10: gehiengoa = (a + b + c) >> 1
+0x10:; POP/#1; POP/#2; POP/#3; ADD/#4,#1,#2; ADD/#4,#4,#3; REGSET/#6,(1); SHR/#4,#4,#6; PUSH/#4; ^;

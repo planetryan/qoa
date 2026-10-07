@@ -46,14 +46,15 @@ MEASURE q1 -> c1
 | concept | draft 0 reading |
 |---|---|
 | `H/R{3}` | `R{3}` declares a register of 3 qubits; `H/R` applies H to each of them |
-| `[0xMEMORY_LOCATION?]` | `[k]` picks element k of a register (hexadecimal allowed: `R[0x2]`) |
+| `[0xMEMORY_LOCATION?]` | right after a declaration, a location: `R{3}[0x4]` places R at q4..q6. After a name, an element: `R[0x2]` |
 | `$>#2` | `$>` routes a result ("goes into"); `#2` is classical register R2 |
 | `PF"Measuring:"` | `PF` is already QOA's alias for PRINTF; text follows directly |
-| `%O`, `%3` | `%` attaches a value to print (`PF"{}"%#2`); in a mode declaration, the cutoff (`~L{2}%6`) |
+| `%O`, `%3` | `%` starts a value and separates it from the next: `PF"{} {}"%#2%#3`, `CC[0x10]%3%#1`; in a mode declaration it starts the cutoff (`~L{2}%6`) |
 | `<<>>` | show the whole state (DUMPSTATE) |
 | `;` | ends a statement, so a line can hold many |
 | `END;` | stop (already QOA's alias for HALT) |
-| `CC"V"%3`, `PR"R"%O` | not mapped yet: see the open questions |
+| `CC"V"%3$>#2` | call classical: call routine V with the argument 3 and put its result in R2 (see [Classical calls](#classical-calls-cc)) |
+| `PR"R"%O` | not mapped yet: see the open questions |
 
 [examples/concept.qg](../examples/concept.qg) is the concept written out as a working draft-0 program.
 
@@ -69,6 +70,7 @@ MEASURE q1 -> c1
 | glyph | meaning |
 |---|---|
 | `Q{4}` | 4 qubits named Q. Qubits are numbered in declaration order: the first register starts at q0 |
+| `Q{4}[0x4]` | the same, placed at a location: Q is q4..q7. Later registers without a location go after the highest one placed; overlapping registers are an error |
 | `#C{4}` | 4 classical bits named C |
 | `~L{2}%6` | 2 optical modes named L, each holding 0..5 photons (all mode registers share one cutoff; default 8) |
 
@@ -108,11 +110,13 @@ Write `#1`, `Q[1]` or `q1`.
 | `<<>>` | show the exact state | `DUMPSTATE` |
 | `<<#>>` | show every register | `DUMPREGS` |
 | `name:` | label | `name:` |
-| `>name` | jump | `JUMP name` |
+| `0x10:` | a label that is an address, for `CC[0x10]` | `addr_0x10:` |
+| `>name` | jump (to a name or an address: `>0x10`) | `JUMP name` |
 | `?x>name` | jump if bit or register x is 1 | `JUMPIFONE x name` |
 | `!x>name` | jump if it is 0 | `JUMPIFZERO x name` |
 | `*3{ ... }`, `*#2{ ... }` | repeat a block | `LOOPSTART 3` ... `LOOPEND` |
-| `&name` | call a subroutine | `CALL name` |
+| `&name` | call a subroutine (`&0x10` too) | `CALL name` |
+| `CC[0x10]%a%b$>#2` | call classical: arguments on the stack, call, result into R2 | `PUSH`... `CALL addr_0x10` `POP R2` |
 | `^` | return from it | `RETSUB` |
 | `` `any plain QOA` `` | escape: the text between backticks is used as it is | itself |
 | `END` | stop | `HALT` |
@@ -121,10 +125,48 @@ Short names that plain QOA does not have: `M` for MEASURE and `CX` for CNOT. Eve
 its QOA name or alias (`qoa isa` lists them). Printing a bit register uses R31 (then R30, ... for more
 values in the same statement) as scratch, so glyph programs should leave the top registers free.
 
+### Classical calls (CC)
+
+`CC` hands values from the quantum program to a classical routine and gets one back, through a small
+calling convention (ABI) on QOA's data stack, which is separate from the call stack:
+
+1. the caller pushes the arguments (`%a%b`) last to first, so the routine pops the first argument first;
+2. `CC[0x10]` calls the routine at address `0x10` (a label written `0x10:`), and `CC"name"` the one at a
+   named label;
+3. the routine pops its arguments (`POP/#1`), computes, pushes one result (`PUSH/#4`) and returns (`^`);
+4. `$>#2` pops the result into R2. Without `$>`, the routine should push nothing.
+
+An argument can be a number or expression (`%3`, `%(pi/2)`), a register (`%#1`) or bits (`%#C[0]`, or
+`%#C` for a whole bit register as one number); qubits and modes have no classical value until they are
+measured, so passing one is an error. Numbers and bits go through R31 on their way to the stack.
+
+[examples/decoder.qg](../examples/decoder.qg) decodes a three-qubit repetition code: it measures the qubits
+and calls a majority-vote routine at `0x10`:
+
+```
+M/Q$>#C; CC[0x10]%#C[0]%#C[1]%#C[2]$>#5; PF"decoded: {}\n"%#5; END;
+0x10:; POP/#1; POP/#2; POP/#3; ADD/#4,#1,#2; ADD/#4,#4,#3; REGSET/#6,(1); SHR/#4,#4,#6; PUSH/#4; ^;
+```
+
+## From plain QOA to glyph
+
+`qoa export --to glyph file.qoa` (or `--to-glyph`) writes any program as glyph syntax: from `.qoa`, `.qasm`,
+`.qg` or a compiled `.qx`. Runs of the same gate become ranges (`H/Q[0..3]`, `M/Q[0..1]$>#C[0..1]`), jump
+targets become address labels (`0x8:`), and the result is reassembled and compared with the original before
+it is written. Options:
+
+| option | effect |
+|---|---|
+| `--width N` | statements fill lines up to N characters (default 100; 0 = one statement per line) |
+| `--names Q,C,L` | names of the qubit, bit and mode registers |
+| `--long-names` | `MEASURE` and `CNOT` instead of `M` and `CX` |
+| `--no-ranges` | one statement per element |
+| `--hex` | indices in hexadecimal, like `Q[0x3]` |
+
 ## Examples
 
-[examples/](../examples): `concept.qg`, `bell.qg`, `teleport.qg`, `hom.qg` (two emitters and a
-beamsplitter), `retry.qg`. Each states its expected results in header comments, and the test suite
+[examples/](../examples): `concept.qg`, `bell.qg`, `decoder.qg` (a classical call), `teleport.qg`,
+`hom.qg` (two emitters and a beamsplitter), `retry.qg`. Each states its expected results in header comments, and the test suite
 checks them; `tests/glyph.rs` also checks that the glyph programs give exactly the same counts as their
 plain twins.
 
@@ -140,17 +182,21 @@ M/Q[0..1]$>#C[0..1];                            MEASURE q0 -> c0 / MEASURE q1 ->
 U(-1.0, 0.3, -0.5)/Q[2]; M/Q[2]$>#C[2];         U q2 -1.0 0.3 -0.5 / MEASURE q2 -> c2
 ```
 
-## Open questions
+## Decided, and still open
+
+Decided (October 2026):
+
+- **`CC`** is "call classical", a call to a memory location: `CC[0x10]` with the stack convention above.
+- **`%`** is a logical starter and separator for values.
+- **`[0x…]`** is a location right after a declaration, and an element index everywhere else.
+- **Names in plain QOA** are available but never required: `QREG data 3`, `CREG flags 2`, `OREG arm 2`, then
+  `data[1]` or `data`; `q0`, `c0` and `o0` keep working.
+- **The other direction** exists: `qoa export --to glyph` (or `--to-glyph`) with the options above.
+
+Still open:
 
 1. **Separators.** The concept chains statements without `;` (`$>#2PF"Measuring:"`). Draft 0 requires `;`
    so that an error can always say exactly where a statement ended. Should a new instruction name end the
    previous statement on its own?
-2. **`CC` and `PR`.** What did `CC"V"%3` and `PR"R"%O$>#O` stand for? (A guess: CC = copy classical, PR =
-   print register.) They can become glyphs once their meaning is settled.
-3. **`%`.** The concept uses `%3` and `%O` like counts or formats; draft 0 uses `%` only for print values
-   and the mode cutoff. Is there a meaning you had in mind that should win?
-4. **`[0x…]`.** Draft 0 treats it as an element index. Did you mean a raw address (a position in the state
-   vector, or classical memory)?
-5. **Names in plain QOA.** Named registers make the glyph form readable. Should plain QOA get them too
-   (`QREG R 3` and `R[0]`)?
-6. **The other direction.** `qoa export --to glyph` (plain QOA to glyph) is not written yet.
+2. **`PR`.** What does `PR"R"%O$>#O` stand for? (A guess: print a register.) It can become a glyph once its
+   meaning is settled.

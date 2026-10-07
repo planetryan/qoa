@@ -1,0 +1,15 @@
+; izendun erregistroak QOA arruntean (QREG, CREG, OREG): aukerakoak, q0, c0, o0 erabiltzen jarraitzen dute.
+; data q0..q1 da, anc q2, out c0..c2; ghz egoera bat hiru qubitetan, eta fotoi bat arm[1]-en
+; expect-only: 000 111
+; expect-share: 111 0.5 0.06
+QREG data 2
+QREG anc 1
+CREG out 3
+OREG arm 2
+QMODE 2 3
+H data[0]
+CNOT data[0] data[1]
+CNOT data[1] anc
+SINGLEPHOTON arm[1]
+MEASURE data -> out[0..1]
+MEASURE q2 -> out[2]

@@ -496,3 +496,74 @@ fn gpu_runs_match_the_cpu_or_fail_saying_why() {
         "{text}"
     );
 }
+
+// export: glifoa (--to glyph eta --to-glyph berdinak), aukerak glifoarentzat bakarrik, eta .qx bitar batetik
+// QOA kanonikoa
+#[test]
+fn export_writes_glyph_listing_json_and_dot() {
+    let a = qoa("en", &["export", "--to", "glyph", "examples/teleport.qoa"]);
+    let b = qoa("en", &["export", "--to-glyph", "examples/teleport.qoa"]);
+    assert!(a.status.success(), "{}", stderr(&a));
+    assert_eq!(stdout(&a), stdout(&b));
+    assert!(
+        stdout(&a).contains("M/Q[0..1]$>#C[0..1];"),
+        "{}",
+        stdout(&a)
+    );
+    let c = qoa(
+        "en",
+        &[
+            "export",
+            "--to",
+            "glyph",
+            "--width",
+            "0",
+            "--names",
+            "R,F,A",
+            "--hex",
+            "examples/bell.qoa",
+        ],
+    );
+    assert!(stdout(&c).contains("H/R[0x0];\n"), "{}", stdout(&c));
+    let bad = qoa(
+        "en",
+        &["export", "--to", "qasm", "--hex", "examples/bell.qoa"],
+    );
+    assert!(!bad.status.success());
+    assert!(
+        stderr(&bad).contains("only apply to --to glyph"),
+        "{}",
+        stderr(&bad)
+    );
+    let bad = qoa(
+        "en",
+        &["export", "--to", "glyph", "--to-glyph", "examples/bell.qoa"],
+    );
+    assert!(!bad.status.success());
+
+    let qx = scratch("export.qx");
+    let o = qoa(
+        "en",
+        &["compile", "examples/retry.qoa", "-o", qx.to_str().unwrap()],
+    );
+    assert!(o.status.success(), "{}", stderr(&o));
+    let from_bin = qoa("en", &["export", "--to", "qoa", qx.to_str().unwrap()]);
+    let from_src = qoa("en", &["export", "--to", "qoa", "examples/retry.qoa"]);
+    assert!(from_bin.status.success(), "{}", stderr(&from_bin));
+    assert_eq!(stdout(&from_bin), stdout(&from_src));
+    assert!(
+        stdout(&from_src).contains("JUMPIFZERO R0 addr_0x2"),
+        "{}",
+        stdout(&from_src)
+    );
+    let listing = stdout(&qoa(
+        "eu",
+        &["export", "--to", "listing", "examples/retry.qoa"],
+    ));
+    assert!(listing.contains("; 0x0002  8. lerroa"), "{}", listing);
+    let json = stdout(&qoa("en", &["export", "--to", "json", "examples/bell.qoa"]));
+    let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+    assert_eq!(v["ops"][1]["text"], "CNOT q0 q1");
+    let dot = stdout(&qoa("en", &["export", "--to", "dot", "examples/retry.qoa"]));
+    assert!(dot.contains("b2 -> b2 [label=\"R0 = 0\"]"), "{}", dot);
+}

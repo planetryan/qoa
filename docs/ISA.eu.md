@@ -8,7 +8,7 @@ Mnemonikoetan berdin dio maiuskula edo minuskula. Ezizen bakoitzak bere izen nag
 
 | Idazkera | Esanahia |
 |---|---|
-| `q3` | qubita: q3 (edo 3); q0..q3 bezalako tarteak onartzen diren lekuetan |
+| `q3` | qubita: q3 (edo 3), edo data[1] QREG ondoren; q0..q3 bezalako tarteak onartzen diren lekuetan |
 | `o1` | modu optikoa: o1 (edo 1) |
 | `R2` | erregistroa: R2 (edo 2), R0..R31 |
 | `c0` / `c0..c3` | bit klasikoa: c0, edo c0..c3 bezalako tarte bat |
@@ -20,6 +20,7 @@ Mnemonikoetan berdin dio maiuskula edo minuskula. Ezizen bakoitzak bere izen nag
 | `"text"` | testua komatxo bikoitzen artean |
 | `X` | oinarria edo ardatza: X, Y edo Z |
 | `"A"` | karakterea: "A" edo 65 bezalako karaktere-kode bat |
+| `data` | izena: letrak, digituak eta _, ez agindu-izen bat |
 
 *Simulagailuan bakarrik* markatutako aginduek benetako gailu batek egoera aldatu gabe ikusi ezin duen informazioa irakurtzen dute.
 
@@ -29,6 +30,9 @@ Mnemonikoetan berdin dio maiuskula edo minuskula. Ezizen bakoitzak bere izen nag
 |---|---|---|
 | `QINIT qubitak` | Programak zenbat qubit erabiltzen dituen adierazi (behin). Gabe, erabilitako qubit-indize handiena gehi bat da. | QI, INITQUBIT, IQ, QINITQ |
 | `QMODE moduak [muga]` | Modu optikoak adierazi, bakoitzak 0..muga-1 fotoi gordetzen dituela (muga lehenetsia 8). Mugaz kanpora doan probabilitatea exekuzioaren ondoren jakinarazten da. | MODES |
+| `QREG izena size [first]` | Qubitei izena eman (aukerakoa): QREG data 3 ondoren, data[0]..data[2]-k (edo data-k, hirurak) izenik gabeko hurrengo 3 qubitak adierazten dituzte, edo `first`-etik hasitakoak emanez gero. q0, q1, ... erabiltzen jarraitzen dute. |  |
+| `CREG izena size [first]` | Bit klasikoei izena eman (aukerakoa), QREG bezala: CREG flags 2-k flags[0], flags[1] eta flags sortzen ditu. |  |
+| `OREG izena size [first]` | Modu optikoei izena eman (aukerakoa), QREG bezala: OREG arm 2-k arm[0], arm[1] eta arm sortzen ditu. |  |
 
 ## Qubit-ateak
 

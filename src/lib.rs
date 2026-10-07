@@ -2,6 +2,7 @@
 // rust egonkorrean konpilatzen da, nightly ezaugarririk gabe.
 
 pub mod asm; // .qoa testua -> programa
+pub mod disasm; // desmihiztatzea eta analisirako esportazioak (qoa, listing, json, dot, glyph)
 pub mod expr; // zenbakizko adierazpenak (pi/2, ...)
 pub mod fock; // eragile optikoak fotoi-kopuruaren oinarrian
 pub mod glyph; // glifo-sintaxia (.qg): QOA trinkoa, lerro bakoitzean agindu askorekin
