@@ -151,6 +151,15 @@ egiaztatua bere iruzkinek diotenaren aurka:
 | `*.qg` | glifo-sintaxia: jatorrizko kontzeptua, bell, teleportazioa, HOM igorleekin, errepikatzea |
 | `kerr.rs` | argia biraka dagoen zulo beltz baten inguruan, bere hawking bikoteak QOA-k kalkulatuta: `cargo run --release --example kerr -- --still kerr.png` ([docs/kerr.eu.md](docs/kerr.eu.md)) |
 
+## Hardware erreala
+
+Programa baten qubit-zatia OpenQASM 2.0 edo IonQ-ren JSON gisa esportatzen da, kopuru finkoko begiztak
+eta neurtutako biten araberako aurrera-elikadura barne, eta qiskit-en berdin exekutatzen da. IBM-ren Heron
+eta Eagle gailuetarako transpilatuta eta haien zarata neurtuarekin, zirkuitu txikiek erantzun zuzenen % 75-98
+gordetzen dute eta 8 qubiteko grover gako-bilaketa bat % 30era jaisten da. Optika linealeko zatia
+Quandela-ren Perceval-ekin bat dator 1e-15-raino. Neurketak, mugak eta lan bat nola bidali:
+[docs/hardware.eu.md](docs/hardware.eu.md).
+
 ## Probak
 
 ```sh

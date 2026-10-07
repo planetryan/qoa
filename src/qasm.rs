@@ -9,7 +9,7 @@
 // adierazi, eta errorea ematen dute lerroa adieraziz.
 
 use crate::expr;
-use crate::program::{Basis, Dest, Gate, Op, Program};
+use crate::program::{Basis, Count, Dest, Gate, Op, Program, Source};
 use crate::t;
 use std::collections::{HashMap, HashSet};
 
@@ -991,6 +991,102 @@ impl std::fmt::Display for ExportError {
 }
 
 // qoa programa openqasm 2.0 bihurtzen du (qelib1.inc ateak erabiliz)
+// esportaziorako programa laua: (baldintza, pc) zerrenda. OpenQASM 2.0-k ez du jauzirik ez begiztarik, baina
+// bi egitura ohiko zehazki adieraz daitezke:
+//   - kopuru literaleko begiztak (LOOPSTART 3 ... LOOPEND): gorputza n aldiz errepikatuta
+//   - aurrerako jauzi bat bit bakar baten arabera, agindu zuzenen bloke baten gainetik (JUMPIFZERO c1 x / X q2 /
+//     x:): blokeko agindu bakoitza `if (c1==1)`-ekin
+// beste kontrol-fluxua (atzerako jauziak, erregistroak, deiak) ez da hemen ukitzen eta esportatzean errorea ematen du
+type Cond = Option<(u32, u8)>;
+
+const UNROLL_MAX: usize = 100_000;
+
+// barruan kontrol-fluxurik ez duen eta kanpotik erdira jauzirik jasotzen ez duen tartea
+fn straight_block(p: &Program, from: usize, to: usize) -> bool {
+    let inner = |t: usize| t > from && t < to;
+    p.ops[from..to].iter().all(|op| {
+        !matches!(
+            op,
+            Op::Jump { .. }
+                | Op::JumpIf { .. }
+                | Op::Branch { .. }
+                | Op::Call { .. }
+                | Op::Return
+                | Op::LoopStart { .. }
+                | Op::LoopEnd { .. }
+                | Op::Halt
+        )
+    }) && !p.ops.iter().any(|op| match op {
+        Op::Jump { to: t }
+        | Op::JumpIf { to: t, .. }
+        | Op::Branch { to: t, .. }
+        | Op::Call { to: t } => inner(*t),
+        Op::LoopStart { end, .. } => inner(*end),
+        Op::LoopEnd { start } => inner(*start),
+        _ => false,
+    })
+}
+
+// begizta baten gorputzera (`start` LOOPSTART da, `le` LOOPEND) kanpotik ez da jauzirik sartzen eta handik ez
+// da ateratzen
+fn closed_loop(p: &Program, start: usize, le: usize) -> bool {
+    let target = |op: &Op| match op {
+        Op::Jump { to } | Op::JumpIf { to, .. } | Op::Branch { to, .. } | Op::Call { to } => {
+            Some(*to)
+        }
+        _ => None,
+    };
+    let jumps_in = p.ops.iter().enumerate().any(|(pc, op)| {
+        (pc < start || pc > le) && target(op).is_some_and(|t| t > start && t <= le)
+    });
+    let jumps_out = p.ops[start + 1..le].iter().any(|op| {
+        matches!(op, Op::Halt | Op::Return) || target(op).is_some_and(|t| t <= start || t > le)
+    });
+    !jumps_in && !jumps_out
+}
+
+fn flatten(
+    p: &Program,
+    from: usize,
+    to: usize,
+    cond: Cond,
+    out: &mut Vec<(Cond, usize)>,
+) -> Result<(), usize> {
+    let mut pc = from;
+    while pc < to {
+        match &p.ops[pc] {
+            // `end` LOOPEND-aren ondorengoa da; LOOPEND bera end - 1 da
+            Op::LoopStart {
+                count: Count::Lit(n),
+                end,
+            } if closed_loop(p, pc, end - 1) => {
+                for _ in 0..*n {
+                    flatten(p, pc + 1, end - 1, cond, out)?;
+                    if out.len() > UNROLL_MAX {
+                        return Err(pc);
+                    }
+                }
+                pc = *end;
+            }
+            Op::JumpIf {
+                src: Source::Bit(k),
+                value,
+                to: t,
+            } if cond.is_none() && *t > pc && *t <= to && straight_block(p, pc + 1, *t) => {
+                // bita `value` denean salto egiten da, beraz blokea bitaren beste balioarekin exekutatzen da
+                let run = if *value == 0.0 { 1 } else { 0 };
+                flatten(p, pc + 1, *t, Some((*k, run)), out)?;
+                pc = *t;
+            }
+            _ => {
+                out.push((cond, pc));
+                pc += 1;
+            }
+        }
+    }
+    Ok(())
+}
+
 pub fn from_program(p: &Program) -> Result<String, Vec<ExportError>> {
     let mut errors = Vec::new();
     let mut body = Vec::new();
@@ -1007,8 +1103,31 @@ pub fn from_program(p: &Program) -> Result<String, Vec<ExportError>> {
             ),
         });
     }
-    for (pc, op) in p.ops.iter().enumerate() {
+    let mut flat = Vec::new();
+    if let Err(pc) = flatten(p, 0, p.ops.len(), None, &mut flat) {
+        errors.push(ExportError {
+            line: p.line_of(pc),
+            message: t!(
+                "unrolling this loop would make more than {} instructions",
+                "begizta hau zabaltzeak {} agindu baino gehiago sortuko lituzke",
+                UNROLL_MAX
+            ),
+        });
+        return Err(errors);
+    }
+    // baldintzak badaude, bit bakoitza bere erregistroan (OpenQASM 2.0-k erregistro osoa konparatzen du)
+    let split_bits = flat.iter().any(|(c, _)| c.is_some());
+    let bit = |k: u32| {
+        if split_bits {
+            format!("c{}[0]", k)
+        } else {
+            format!("c[{}]", k)
+        }
+    };
+    for &(cond, pc) in &flat {
+        let op = &p.ops[pc];
         let line = p.line_of(pc);
+        let before = body.len();
         let mut fail = |m: String| errors.push(ExportError { line, message: m });
         match op {
             Op::Gate { q: t, gate } => body.push(gate_line(gate, &q(*t))),
@@ -1125,7 +1244,7 @@ pub fn from_program(p: &Program) -> Result<String, Vec<ExportError>> {
                 }
             }
             Op::Measure { q: t, basis, dest } => {
-                let bit = match dest {
+                let b = match dest {
                     Dest::Own => *t,
                     Dest::Bit(k) => *k,
                     Dest::Reg(_) => {
@@ -1145,7 +1264,7 @@ pub fn from_program(p: &Program) -> Result<String, Vec<ExportError>> {
                     }
                     Basis::Z => {}
                 }
-                body.push(format!("measure {} -> c[{}];", q(*t), bit));
+                body.push(format!("measure {} -> {};", q(*t), bit(b)));
                 match basis {
                     Basis::X => body.push(format!("h {};", q(*t))),
                     Basis::Y => {
@@ -1158,7 +1277,7 @@ pub fn from_program(p: &Program) -> Result<String, Vec<ExportError>> {
             Op::MeasureAll => {
                 uses_bits = true;
                 for t in 0..p.n_qubits {
-                    body.push(format!("measure {} -> c[{}];", q(t), t));
+                    body.push(format!("measure {} -> {};", q(t), bit(t)));
                 }
             }
             Op::Reset { q: t } => body.push(format!("reset {};", q(*t))),
@@ -1198,6 +1317,12 @@ pub fn from_program(p: &Program) -> Result<String, Vec<ExportError>> {
                 describe(other)
             )),
         }
+        // baldintzapeko blokea: lerro bakoitza `if`-ekin (iruzkinak izan ezik)
+        if let Some((k, v)) = cond {
+            for l in body[before..].iter_mut().filter(|l| !l.starts_with("//")) {
+                *l = format!("if(c{}=={}) {}", k, v, l);
+            }
+        }
     }
     if !errors.is_empty() {
         return Err(errors);
@@ -1211,7 +1336,11 @@ pub fn from_program(p: &Program) -> Result<String, Vec<ExportError>> {
     ));
     out.push_str("OPENQASM 2.0;\ninclude \"qelib1.inc\";\n");
     out.push_str(&format!("qreg q[{}];\n", p.n_qubits.max(1)));
-    if uses_bits {
+    if split_bits {
+        for k in 0..p.n_bits.max(1) {
+            out.push_str(&format!("creg c{}[1];\n", k));
+        }
+    } else if uses_bits {
         out.push_str(&format!("creg c[{}];\n", p.n_bits.max(1)));
     }
     for l in body {

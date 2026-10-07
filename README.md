@@ -149,6 +149,14 @@ suite against what its comments claim:
 | `*.qg` | the glyph syntax: the original concept, Bell, teleportation, HOM with emitters, retry |
 | `kerr.rs` | light around a spinning black hole, with its Hawking pairs computed by QOA: `cargo run --release --example kerr -- --still kerr.png` ([docs/kerr.md](docs/kerr.md)) |
 
+## Real hardware
+
+The qubit part of a program exports to OpenQASM 2.0 or IonQ's JSON, including counted loops and
+feed-forward on measured bits, and runs the same in Qiskit. Transpiled for IBM's Heron and Eagle devices
+with their measured noise, small circuits keep 75-98% of the right answers and an 8-qubit Grover key search
+drops to 30%. The linear-optics part matches Quandela's Perceval to 1e-15. Measurements, limits and how to
+submit a job: [docs/hardware.md](docs/hardware.md).
+
 ## Testing
 
 ```sh

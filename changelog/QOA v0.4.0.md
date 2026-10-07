@@ -28,6 +28,10 @@ distributed and assembly code was never called. 0.4 fixes all of these.
 * **Typed operands and ranges**: `q3`, `o1`, `R2`, `c0`, `H q0..q3`, angle expressions such as `pi/4`.
 * **Errors that point at the problem**, with the line, the column and a suggestion. Instructions that never
   did anything now give an error explaining why and what to use instead.
+* **Towards real hardware**: export now unrolls counted loops and turns feed-forward on a measured bit into
+  OpenQASM `if`, so teleportation and Grover search export. `tools/hardware_check.py` checks the exported
+  programs against Qiskit, transpiles them for IBM device models with their real noise, and checks the
+  linear optics against Quandela's Perceval. See [docs/hardware.md](../docs/hardware.md).
 * **A Kerr black hole**: `examples/kerr.rs` traces light through the metric of a fast-spinning black hole
   (shadow, lensed disk, Doppler shift) and computes its Hawking pairs with QOA's own squeezers and
   beamsplitter: their photon numbers follow Planck's law and always come in pairs. See
@@ -114,6 +118,11 @@ konpontzen ditu.
 * **Eragigai motadunak eta tarteak**: `q3`, `o1`, `R2`, `c0`, `H q0..q3`, `pi/4` bezalako angelu-adierazpenak.
 * **Arazoa seinalatzen duten erroreak**, lerroarekin, zutabearekin eta iradokizun batekin. Inoiz ezer egin ez
   zuten aginduek orain errore bat ematen dute, zergatik eta zer erabili azalduz.
+* **Hardware errealerantz**: esportazioak orain kopuru finkoko begiztak zabaltzen ditu eta neurtutako bit
+  baten araberako aurrera-elikadura OpenQASM `if` bihurtzen du, beraz teleportazioa eta grover-en bilaketa
+  esportatzen dira. `tools/hardware_check.py`-k esportatutako programak qiskit-en aurka egiaztatzen ditu, IBM
+  gailu-modeloetarako transpilatzen ditu haien benetako zaratarekin, eta optika lineala Quandela-ren
+  Perceval-en aurka egiaztatzen du. Ikus [docs/hardware.eu.md](../docs/hardware.eu.md).
 * **Kerr zulo beltz bat**: `examples/kerr.rs`-ek argia trazatzen du azkar biraka dagoen zulo beltz baten
   metrikan (itzala, lenteatutako diskoa, doppler efektua) eta bere hawking bikoteak QOA-ren estutzaile eta
   izpi-zatitzaileekin kalkulatzen ditu: haien fotoi-kopuruek planck-en legea jarraitzen dute eta beti

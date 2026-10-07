@@ -491,7 +491,16 @@ fn export_refuses_what_openqasm_cannot_say() {
     lang::set(Lang::En);
     let cases = [
         ("QMODE 1\nDISPLACE o0 1\n", "OpenQASM has no optical modes"),
-        ("QINIT 1\nLOOPSTART 2\nH q0\nLOOPEND\n", "control flow"),
+        // kopuru literaleko begiztak zabaltzen dira, baina erregistro bateko kopurua ez
+        (
+            "QINIT 1\nREGSET R1 2\nLOOPSTART R1\nH q0\nLOOPEND\n",
+            "control flow",
+        ),
+        // atzerako jauzia (errepikatu arrakasta lortu arte) ez da OpenQASM 2.0
+        (
+            "QINIT 1\nberriz:\nH q0\nMEASURE q0\nJUMPIFZERO c0 berriz\n",
+            "control flow",
+        ),
         ("QINIT 1\nMEASURE q0 -> R0\n", "measurement into a register"),
         ("QINIT 6\nMCZ q0 q1 q2 q3 q4 q5\n", "phase on 6 qubits"),
     ];
@@ -537,4 +546,66 @@ fn ionq_export_is_valid_json_in_the_v0_format() {
     assert!(qoa::ionq::from_program(&photonic, 1).is_err());
     let after = qoa::asm::assemble("QINIT 1\nMEASURE q0\nH q0\n", "t").unwrap();
     assert!(qoa::ionq::from_program(&after, 1).is_err());
+}
+
+#[test]
+fn export_unrolls_loops_and_turns_skips_into_if() {
+    // begizta literalak zabaltzen dira; bit baten araberako aurrerako jauzi bat `if` bihurtzen da, bit bakoitza
+    // bere erregistroan
+    let src = "QINIT 2\nLOOPSTART 3\nH q0\nLOOPEND\nMEASURE q0 -> c0\nJUMPIFZERO c0 gabe\nX q1\nCZ q0 q1\ngabe:\nMEASURE q1 -> c1\n";
+    let prog = qoa::asm::assemble(src, "t").unwrap();
+    let text = qoa::qasm::from_program(&prog).unwrap();
+    assert_eq!(text.matches("h q[0];").count(), 3, "{}", text);
+    assert!(
+        text.contains("creg c0[1];") && text.contains("creg c1[1];"),
+        "{}",
+        text
+    );
+    assert!(
+        text.contains("if(c0==1) x q[1];") && text.contains("if(c0==1) cz q[0],q[1];"),
+        "{}",
+        text
+    );
+    assert!(text.contains("measure q[1] -> c1[0];"), "{}", text);
+}
+
+#[test]
+fn exported_control_flow_runs_the_same_after_import() {
+    // QOA -> OpenQASM -> QOA: teleportazioak eta grover-ek kopuru berdin-berdinak ematen dituzte
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    for name in [
+        "examples/teleport.qoa",
+        "examples/grover.qoa",
+        "examples/grover-key.qoa",
+    ] {
+        let src = std::fs::read_to_string(root.join(name)).unwrap();
+        let prog = qoa::asm::assemble(&src, name).unwrap();
+        let text = qoa::qasm::from_program(&prog).unwrap();
+        let back = qoa::asm::assemble(&qoa::qasm::to_qoa(&text, name).unwrap(), name).unwrap();
+        let cfg = qoa::vm::RunConfig {
+            shots: 4000,
+            seed: 3,
+            ..Default::default()
+        };
+        let a = qoa::vm::run(&prog, &cfg, &mut std::io::sink()).unwrap();
+        let b = qoa::vm::run(&back, &cfg, &mut std::io::sink()).unwrap();
+        // bit-erregistroak bereizita daude esportazioan; konparatu bitak
+        let bits = |o: &qoa::vm::RunOutput| {
+            let mut v: Vec<(String, u64)> = o
+                .counts
+                .iter()
+                .map(|(r, n)| (qoa::report::bits_string(r).replace('-', "0"), *n))
+                .collect();
+            v.sort();
+            v
+        };
+        let (ka, kb) = (bits(&a), bits(&b));
+        // kopuru berdinak, bit-kopurua desberdina izan daitekeen arren (zeroak ezkerrean)
+        let trim = |v: Vec<(String, u64)>| -> Vec<(String, u64)> {
+            v.into_iter()
+                .map(|(k, n)| (k.trim_start_matches('0').to_string(), n))
+                .collect()
+        };
+        assert_eq!(trim(ka), trim(kb), "{}", name);
+    }
 }
