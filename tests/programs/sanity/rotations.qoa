@@ -1,0 +1,7 @@
+; RX pi = X (fase globalarekin), RY pi/2 = 50/50, U pi 0 pi = X
+; expect-prob: |101> 0.5
+; expect-prob: |111> 0.5
+QINIT 3
+RX q0 pi
+RY q1 pi/2
+U q2 pi 0 pi

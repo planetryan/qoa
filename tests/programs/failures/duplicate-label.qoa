@@ -1,0 +1,6 @@
+; nahita huts egiten duen proba
+; expect-error: label 'twice' is defined twice
+twice:
+HALT
+twice:
+HALT

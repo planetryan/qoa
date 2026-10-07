@@ -1,0 +1,6 @@
+; |1> + a† -> |2>; gero a -> |1>
+; expect-prob: |1> 1
+QMODE 1 5
+SINGLEPHOTON o0
+ADDPHOTON o0
+SUBPHOTON o0

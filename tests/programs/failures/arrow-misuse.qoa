@@ -1,0 +1,4 @@
+; nahita huts egiten duen proba
+; expect-error: -> can only come before a result destination
+QINIT 2
+CNOT q0 -> q1

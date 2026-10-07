@@ -1,0 +1,11 @@
+; mach-zehnder interferometroa fotoi bakarrarekin
+; bi izpi-zatitzaileren artean fase bat: o0 detektagailuan probabilitatea sin^2(fasea/2) da,
+; eta o1-en cos^2(fasea/2).
+; fasea = pi/3 denean, o0 25% eta o1 75%.
+QMODE 2 3
+SINGLEPHOTON o0
+BS o0 o1 pi/4
+MODEPHASE o1 pi/3
+BS o0 o1 pi/4
+DETECT o0
+DETECT o1

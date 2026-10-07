@@ -1,0 +1,3 @@
+; nahita huts egiten duen proba
+; expect-error: more than 64 qubits cannot be simulated
+QINIT 65

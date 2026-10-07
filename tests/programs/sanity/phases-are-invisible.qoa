@@ -1,0 +1,8 @@
+; fase hutsek (MODEPHASE, KERR, CROSSKERR) ez dute fotoi-kopurua aldatzen
+; expect-prob: |2 1> 1
+QMODE 2 4
+FOCK o0 2
+FOCK o1 1
+MODEPHASE o0 0.7
+KERR o0 0.3
+CROSSKERR o0 o1 1.1

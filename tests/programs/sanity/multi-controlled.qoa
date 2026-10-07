@@ -1,0 +1,6 @@
+; MCX hiru kontrolekin, eta MCZ-k fasea bakarrik aldatzen du
+; expect-prob: |1111> 1
+QINIT 4
+X q0..q2
+MCX q0 q1 q2 q3
+MCZ q0 q1 q2 q3

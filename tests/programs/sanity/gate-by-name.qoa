@@ -1,0 +1,3 @@
+; expect-prob: |1> 1
+QINIT 1
+GATE x q0

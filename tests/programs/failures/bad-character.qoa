@@ -1,0 +1,4 @@
+; nahita huts egiten duen proba
+; expect-error: which is not a character code
+REGSET R0 -1
+CHAROUT R0

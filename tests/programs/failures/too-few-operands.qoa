@@ -1,0 +1,4 @@
+; nahita huts egiten duen proba
+; expect-error: too few operands for RX
+QINIT 1
+RX q0

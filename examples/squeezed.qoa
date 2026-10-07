@@ -1,0 +1,4 @@
+; huts estutua: fotoiak bikoteka sortzen dira, beraz kopuru bakoitiak ez dira inoiz agertzen
+QMODE 1 40
+SQUEEZE o0 0.8
+COUNT o0

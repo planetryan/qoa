@@ -1,0 +1,3 @@
+; nahita huts egiten duen proba
+; expect-error: register R40 does not exist
+REGSET R40 1

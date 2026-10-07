@@ -1,0 +1,4 @@
+; nahita huts egiten duen proba
+; expect-error: expected X, Y or Z for basis
+QINIT 1
+MEASUREIN q0 W

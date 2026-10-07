@@ -1,0 +1,4 @@
+; nahita huts egiten duen proba
+; expect-error: qubit 5 does not exist: QINIT declared 2 qubit(s)
+QINIT 2
+H q5

@@ -1,0 +1,10 @@
+; fase-itzulera: CNOT-ren helburua |-> denean, kontrola |+> -> |-> bihurtzen da
+; q0 = 1 beti; q1 |->-n geratzen da (50/50)
+; expect-prob: |01> 0.5
+; expect-prob: |11> 0.5
+QINIT 2
+H q0
+X q1
+H q1
+CNOT q0 q1
+H q0

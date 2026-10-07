@@ -1,0 +1,7 @@
+; H-k 50/50 ematen du
+; shots: 8000
+; expect-share: 0 0.5 0.03
+; expect-share: 1 0.5 0.03
+QINIT 1
+H q0
+MEASURE q0

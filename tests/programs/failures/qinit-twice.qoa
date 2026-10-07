@@ -1,0 +1,5 @@
+; nahita huts egiten duen proba
+; expect-error: QINIT appears more than once
+QINIT 2
+QINIT 3
+H q0

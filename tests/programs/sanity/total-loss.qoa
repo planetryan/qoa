@@ -1,0 +1,6 @@
+; LOSS 1-ek fotoi guztiak galtzen ditu
+; expect-only: o0=0
+QMODE 1 5
+FOCK o0 4
+LOSS o0 1
+COUNT o0

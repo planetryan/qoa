@@ -1,0 +1,4 @@
+; expect-prob: |10> 1
+QINIT 2
+X q0
+SWAP q0 q1

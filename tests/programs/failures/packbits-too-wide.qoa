@@ -1,0 +1,3 @@
+; nahita huts egiten duen proba
+; expect-error: at most 52 bits fit exactly
+PACKBITS R0 c0..c60

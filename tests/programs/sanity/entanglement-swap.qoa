@@ -1,0 +1,8 @@
+; bi bell bikote (q0,q1) eta (q2,q3); ESWAP-en ondoren q0 eta q3 dira entrelazatuta
+; shots: 200
+; expect-output: Bell fidelity of q0 q3 = 1.000000
+QINIT 4
+BELL q0 q1
+BELL q2 q3
+ESWAP q0 q1 q2 q3
+BELLCHECK q0 q3

@@ -1,0 +1,4 @@
+; expect-prob: |0 2> 1
+QMODE 2 4
+FOCK o0 2
+MODESWAP o0 o1

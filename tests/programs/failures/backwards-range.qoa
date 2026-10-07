@@ -1,0 +1,4 @@
+; nahita huts egiten duen proba
+; expect-error: a range must count upwards
+QINIT 4
+H q3..q1

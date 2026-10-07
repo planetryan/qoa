@@ -1,0 +1,13 @@
+; bit-eragiketak 64 biteko osoetan: 6 = 110, 5 = 101
+; expect-output: and=4 or=7 xor=3 shl=24 shr=3 not=-7
+REGSET R0 6
+REGSET R1 5
+REGSET R8 1
+REGSET R9 2
+ANDBITS R2 R0 R1
+ORBITS R3 R0 R1
+XORBITS R4 R0 R1
+SHL R5 R0 R9
+SHR R6 R0 R8
+NOTBITS R7 R0
+PRINTF "and={} or={} xor={} shl={} shr={} not={}\n" R2 R3 R4 R5 R6 R7

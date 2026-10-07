@@ -1,0 +1,12 @@
+; angelu-ekorketa: RY(theta)-ren <Z> zehatza theta-ren funtzio gisa; cos(theta) izan behar du.
+; EXPECT simulagailuan bakarrik dabil; hemen begizta klasiko batekin konbinatuta.
+; RY(a) eta gero RY(b) = RY(a+b), beraz biraketa pausoka metatzen da.
+QINIT 1
+REGSET R0 0                     ; theta
+REGSET R1 pi/8                  ; pausoa
+LOOPSTART 9
+  EXPECT q0 Z R3                ; R3 = <Z>, egoera aldatu gabe
+  PRINTF "theta = {}  <Z> = {}\n" R0 R3
+  RY q0 pi/8
+  ADD R0 R0 R1
+LOOPEND

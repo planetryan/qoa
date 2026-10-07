@@ -1,0 +1,17 @@
+; grover-en bilaketa 3 qubitetan, |101> bilatuz (8 aukeratik 1)
+; 2 iterazio: arrakasta-probabilitatea ~94.5%
+QINIT 3
+H q0..q2
+LOOPSTART 2
+  ; orakulua: fasea -1 |101>-n (q1 0 da, beraz X-z inguratu)
+  X q1
+  MCZ q0 q1 q2
+  X q1
+  ; difusioa: 2|s><s| - 1
+  H q0..q2
+  X q0..q2
+  MCZ q0 q1 q2
+  X q0..q2
+  H q0..q2
+LOOPEND
+MEASURE q0..q2

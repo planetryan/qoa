@@ -1,0 +1,5 @@
+; MEANPHOTON: egoera koherentearen <n> = |alpha|^2
+; expect-output: <n> of o0 = 1.000000
+QMODE 1 30
+DISPLACE o0 0.6 0.8
+MEANPHOTON o0

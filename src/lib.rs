@@ -1,14 +1,14 @@
-// ONLY in nightly
+// qoa liburutegia: mihiztatzailea, simulagailua eta inportazio/esportazioa.
+// rust egonkorrean konpilatzen da, nightly ezaugarririk gabe.
 
-#![feature(portable_simd)]
-
-// #![feature(stdarch_x86_mm_shuffle)] // if you are NOT on x86-64, comment this line out
-// disabling this on x86-64 systems will not break QOA compiliation, but is reccomended for optimization and preformance.
-
-// #![feature(rustc_attrs)] // this is a internal compiler feature. using internal features are discouraged.
-
-pub mod distribute; // for distribution
-pub mod instructions; // for instruction enum
-pub mod runtime; // for runtime
-pub mod vectorization; // for vectorization implementation
-pub mod vulkan; // vulkan module
+pub mod asm; // .qoa testua -> programa
+pub mod expr; // zenbakizko adierazpenak (pi/2, ...)
+pub mod fock; // eragile optikoak fotoi-kopuruaren oinarrian
+pub mod ionq; // ionq json esportazioa
+pub mod isa; // agindu-multzoaren taula
+pub mod lang; // irteeraren hizkuntza (euskara/ingelesa)
+pub mod program; // programa mihiztatua eta .qx formatua
+pub mod qasm; // openqasm inportazioa eta esportazioa
+pub mod report; // emaitzen txostena (testua eta json)
+pub mod state; // egoera-bektorea: qubitak eta modu optikoak
+pub mod vm; // makina birtuala eta shot-ak

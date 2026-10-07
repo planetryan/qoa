@@ -1,0 +1,4 @@
+; nahita huts egiten duen proba
+; expect-error: BS uses mode 0 twice
+QMODE 2
+BS o0 o0 pi/4

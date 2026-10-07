@@ -1,0 +1,6 @@
+; bell egoera: (|00> + |11>)/sqrt(2)
+; bi qubitak beti berdin neurtzen dira: 00 edo 11, inoiz ez 01 edo 10
+QINIT 2
+H q0
+CNOT q0 q1
+MEASURE q0..q1          ; q0 -> c0, q1 -> c1

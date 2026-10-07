@@ -1,0 +1,5 @@
+; nahita huts egiten duen proba
+; expect-error: a loop count must be a whole number
+REGSET R0 2.5
+LOOPSTART R0
+LOOPEND

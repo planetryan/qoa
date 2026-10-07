@@ -1,0 +1,11 @@
+; S·SDG eta T·TDG identitatea dira; SX·SX = X
+; expect-prob: |1> 1
+QINIT 1
+H q0
+S q0
+SDG q0
+T q0
+TDG q0
+H q0
+SX q0
+SX q0

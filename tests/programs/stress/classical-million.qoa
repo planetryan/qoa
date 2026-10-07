@@ -1,0 +1,8 @@
+; milioi bat iterazioko begizta klasikoa (3 milioi urrats inguru)
+; expect-output: 1000000
+REGSET R0 0
+REGSET R1 1
+LOOPSTART 1000000
+  ADD R0 R0 R1
+LOOPEND
+PRINTF "{}\n" R0

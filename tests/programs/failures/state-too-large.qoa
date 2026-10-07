@@ -1,0 +1,4 @@
+; nahita huts egiten duen proba
+; expect-error: more than the
+QINIT 40
+H q39

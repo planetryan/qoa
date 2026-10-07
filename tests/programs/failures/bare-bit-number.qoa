@@ -1,0 +1,3 @@
+; nahita huts egiten duen proba
+; expect-error: write a classical bit as c0
+PACKBITS R0 0..2

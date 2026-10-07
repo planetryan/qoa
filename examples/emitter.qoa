@@ -1,0 +1,8 @@
+; qubit-fotoi entrelazamendua: bell bikote bat, eta gero q1-ek bere kitzikapena fotoi gisa igortzen du
+; emaitza: q0 = 1 denean beti fotoi bat dago o0-n, q0 = 0 denean inoiz ez.
+QINIT 2
+QMODE 1 3
+BELL q0 q1
+EMIT q1 o0              ; |1>|0> <-> |0>|1>: q1-en kitzikapena o0-ra doa
+MEASURE q0
+COUNT o0

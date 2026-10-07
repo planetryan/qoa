@@ -1,0 +1,5 @@
+; S(r) eta gero S(-r) = identitatea
+; expect-prob: |0> 1
+QMODE 1 40
+SQUEEZE o0 0.5
+SQUEEZE o0 -0.5

@@ -1,0 +1,52 @@
+; urrutiko bi igorle entrelazatu, haien fotoiak izpi-zatitzaile batean interferentzian jarriz
+; (qoa 0.3-ko "fusion-sim" fitxategien ordez: sare kuantikoetako "fusio" fotonikoa).
+;
+; igorle bakoitza (q0, q1) |0> + |1> egoeran dago; |1>-ean dagoenean fotoi bat igortzen du bere moduan
+; (laguntzaile bat kitzikatu eta EMIT). orduan igorlea eta fotoia entrelazatuta daude.
+; bi fotoiak 50:50 izpi-zatitzaile batean nahasten dira eta detektatzen dira. klik bakar batek ez du
+; esaten zein igorletatik datorren, eta "zein bide" informazio hori ezabatzeak bi igorleak entrelazatzen ditu.
+; klik bat ez badago (edo bi badaude), saiakerak huts egin du eta berriz egiten da (~% 50 arrakasta).
+;
+; egiaztapena: arrakastaren ondoren igorleak (|01> + |10>)/sqrt(2) egoeran daude (ikurra detektagailuaren
+; arabera zuzenduta), gero X q1-ekin bell egoera estandarrera. BELLCHECK-ek 1 eman behar du, eta X
+; oinarrian neurtuta ere bi igorleek beti berdin ematen dute (nahasketa klasiko batek ez luke hori egingo).
+;
+; expect-output: entrelazamendua: fideltasuna 1
+; expect-only: --00 --11
+
+QINIT 4                         ; q0, q1 igorleak; q2, q3 kitzikapen-laguntzaileak
+QMODE 2 3                       ; o0, o1: igorle bakoitzaren fotoi-modua
+REGSET R5 1
+REGSET R6 0
+REGSET R7 0                     ; saiakerak
+
+saiakera:
+RESETALL
+ADD R7 R7 R5
+H q0
+H q1
+CNOT q0 q2                      ; igorlea 1 bada, laguntzailea kitzikatu
+CNOT q1 q3
+EMIT q2 o0                      ; kitzikapena fotoi bihurtu
+EMIT q3 o1
+BS o0 o1 pi/4                   ; 50:50 izpi-zatitzailea
+COUNT o0 -> R0
+COUNT o1 -> R1
+ADD R2 R0 R1
+IFNE R2 R5 saiakera             ; fotoi bat zehazki behar da
+
+; o0-n klik egin bada, egoera |10> - |01> da (izpi-zatitzailearen konbentzioa): Z batekin zuzendu.
+; o1-en klik egin bada, |10> + |01> da jada.
+JUMPIFZERO R0 zuzenduta
+Z q0
+zuzenduta:
+X q1                            ; (|01> + |10>) -> (|00> + |11>)
+BELLCHECK q0 q1 R3
+REGSET R4 0.999999
+IFLT R3 R4 gaizki
+PRINTLN "entrelazamendua: fideltasuna 1"
+MEASUREIN q0 X -> c0
+MEASUREIN q1 X -> c1
+HALT
+gaizki:
+PRINTF "fideltasuna {} bakarrik\n" R3

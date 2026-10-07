@@ -1,0 +1,6 @@
+; CSWAP: q0 = 1 denez, q1 eta q2 trukatzen dira
+; expect-prob: |101> 1
+QINIT 3
+X q0
+X q1
+CSWAP q0 q1 q2

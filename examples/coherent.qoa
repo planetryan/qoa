@@ -1,0 +1,5 @@
+; egoera koherentea: laser-argia. fotoi-kopurua poisson banaketa da, batez bestekoa |alpha|^2 = 2.25
+QMODE 1 20
+DISPLACE o0 1.5
+MEANPHOTON o0           ; simulagailuan bakarrik: <n> zehatza inprimatzen du
+COUNT o0

@@ -1,0 +1,10 @@
+; neurketa erregistro batera eta jauzia hartan oinarrituta
+; expect-output: ondo
+QINIT 1
+X q0
+MEASURE q0 -> R0
+JUMPIFONE R0 ondo
+PRINTLN "gaizki"
+HALT
+ondo:
+PRINTLN "ondo"

@@ -1,0 +1,7 @@
+; bi fotoi bi modutan: koinzidentzia beti 1
+; expect-only: -1
+QINIT 2
+QMODE 2 3
+SINGLEPHOTON o0
+SINGLEPHOTON o1
+COINCIDENCE o0 o1 -> c0

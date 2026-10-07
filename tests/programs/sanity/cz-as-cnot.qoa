@@ -1,0 +1,8 @@
+; H·CZ·H helburuan = CNOT. 0.3.5-eko cz akatsak hau hautsiko zukeen
+; expect-prob: |00> 0.5
+; expect-prob: |11> 0.5
+QINIT 2
+H q0
+H q1
+CZ q0 q1
+H q1

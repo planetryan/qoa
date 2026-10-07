@@ -1,0 +1,7 @@
+; CPHASE pi = CZ; fase-itzulerarekin q0 1 bihurtzen da
+; expect-prob: |11> 1
+QINIT 2
+X q1
+H q0
+CPHASE q1 q0 pi
+H q0

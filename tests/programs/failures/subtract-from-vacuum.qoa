@@ -1,0 +1,4 @@
+; nahita huts egiten duen proba
+; expect-error: SUBPHOTON on o0, which holds no photons
+QMODE 1
+SUBPHOTON o0

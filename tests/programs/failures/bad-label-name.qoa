@@ -1,0 +1,4 @@
+; nahita huts egiten duen proba
+; expect-error: '9lives' is not a valid label name
+9lives:
+HALT

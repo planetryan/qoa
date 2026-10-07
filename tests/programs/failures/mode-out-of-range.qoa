@@ -1,0 +1,4 @@
+; nahita huts egiten duen proba
+; expect-error: mode 3 does not exist: QMODE declared 2 mode(s)
+QMODE 2
+DISPLACE o3 1

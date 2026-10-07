@@ -1,0 +1,12 @@
+; pila: LIFO ordena
+; expect-output: 3 2 1
+REGSET R0 1
+PUSH R0
+REGSET R0 2
+PUSH R0
+REGSET R0 3
+PUSH R0
+POP R1
+POP R2
+POP R3
+PRINTF "{} {} {}\n" R1 R2 R3

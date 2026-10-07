@@ -1,0 +1,9 @@
+; neurtutako bitak zenbaki bihurtu: c2 c1 c0 = 101 = 5
+; expect-output: 5
+; expect-only: 101
+QINIT 3
+X q0
+X q2
+MEASURE q0..q2
+PACKBITS R0 c0..c2
+PRINTF "{}\n" R0

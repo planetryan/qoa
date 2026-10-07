@@ -1,0 +1,14 @@
+; kitzikapen-errelea qubiten eta moduen artean: q0 -> o0 -> q5 -> o1 -> q9, bitartean ghz bat
+; 10 qubit eta 2 modu (muga 3): 1024 * 9 anplitude
+; expect-prob: |1000000000; 0 0> 0.5
+; expect-prob: |1001111110; 0 0> 0.5
+QINIT 10
+QMODE 2 3
+X q0
+EMIT q0 o0
+EMIT q5 o0
+EMIT q5 o1
+EMIT q9 o1
+GHZ q1..q4
+CNOT q4 q5
+CNOT q5 q6

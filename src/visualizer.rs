@@ -7,7 +7,7 @@ use log::info;
 use memmap2::MmapOptions;
 use num_complex::Complex;
 use parking_lot::{Mutex, RwLock};
-use qoa::runtime::quantum_state::{NoiseConfig, QuantumState};
+use qoa::state::State;
 use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
 use rayon::prelude::*;
@@ -32,12 +32,8 @@ struct AlignedBuffer<T> {
 impl<T: Copy + Default> AlignedBuffer<T> {
     // creates a new aligned buffer with a given capacity, initializing elements with their default value
     fn new(capacity: usize) -> Self {
-        let mut data = Vec::with_capacity(capacity);
-        // safety: set_len is unsafe but used here to pre-allocate and initialize memory
-        // it's safe because we immediately fill it with default values
-        unsafe {
-            data.set_len(capacity);
-        }
+        // lehen set_len hasieratu gabe erabiltzen zen (portaera zehaztugabea); orain balio lehenetsiekin betetzen da
+        let data = vec![T::default(); capacity];
         Self {
             data,
             _phantom: std::marker::PhantomData,
@@ -198,7 +194,8 @@ mod audio_simd {
                 }
                 // horizontal sum using sse instructions
                 let mut total_sum = {
-                    let shuf = _mm_shuffle_ps(sum_vec, sum_vec, _MM_SHUFFLE(2, 3, 0, 1));
+                    // 0b10_11_00_01 = _MM_SHUFFLE(2, 3, 0, 1) (makroa ez dago rust egonkorrean)
+                    let shuf = _mm_shuffle_ps(sum_vec, sum_vec, 0b10_11_00_01);
                     let sums = _mm_add_ps(sum_vec, shuf);
                     let shuf = _mm_movehl_ps(sums, sums);
                     let sums = _mm_add_ss(sums, shuf);
@@ -1698,10 +1695,11 @@ impl PerlinNoise {
             0x1 => -x + y,
             0x2 => x - y,
             0x3 => -x - y,
-            0x4 => x + x,
-            0x5 => -x + x,
-            0x6 => x - x,
-            0x7 => -x - x,
+            // perlin-en 2d gradienteak: lehen x - x eta -x + x zeuden (beti 0), orain x, -x, y, -y
+            0x4 => x,
+            0x5 => -x,
+            0x6 => y,
+            0x7 => -y,
             _ => x + y,
         }
     }
@@ -1931,22 +1929,34 @@ pub enum SpectrumDirection {
 
 // --- quantum noise generation ---
 
+// ausazko bitak simulatutako qubitetatik: qubit bakoitza |+> egoeran prestatzen da (H) eta neurtu
+// egiten da, beraz bit bakoitza 50/50 da. benetan sasi-ausazko zenbaki-sorgailu batek erabakitzen
+// ditu emaitzak (simulagailu batean beti bezala); ez da benetako ausazkotasun kuantikoa.
 pub struct QuantumNoiseGenerator {
-    pub quantum_state: Arc<Mutex<QuantumState>>, // using parking_lot::mutex
+    pub quantum_state: Arc<Mutex<State>>, // using parking_lot::mutex
     pub coherence_time: usize,
     pub current_time: AtomicU64, // use atomic for counter
+    rng: Mutex<ChaCha8Rng>,
 }
 
 impl QuantumNoiseGenerator {
+    // |+...+> prestatu: n qubit, bakoitzean H
+    fn prepare(n_qubits: usize) -> State {
+        let mut state = State::new(n_qubits, 0, 2).expect("small state");
+        let h = qoa::program::Gate::H.matrix();
+        for q in 0..n_qubits {
+            state.apply_1q(q, h, 0);
+        }
+        state
+    }
+
     // creates a new quantum noise generator
-    pub fn new(n_qubits: usize, _seed: u64) -> Self {
+    pub fn new(n_qubits: usize, seed: u64) -> Self {
         Self {
-            quantum_state: Arc::new(Mutex::new(QuantumState::new(
-                n_qubits,
-                Some(NoiseConfig::Random),
-            ))),
+            quantum_state: Arc::new(Mutex::new(Self::prepare(n_qubits))),
             coherence_time: 30,
             current_time: AtomicU64::new(0), // initialize atomic counter
+            rng: Mutex::new(ChaCha8Rng::seed_from_u64(seed)),
         }
     }
 
@@ -1955,21 +1965,17 @@ impl QuantumNoiseGenerator {
         let mut quantum_state = self.quantum_state.lock(); // parking_lot mutex lock
         let current_time_val = self.current_time.fetch_add(1, Ordering::SeqCst) as usize; // atomic increment
 
-        if current_time_val % self.coherence_time == 0 {
-            *quantum_state = QuantumState::new(quantum_state.n, Some(NoiseConfig::Random));
+        // `coherence_time` frame-ro egoera berriz prestatu; bitartean, neurtutako egoerak bit berak ematen ditu
+        if current_time_val.is_multiple_of(self.coherence_time) {
+            *quantum_state = Self::prepare(quantum_state.n_qubits());
         }
 
-        let mut measurements = Vec::with_capacity(quantum_state.n);
-        let n_qubits = quantum_state.n;
+        let n_qubits = quantum_state.n_qubits();
+        let mut measurements = Vec::with_capacity(n_qubits);
+        let mut rng = self.rng.lock();
         for q in 0..n_qubits {
-            match quantum_state.measure(q) {
-                Ok(val) => measurements.push(val == 1),
-                Err(e) => {
-                    // handle the error case, e.g., log it and push a default value
-                    eprintln!("error measuring qubit {}: {}", q, e);
-                    measurements.push(false); // default to false on error
-                }
-            }
+            let r: f64 = rand::Rng::random(&mut *rng);
+            measurements.push(quantum_state.measure_qubit(q, r) == 1);
         }
         let quantum_bits = measurements
             .iter()
@@ -2125,7 +2131,7 @@ impl Clone for AudioVisualizer {
         Self {
             // create a new quantumnoisegenerator instance when cloning audiovisualizer
             quantum_noise_gen: QuantumNoiseGenerator::new(
-                self.quantum_noise_gen.quantum_state.lock().n,
+                self.quantum_noise_gen.quantum_state.lock().n_qubits(),
                 0,
             ),
             // clone the content of prev_rms_loudness using a read lock
@@ -3208,14 +3214,6 @@ fn normalized_centroid_for_color(spectrum_data: &[f64]) -> f64 {
         sum_weighted_freq / sum_magnitudes
     } else {
         0.0
-    }
-}
-
-pub fn parse_spectrum_direction(arg: Option<&str>) -> SpectrumDirection {
-    match arg {
-        Some("ltr") => SpectrumDirection::Ltr,
-        Some("rtl") => SpectrumDirection::Rtl,
-        _ => SpectrumDirection::None,
     }
 }
 

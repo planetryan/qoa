@@ -1,0 +1,5 @@
+; expect-prob: |111> 1
+QINIT 3
+X q0
+X q1
+CCX q0 q1 q2

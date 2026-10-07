@@ -1,0 +1,5 @@
+; expect-only: 0
+QINIT 1
+X q0
+RESET q0
+MEASURE q0

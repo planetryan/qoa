@@ -1,0 +1,12 @@
+; schrödinger-en katua: qubit batek egoera koherente bat bi norabidetan jartzen du aldi berean.
+; akoplamendu dispertsiboak (pi) |alpha> -> |-alpha> bihurtzen du qubita 1 denean.
+; qubita H-ren ondoren neurtuta, moduaren paritatea beti qubitaren berdina da:
+;   q0 = 0 -> katu bikoitia (fotoi-kopuru bikoitiak), q0 = 1 -> katu bakoitia
+QINIT 1
+QMODE 1 24
+DISPLACE o0 2.0
+H q0
+DISPERSIVE q0 o0 pi
+H q0
+MEASURE q0
+PARITY o0               ; 0 bikoitia, 1 bakoitia

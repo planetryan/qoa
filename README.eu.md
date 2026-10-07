@@ -1,0 +1,172 @@
+![qoa-logo](https://github.com/user-attachments/assets/5fdbae92-68f8-490e-8368-f3fd6c81a064)
+
+# QOA: Quantum Optical Assembly
+
+QOA **qubitentzat eta argiarentzat batera** egindako mihiztadura-lengoaia eta simulagailua da: qubitak, modu
+optikoak (fotoiak) eta haien arteko akoplamenduak, erregistro klasikoekin eta kontrol-fluxuarekin, programa
+bakarrean.
+
+CPU klasiko batean exekutatzen da. Emaitza guztiak zehazki kalkulatzen dira egoera kuantikoa simulatuz, ez
+dira hardware kuantikoan neurtzen. Beraz, programa kuanto-optikoak ikasteko, prototipatzeko eta egiaztatzeko
+tresna bat da, ez ordenagailu kuantiko bat.
+
+[In English: README.md](README.md) · [Aginduen erreferentzia](docs/ISA.eu.md) · [Bertsio-oharrak](<changelog/QOA v0.4.0.md>) · [Discord](https://discord.gg/W8HQdxmMG8)
+
+---
+
+## Zer egiten du
+
+- **Qubit-zirkuituak**: ate estandarrak (H, X, CNOT, CZ, Toffoli, biraketak, ate kontrolatuak...), edozein
+  oinarritako neurketa, berrezarpena, eta zirkuitu erdiko neurketa atzeraelikadura klasikoarekin.
+- **Modu optikoak**: fotoi-kopuruaren (Fock) egoerak desplazamenduarekin, estutzearekin, izpi-zatitzaileekin,
+  fase-aldaketekin, Kerr eta Kerr gurutzatu ez-lineartasunekin, fotoi-gehiketa eta -kenketarekin,
+  galerarekin, eta kopurua bereizten duten, atalase- eta paritate-detektagailuekin.
+- **Qubit-fotoi akoplamendua**: igorle-qubit batek bere kitzikapena fotoi gisa jar dezake modu batean
+  (`EMIT`), eta akoplamendu dispertsiboak (`DISPERSIVE`) qubit bati moduaren fasea kontrolatzen uzten dio.
+  Hori da kabitate-QED-aren eta sare kuantikoen tresna-kutxa: entrelazamendu iragarria, Schrödinger-en katu
+  egoerak, qubit-fotoi entrelazamendua.
+- **Kontrol klasikoa**: 32 erregistro, aritmetika, begiztak, azpierrutinak, neurketen araberako adarkatzea.
+- **OpenQASM 2.0**: `qoa run zirkuitua.qasm`-k OpenQASM zuzenean exekutatzen du (lengoaia osoa, `gate`
+  definizioak eta `if` barne), eta `qoa export --to qasm`-k programaren qubit-zatia OpenQASM 2.0 gisa
+  idazten du. `--to ionq`-k IonQ-ren JSON formatua idazten du.
+- **Bi hizkuntza**: mezu, errore eta laguntza-testu guztiak euskaraz eta ingelesez daude. `QOA_LANG=eu` edo
+  `QOA_LANG=en` aukeratzeko; bestela sistemaren hizkuntzak erabakitzen du.
+
+Zer **ez** duen egiten: bere kabuz hardware kuantikoan exekutatu, 30 qubit inguru baino gehiago simulatu
+(egoera-bektorea bikoiztu egiten da qubit bakoitzeko; 28 qubit 4 GiB dira), edo denbora jarraituko fisika
+modelatu (pultsuak, dekoherentzia-tasak). Zarata eredu sinple eta dokumentatu bat da (`--noise`, `--loss`).
+
+## Hasteko
+
+QOA-k Rust 1.89 edo berriagoa behar du (egonkorra).
+
+```sh
+cargo build --release
+./target/release/qoa run examples/bell.qoa
+./target/release/qoa run examples/hom.qoa          # bi fotoi izpi-zatitzaile batean
+./target/release/qoa run examples/shor15.qoa       # shor-en algoritmoa 15 faktorizatzen, hasieratik amaierara
+./target/release/qoa isa                           # agindu guztiak
+```
+
+Irteerak argi esaten du zer exekutatu den eta nola:
+
+```
+programa   examples/bell.qoa (3 eragiketa)
+sistema    2 qubit = 4 anplitude, 64 B
+zarata     bat ere ez: ate idealak, fotoi-galerarik gabe
+shots      1024 shot, simulazio bakarretik laginduta (neurketa guztiak amaieran daude)
+hazia      7
+
+emaitza    c1..c0  kopurua   ehunekoa
+           11          515      50.3%  ███████████████
+           00          509      49.7%  ██████████████▉
+
+denbora    5.0 ms
+```
+
+`--json`-ek emaitza bera beste programek irakur dezaketen erregistro gisa inprimatzen du.
+
+## Lengoaia orrialde batean
+
+```
+; iruzkinak ;-rekin hasten dira (edo //-rekin)
+QINIT 3                     ; 3 qubit: q0, q1, q2
+QMODE 2 6                   ; 2 modu optiko, bakoitzak 0..5 fotoi
+
+H q0                        ; eragigaiek mota dute: q3 qubita, o1 modua, R2 erregistroa, c0 bita
+CNOT q0 q1
+RZ q2 pi/4                  ; angeluak adierazpenak dira: pi/4, -3*pi/2, sqrt(2)/2
+H q0..q2                    ; tarte batek qubit bakarreko agindua qubit bakoitzari aplikatzen dio
+
+SINGLEPHOTON o0
+BS o0 o1 pi/4               ; 50:50 izpi-zatitzailea
+EMIT q1 o1                  ; qubitaren kitzikapena -> fotoia
+
+MEASURE q0 -> c0            ; emaitzak bideratzen dituzun lekura doaz: bit batera (c0) edo erregistro batera (R0)
+COUNT o0 -> R1
+JUMPIFONE c0 amaiera        ; neurtutako bit baten araberako jauzia
+X q2
+amaiera:
+LOOPSTART 3                 ; begiztak, azpierrutinak (CALL/RETSUB), aritmetika (ADD, MUL, ...)
+  PRINTF "fotoiak o0-n: {}\n" R1
+LOOPEND
+```
+
+Mnemonikoetan berdin dio maiuskula edo minuskula, eta QOA 0.3-ko izen luzeek (`APPLYHADAMARD`,
+`PHOTONEMIT`...) ezizen gisa funtzionatzen dute oraindik. `qoa isa IZENA`-k edozein agindu azaltzen du;
+[docs/ISA.eu.md](docs/ISA.eu.md)-k guztiak zerrendatzen ditu. Erroreek leku zehatza seinalatzen dute:
+
+```
+errorea: CNOT-k 0. qubita bi aldiz erabiltzen du; qubitek desberdinak izan behar dute
+  --> bell.qoa:2:9
+   |
+ 2 | CNOT q0 q0
+   |         ^^
+```
+
+### Nola kalkulatzen diren shot-ak
+
+- Neurketa guztiak amaieran badaude, QOA-k behin simulatzen du eta shot guztiak egoera horretatik lagintzen ditu.
+- Programak zirkuitu erdian neurtzen badu, emaitzen arabera adarkatzen badu, edo `--noise`/`--loss` erabiltzen
+  badira, shot bakoitza hasieratik simulatzen da.
+- Ezer neurtzen ez badu, QOA-k amaierako egoera zehatza erakusten du (simulagailu batek bakarrik egin dezakeena).
+
+Txostenak beti esaten du hauetako zein gertatu den.
+
+### Fotoiak eta muga
+
+Modu batek 0tik muga-1era arteko fotoi-kopuruak gordetzen ditu (`QMODE moduak muga`, lehenetsia 8). Fotoiak
+sortzen dituzten eragiketek probabilitatea mugaz kanpora bultza dezakete. QOA-k galera hori neurtu eta
+jakinarazten du, ezkutatu ordez; arbuiagarria ez denean, abisu bat ematen du eta muga handiago bat iradokitzen du.
+
+## Adibideak
+
+Guztiak [examples/](examples)-en, bakoitza fisika azaltzen duten iruzkinekin, eta bakoitza proba-multzoak
+egiaztatua bere iruzkinek diotenaren aurka:
+
+| Programa | Erakusten du |
+|---|---|
+| `bell`, `ghz` | entrelazamendua |
+| `teleport` | teleportazioa aurrera-elikadura klasiko errealarekin |
+| `grover`, `grover-key` | grover-en bilaketa; jostailu-gako baten bilaketa (eta zergatik ez den aes-en eskura) |
+| `qpe`, `shor15` | fasearen estimazioa; shor-en algoritmoa 15 faktorizatzen, zati klasikoa barne |
+| `hom`, `mach-zehnder` | bi fotoiren interferentzia; fotoi bakarreko interferometroa |
+| `coherent`, `squeezed` | laser-argia (poisson estatistika); huts estutua (fotoi-kopuru bikoitiak bakarrik) |
+| `emitter`, `cat` | qubit-fotoi entrelazamendua; qubit batekin egindako Schrödinger-en katua |
+| `heralded-entanglement` | urrutiko bi igorle entrelazatu haien fotoiak interferentzian jarriz |
+| `retry`, `sweep` | errepikatu arrakasta lortu arte; neurketa kuantiko baten inguruko begizta klasikoa |
+| `bell.qasm` | OpenQASM zuzenean exekutatuta |
+
+## Probak
+
+```sh
+cargo test --release                       # behekoak guztiak, mugak izan ezik
+cargo test --release -- --ignored          # mugak ere bai: 28 qubit (4 GiB), fotoi-sistema erraldoiak
+```
+
+- `tests/reference.rs`-k ate guztiak simulagailu independente eta nahita sinple baten aurka egiaztatzen ditu.
+- `tests/programs/`-ek beren emaitza esperatuak goiburuko iruzkinetan dituzten `.qoa` programak ditu:
+  zentzuzko egiaztapenak, nahita huts egiten dutenak (errore-mezu guztiak), estres-probak, mugak eta 0.3-ko
+  programa zaharrak.
+- `tests/stress.rs`-k ausazko zirkuitu sakonak aurrera eta atzera exekutatzen ditu, eta boson-laginketa
+  matrize-permanenteen aurka egiaztatzen du.
+- `tests/qasm.rs`-k OpenQASM ate berezko bakoitza bere definizio ofizialarekin konparatzen du.
+
+## Errendimendua
+
+4 nukleoko Xeon (2.3 GHz) batean neurtua, 24 qubit eta 355 ateko zirkuitu batekin: QOA 0.4-k 3.9 s inguru
+behar ditu, QOA 0.3.5-ek 23.3 s behar zituen, eta Qiskit Aer-ek 3.7 s (4.6 s ate-fusiorik gabe). Ate-fusioa,
+cache-blokeak eta eskuz idatzitako SIMD mihiztadura (AVX-512, AVX2, NEON, RVV) gehitzen ari dira orain,
+bakoitza erreferentziazko simulagailuaren aurka egiaztatuta.
+
+## Historia
+
+QOA 0.4 nukleoaren berridazketa da. 0.3.5 bertsioa
+[`archive/v0.3.5-experimental`](https://github.com/planetryan/qoa/tree/archive/v0.3.5-experimental) adarrean
+gordeta dago. Ikus [0.4.0 bertsio-oharrak](<changelog/QOA v0.4.0.md>) zer aldatu den eta zergatik jakiteko.
+
+## Lizentzia
+
+GPL-3.0, ikus [LICENSE](LICENSE).
+
+*Ryan (@planetryan)*

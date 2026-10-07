@@ -1,0 +1,6 @@
+; theta = 0 duen izpi-zatitzailea identitatea da; theta = pi/2 trukaketa da
+; expect-prob: |0 1> 1
+QMODE 2 3
+SINGLEPHOTON o0
+BS o0 o1 0
+BS o0 o1 pi/2

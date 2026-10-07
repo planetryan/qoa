@@ -1,130 +1,51 @@
-# cargo-features = ["profile-rustflags"] # keep this commented unless specifically needed for nightly features
-# ONLY IN NIGHTLY
-
 [package]
 name = "qoa"
-version = "0.3.5"
+version = "0.4.0"
 edition = "2024"
+rust-version = "1.89"
 authors = ["GitHub: @planetryan"]
-description = "The Quantum Optical Assembly Language"
-build = "build.rs"
+description = "QOA (Quantum Optical Assembly): an assembly language and simulator for qubits and optical modes"
+license-file = "LICENSE"
+# the old build.rs compiled hand-written assembly that nothing called; v0.4 has no build script
+build = false
 
 [dependencies]
+# core: assembler, simulator, cli
 clap = { version = "4.5", features = ["derive"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 num-complex = { version = "0.4", features = ["serde"] }
 rand = "0.9"
-rand_distr = "0.5"
-log = "0.4"
-env_logger = { version = "0.11", default-features = false }
-image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
-duct = { version = "1.0", default-features = false }
-hound = "3.5"
-ndarray = { version = "0.16", features = ["rayon"] }
-realfft = "2.0"
-chrono = "0.4"
-whoami = "1.4"
-zerofrom = "0.1.6"
-zerofrom-derive = "0.1.6"
-
-# explicitly override openssl-sys to force vendored compilation
-openssl-sys = { version = "0.9.109", features = ["vendored"] }
-
-# also ensure openssl uses vendored
-openssl = { version = "0.10.73", features = ["vendored"] }
-
-# override specific dependencies that might be pulling in openssl
-git2 = { version = "0.18", default-features = false, features = ["vendored-openssl"], optional = true }
-
-fftw = { version = "0.8", optional = true } 
-# use pure rust math libraries for cross-compilation compatibility
-nalgebra = { version = "0.32", features = ["rand"], optional = true }
-blas = { version = "0.22", optional = true } # made optional
-lapack = { version = "0.19", optional = true } # made optional
-libm = "0.2"  # standard math library replacement for svml functions
-
 rayon = "1.10"
-indicatif = { version = "0.18", features = ["rayon"] }
-rand_chacha = "0.9"
-itertools = "0.14"
-jemallocator = "0.5"
-approx = { version = "0.5", features = ["num-complex"] }
-num_cpus = "1.16"
-tempfile = "3.10"
-core_affinity = "0.8"
-bumpalo = { version = "3.19.0", features = ["collections"] }
 bincode = "1.3"
 
-# gpu support features
-ash = { version = "0.37.0", features = ["linked"], optional = true } # for vulkan api
-cudarc = { version = "0.12", optional = true }
-opencl3 = { version = "0.9", optional = true }
-# mpi support
-mpi = { version = "0.6", optional = true } # for mpi communication, optional
-
-# compiler optimizations
-crossbeam-channel = "0.5"
-crossbeam-utils = "0.8"
-parking_lot = "0.12"
+# `qoa visual` (audio spectrum video renderer)
+bumpalo = { version = "3.19.0", features = ["collections"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+indicatif = { version = "0.18", features = ["rayon"] }
+log = "0.4"
 memmap2 = "0.9"
-dashmap = "5.5"
-criterion = "0.5" # for benchmarking
+parking_lot = "0.12"
+rand_chacha = "0.9"
+realfft = "2.0"
+hound = "3.5"
+num_cpus = "1.16"
+core_affinity = "0.8"
 
-[target.'cfg(any(target_arch = "riscv64", target_arch = "powerpc64"))'.dependencies]
-# for risc-v and powerpc, use native-tls (openssl-based)
-reqwest = { version = "0.11", default-features = false, features = ["native-tls", "json"] }
+[dev-dependencies]
+criterion = "0.5"
 
-[target.'cfg(not(any(target_arch = "riscv64", target_arch = "powerpc64")))'.dependencies]
-# for other architectures, use rustls-tls
-rustls = "0.21"
-rustls-webpki = "0.100"
-reqwest = { version = "0.11", default-features = false, features = ["rustls-tls", "json"] }
-
-[build-dependencies]
-cc = "1.0"
-
-[profile.dev]
-opt-level = 1
-debug = true
-debug-assertions = true
-overflow-checks = true
-panic = "abort"
+[[bench]]
+name = "benchmark"
+harness = false
 
 [profile.release]
 opt-level = 3
 lto = "fat"
+codegen-units = 1
 panic = "abort"
 strip = true
-debug = false
-debug-assertions = false
-overflow-checks = false
-incremental = false
-rpath = false
 
 [profile.bench]
-opt-level = 3
-debug = false
-debug-assertions = false
-overflow-checks = false
 lto = "fat"
-rpath = false
-
-[profile.release.package."*"]
-opt-level = 3
 codegen-units = 1
-debug = false
-
-[dev-dependencies]
-criterion = "0.5" # for benchmarking
-proptest = "1.4"
-
-[features]
-default = ["pure-rust-math"]
-pure-rust-math = ["dep:nalgebra"]
-gnu-math = ["dep:fftw", "dep:blas", "dep:lapack"]
-cross-compile = []
-cuda = ["dep:cudarc"]
-opencl = ["dep:opencl3"] 
-vulkan = ["dep:ash"]
-mpi = ["dep:mpi"]

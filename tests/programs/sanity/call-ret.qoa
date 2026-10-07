@@ -1,0 +1,11 @@
+; azpierrutina: R0 bikoiztu
+; expect-output: 40
+REGSET R0 5
+CALL bikoiztu
+CALL bikoiztu
+CALL bikoiztu
+PRINTF "{}\n" R0
+HALT
+bikoiztu:
+ADD R0 R0 R0
+RETSUB

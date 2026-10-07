@@ -1,0 +1,13 @@
+; errepikatu arrakasta lortu arte: qubit bat RY(pi/3)-rekin prestatu (P(1) = 25%)
+; eta neurtu 1 atera arte. R1-ek saiakerak zenbatzen ditu. kontrol klasikoa eta erdiko neurketak.
+QINIT 1
+REGSET R1 0
+REGSET R2 1
+saiatu:
+ADD R1 R1 R2            ; saiakera bat gehiago
+RESET q0
+RY q0 pi/3
+MEASURE q0 -> R0
+JUMPIFZERO R0 saiatu    ; 0 bada, berriz saiatu
+PRINTF "1 lortu da {} saiakeraren ondoren\n" R1
+MEASURE q0              ; c0-ra ere, kopuruetan agertzeko (beti 1)

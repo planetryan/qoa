@@ -1,0 +1,4 @@
+; nahita huts egiten duen proba
+; expect-error: this range has 2 entries but the qubit range has 3
+QINIT 3
+MEASURE q0..q2 -> c0..c1

@@ -1,0 +1,6 @@
+; X q0 -> |1>, Y q1 -> i|1>, Z q2-k ez du |0> aldatzen: emaitza |011>
+; expect-prob: |011> 1
+QINIT 3
+X q0
+Y q1
+Z q2

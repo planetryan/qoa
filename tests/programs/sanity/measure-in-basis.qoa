@@ -1,0 +1,8 @@
+; |+> X oinarrian neurtuta beti 0 da; |+i> Y oinarrian ere bai
+; expect-only: 00
+QINIT 2
+H q0
+MEASUREIN q0 X
+H q1
+S q1
+MEASUREIN q1 Y

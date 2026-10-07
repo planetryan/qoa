@@ -1,0 +1,4 @@
+; nahita huts egiten duen proba
+; expect-error: the arrow is not followed by a destination
+QINIT 1
+MEASURE q0 ->

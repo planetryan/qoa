@@ -1,0 +1,4 @@
+; nahita huts egiten duen proba
+; expect-error: square root of a negative number (-4)
+REGSET R0 -4
+SQRT R1 R0

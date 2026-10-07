@@ -1,0 +1,7 @@
+; FOCK 3 -> 3 fotoi; paritatea bakoitia
+; expect-only: o0=3_o1=1
+QMODE 2 6
+FOCK o0 3
+FOCK o1 3
+PARITY o1
+COUNT o0

@@ -1,0 +1,7 @@
+; EMIT bi aldiz = ezer ez: kitzikapena modura joan eta itzultzen da
+; expect-prob: |1; 0> 1
+QINIT 1
+QMODE 1 3
+X q0
+EMIT q0 o0
+EMIT q0 o0

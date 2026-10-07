@@ -1,0 +1,130 @@
+# QOA v0.4.0 Release Notes
+
+**Status:** Rewrite of the core (euskaraz behean)
+
+## Summary
+
+QOA 0.4 rebuilds the assembler, the simulator and the command line so that every instruction does what it
+says, every result is checked, and the program says plainly what it did. Version 0.3.5 is preserved on the
+`archive/v0.3.5-experimental` branch.
+
+## Why
+
+A review of 0.3.5 found that it did not build on any toolchain, that CZ and controlled-phase gates gave wrong
+results, that printed results had random noise added even with `--ideal`, that about 97 instructions
+(including every optical one) had no effect, that measurement results were thrown away, and that the GPU,
+distributed and assembly code was never called. 0.4 fixes all of these.
+
+## New
+
+* **One state for qubits and light**: qubits and optical modes (photon-number states) live in one state
+  vector, so a qubit can emit a photon (`EMIT`), control a mode's phase (`DISPERSIVE`), and be entangled with
+  light.
+* **Real optics**: displacement, squeezing, beamsplitters, phase, Kerr and cross-Kerr, photon addition and
+  subtraction, loss, and number-resolving, threshold, parity and coincidence detection. Truncation at the
+  photon cutoff is measured and reported.
+* **Classical control that works**: measurements route to classical bits or registers (`MEASURE q0 -> c0`),
+  labels, conditional jumps on measured bits, counted loops (`LOOPSTART`/`LOOPEND`), subroutines.
+* **Typed operands and ranges**: `q3`, `o1`, `R2`, `c0`, `H q0..q3`, angle expressions such as `pi/4`.
+* **Errors that point at the problem**, with the line, the column and a suggestion. Instructions that never
+  did anything now give an error explaining why and what to use instead.
+* **OpenQASM 2.0**: the whole language can be imported or run directly (gate definitions, `if`, the full
+  `qelib1.inc`), and the qubit part of a program can be exported. IonQ JSON export.
+* **Honest output**: the report says how shots were computed (sampled from one simulation, simulated one by
+  one, or the exact state), which seed was used, and what noise was applied. `--json` gives the same report as
+  a record other programs can read.
+* **Euskara**: all output, errors and help in Basque or English (`QOA_LANG=eu` / `QOA_LANG=en`). Code comments
+  are in Basque.
+* **Tests**: every gate against an independent reference simulator, OpenQASM gates against their official
+  definitions, boson sampling against matrix permanents, deep circuits run forward and backward, 150+ test
+  programs from sanity checks to 28 qubits.
+* **Builds on stable Rust** (1.89+), about 6x faster than 0.3.5.
+
+## Removed
+
+* GPU (Vulkan/CUDA/OpenCL), distributed rendering, MPI, and the hand-written `.S` assembly: none of it was
+  reachable from QOA, and the assembly no longer assembled. It is preserved on the archive branch. SIMD
+  acceleration returns in 0.4.x as assembly that is actually called and tested.
+* Example programs that claimed things they did not do (AES/RSA "decryption", an outline of Shor). They are
+  replaced by programs that do what they say: a toy Grover key search, Shor's algorithm factoring 15 in full,
+  and heralded entanglement of two emitters. The old programs are kept in `tests/programs/legacy`.
+* The 0.3 binary format. Recompile `.qoa` sources with `qoa compile`.
+
+## Notes
+
+* `QINIT n` now declares the number of qubits once, as the 0.3 README described. Programs that used one
+  `QINIT` per qubit get an error that says so.
+* The `visual` command (audio spectrum video) is kept, and described honestly: it is an art tool, it does not
+  visualize a quantum state.
+
+**Thank you for using QOA.**
+
+— *Ryan*
+
+---
+
+# QOA v0.4.0 bertsio-oharrak
+
+**Egoera:** nukleoaren berridazketa
+
+## Laburpena
+
+QOA 0.4-k mihiztatzailea, simulagailua eta komando-lerroa berreraikitzen ditu: agindu bakoitzak dioena egiten
+du, emaitza bakoitza egiaztatuta dago, eta programak argi esaten du zer egin duen. 0.3.5 bertsioa
+`archive/v0.3.5-experimental` adarrean gordeta dago.
+
+## Zergatik
+
+0.3.5-en berrikuspen batek aurkitu zuen: ez zela inolako tresna-katerekin konpilatzen, CZ eta fase
+kontrolatuko ateek emaitza okerrak ematen zituztela, inprimatutako emaitzei ausazko zarata gehitzen zitzaiela
+`--ideal`-ekin ere, 97 agindu inguruk (optiko guztiak barne) ez zutela ezer egiten, neurketen emaitzak
+baztertzen zirela, eta GPU, banatutako eta mihiztadura-kodea inoiz ez zela deitzen. 0.4-k horiek guztiak
+konpontzen ditu.
+
+## Berria
+
+* **Egoera bakarra qubitentzat eta argiarentzat**: qubitak eta modu optikoak egoera-bektore bakarrean daude,
+  beraz qubit batek fotoi bat igor dezake (`EMIT`), modu baten fasea kontrola dezake (`DISPERSIVE`) eta
+  argiarekin entrelazatu daiteke.
+* **Optika erreala**: desplazamendua, estutzea, izpi-zatitzaileak, fasea, Kerr eta Kerr gurutzatua,
+  fotoi-gehiketa eta -kenketa, galera, eta kopurua bereizten duten, atalase-, paritate- eta
+  koinzidentzia-detektagailuak. Fotoi-mugako trunkatzea neurtu eta jakinarazten da.
+* **Benetan dabilen kontrol klasikoa**: neurketak bit klasikoetara edo erregistroetara bideratzen dira
+  (`MEASURE q0 -> c0`), etiketak, neurtutako biten araberako jauziak, kopuru finkoko begiztak
+  (`LOOPSTART`/`LOOPEND`), azpierrutinak.
+* **Eragigai motadunak eta tarteak**: `q3`, `o1`, `R2`, `c0`, `H q0..q3`, `pi/4` bezalako angelu-adierazpenak.
+* **Arazoa seinalatzen duten erroreak**, lerroarekin, zutabearekin eta iradokizun batekin. Inoiz ezer egin ez
+  zuten aginduek orain errore bat ematen dute, zergatik eta zer erabili azalduz.
+* **OpenQASM 2.0**: lengoaia osoa inporta edo zuzenean exekuta daiteke (`gate` definizioak, `if`, `qelib1.inc`
+  osoa), eta programaren qubit-zatia esporta daiteke. IonQ JSON esportazioa.
+* **Irteera zintzoa**: txostenak esaten du nola kalkulatu diren shot-ak (simulazio bakarretik laginduta,
+  banan-banan simulatuta, edo egoera zehatza), zein hazi erabili den eta zein zarata aplikatu den. `--json`-ek
+  txosten bera ematen du beste programek irakur dezaketen erregistro gisa.
+* **Euskara**: irteera, errore eta laguntza guztiak euskaraz edo ingelesez (`QOA_LANG=eu` / `QOA_LANG=en`).
+  Kodearen iruzkinak euskaraz daude.
+* **Probak**: ate guztiak erreferentziazko simulagailu independente baten aurka, OpenQASM ateak haien
+  definizio ofizialen aurka, boson-laginketa matrize-permanenteen aurka, zirkuitu sakonak aurrera eta atzera,
+  150 proba-programa baino gehiago, zentzuzko egiaztapenetatik 28 qubitera arte.
+* **Rust egonkorrean konpilatzen da** (1.89+), 0.3.5 baino 6 aldiz azkarrago gutxi gorabehera.
+
+## Kendua
+
+* GPU (Vulkan/CUDA/OpenCL), banatutako errendatzea, MPI eta eskuz idatzitako `.S` mihiztadura: ez zen ezer
+  QOA-tik iristen, eta mihiztadura jada ez zen mihiztatzen. Artxibo-adarrean gordeta dago. SIMD azelerazioa
+  0.4.x-n itzuliko da, benetan deitzen eta probatzen den mihiztadura gisa.
+* Egiten ez zutena esaten zuten adibide-programak (AES/RSA "deszifratzea", Shor-en eskema bat). Esaten dutena
+  egiten duten programek ordezkatzen dituzte: jostailu-gako baten grover bilaketa, Shor-en algoritmoa 15
+  faktorizatzen osorik, eta bi igorleren entrelazamendu iragarria. Programa zaharrak
+  `tests/programs/legacy`-n gordetzen dira.
+* 0.3-ko formatu bitarra. Konpilatu berriz `.qoa` iturburuak `qoa compile`-rekin.
+
+## Oharrak
+
+* `QINIT n`-k orain qubit-kopurua adierazten du behin, 0.3-ko README-ak deskribatzen zuen bezala. Qubit
+  bakoitzeko `QINIT` bat erabiltzen zuten programek hala dioen errore bat jasotzen dute.
+* `visual` komandoa (audio-espektroaren bideoa) mantentzen da, eta zintzotasunez deskribatuta: arte-tresna
+  bat da, ez du egoera kuantikorik bistaratzen.
+
+**Eskerrik asko QOA erabiltzeagatik.**
+
+— *Ryan*

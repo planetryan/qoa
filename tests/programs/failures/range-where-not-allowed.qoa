@@ -1,0 +1,4 @@
+; nahita huts egiten duen proba
+; expect-error: CNOT does not take a range here
+QINIT 4
+CNOT q0..q1 q2

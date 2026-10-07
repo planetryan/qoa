@@ -1,0 +1,7 @@
+; EXPECT: |+>-ren <X> = 1, <Z> = 0
+; expect-output: <X> of q0 = 1.000000
+; expect-output: <Z> of q0 = 0.000000
+QINIT 1
+H q0
+EXPECT q0 X
+EXPECT q0 Z

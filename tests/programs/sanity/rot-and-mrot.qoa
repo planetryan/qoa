@@ -1,0 +1,5 @@
+; ROT eta MROT RX/RY/RZ-ren baliokideak dira
+; expect-prob: |111> 1
+QINIT 3
+ROT q0 Y pi
+MROT X pi q1 q2

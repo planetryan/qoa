@@ -1,0 +1,5 @@
+; H bi aldiz tarte batean = identitatea
+; expect-prob: |0000> 1
+QINIT 4
+H q0..q3
+H q0..3

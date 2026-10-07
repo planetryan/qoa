@@ -1,0 +1,48 @@
+; grover-en gako-bilaketa 4 biteko jostailu-zifratze batean (qoa 0.3-ko "aes-decryption" fitxategien ordez).
+;
+; zifratzea itzulgarria da (CNOT eta toffoli urratsak), beraz gako bakoitzak zifratu desberdin bat ematen du.
+; ezagutzen dugu zifratua (0111); grover-ek gakoa aurkitzen du (1011) 16 aukeren artean, 3 iteraziotan,
+; % 96ko probabilitatearekin. bilaketa klasikoak batez beste 8 proba beharko lituzke.
+;
+; zintzotasunez: aes-128-k 2^128 gako ditu. grover-ek ~2^64 iterazio beharko lituzke, bakoitza aes zirkuitu
+; oso bat milaka qubit logikorekin. hori ez da ezein simulagailuren edo gaur egungo hardwareren eskura;
+; programa honek ideia erakusten du, ez aes-en aurkako eraso bat.
+;
+; q0..q3 = gakoa (k0 baxuena), q4..q7 = zifratua kalkulatzeko lan-qubitak
+; expect-share: ----1011 0.961 0.02
+
+QINIT 8
+H q0..q3
+
+LOOPSTART 3
+  ; --- orakulua: f(k) kalkulatu q4..q7-n, 0111 bada fasea -1, gero dena desegin
+  CNOT q0 q4
+  CNOT q1 q5
+  CNOT q2 q6
+  CNOT q3 q7
+  CCX q4 q6 q5            ; y1 ^= y0 & y2
+  CNOT q5 q7              ; y3 ^= y1
+  CCX q7 q6 q4            ; y0 ^= y3 & y2
+  CNOT q4 q6              ; y2 ^= y0
+  CNOT q7 q5              ; y1 ^= y3
+  X q7                    ; helburua 0111: y3 = 0 denez, X-z inguratu
+  MCZ q4 q5 q6 q7
+  X q7
+  CNOT q7 q5              ; desegin, alderantzizko ordenan
+  CNOT q4 q6
+  CCX q7 q6 q4
+  CNOT q5 q7
+  CCX q4 q6 q5
+  CNOT q3 q7
+  CNOT q2 q6
+  CNOT q1 q5
+  CNOT q0 q4
+  ; --- difusioa gakoaren gainean
+  H q0..q3
+  X q0..q3
+  MCZ q0 q1 q2 q3
+  X q0..q3
+  H q0..q3
+LOOPEND
+
+MEASURE q0..q3

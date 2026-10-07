@@ -1,0 +1,5 @@
+; X-k |0> |1> bihurtzen du
+; expect-only: 1
+QINIT 1
+X q0
+MEASURE q0

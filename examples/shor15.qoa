@@ -1,0 +1,151 @@
+; shor-en algoritmoa 15 faktorizatzeko, a = 7 oinarriarekin. algoritmo osoa da, ez eskema bat:
+;   1. zatitze kuantikoa: 4 qubit kontatzeko (q0..q3) eta 4 qubit lanerako (q4..q7, hasieran |1>)
+;   2. berreketa modularra: U|y> = |7y mod 15>, U^(2^j) kontrolatua q_j-rekin (begiztekin)
+;   3. qft alderantzizkoa kontatzeko erregistroan, eta neurketa: m = s·16/r
+;   4. zati klasikoa erregistroetan: r periodoa aurkitu, 7^r mod 15 = 1 egiaztatu, eta
+;      faktoreak = zkh(7^(r/2) - 1, 15) eta zkh(7^(r/2) + 1, 15). huts eginez gero, berriz saiatu.
+; U-ren deskonposizioa (qiskit-en testuliburukoa, a = 7): swap(0,1) swap(1,2) swap(2,3), gero X guztiei.
+; m = 4 edo 12 denean arrakasta (r = 4); m = 0 edo 8 denean berriz saiatzen da.
+;
+; shots: 300
+; expect-output: 15 = 3 x 5
+; expect-only: ----0100 ----1100
+; expect-share: ----0100 0.5 0.1
+
+QINIT 8
+REGSET R10 1
+REGSET R11 2
+REGSET R12 15
+REGSET R13 16
+REGSET R14 7
+REGSET R15 0
+REGSET R7 0                     ; saiakerak
+
+saiakera:
+RESETALL
+ADD R7 R7 R10
+H q0..q3
+X q4                            ; lan-erregistroa = 1
+
+; U^1, q0-k kontrolatuta
+CSWAP q0 q4 q5
+CSWAP q0 q5 q6
+CSWAP q0 q6 q7
+CNOT q0 q4
+CNOT q0 q5
+CNOT q0 q6
+CNOT q0 q7
+; U^2, q1-ek kontrolatuta
+LOOPSTART 2
+  CSWAP q1 q4 q5
+  CSWAP q1 q5 q6
+  CSWAP q1 q6 q7
+  CNOT q1 q4
+  CNOT q1 q5
+  CNOT q1 q6
+  CNOT q1 q7
+LOOPEND
+; U^4, q2-k kontrolatuta
+LOOPSTART 4
+  CSWAP q2 q4 q5
+  CSWAP q2 q5 q6
+  CSWAP q2 q6 q7
+  CNOT q2 q4
+  CNOT q2 q5
+  CNOT q2 q6
+  CNOT q2 q7
+LOOPEND
+; U^8, q3-k kontrolatuta
+LOOPSTART 8
+  CSWAP q3 q4 q5
+  CSWAP q3 q5 q6
+  CSWAP q3 q6 q7
+  CNOT q3 q4
+  CNOT q3 q5
+  CNOT q3 q6
+  CNOT q3 q7
+LOOPEND
+
+; qft alderantzizkoa q0..q3 gainean
+SWAP q0 q3
+SWAP q1 q2
+H q0
+CPHASE q0 q1 -pi/2
+H q1
+CPHASE q0 q2 -pi/4
+CPHASE q1 q2 -pi/2
+H q2
+CPHASE q0 q3 -pi/8
+CPHASE q1 q3 -pi/4
+CPHASE q2 q3 -pi/2
+H q3
+MEASURE q0..q3
+PACKBITS R0 c0..c3              ; m
+IFEQ R0 R15 saiakera            ; m = 0: ez du informaziorik, berriz
+
+; r: (m * r) mod 16 = 0 egiten duen r txikiena
+REGSET R1 0
+bilatu_r:
+ADD R1 R1 R10
+MUL R20 R0 R1
+REGCOPY R21 R13
+CALL modulua
+IFNE R20 R15 bilatu_r
+
+; r bikoitia izan behar du
+REGCOPY R20 R1
+REGCOPY R21 R11
+CALL modulua
+IFNE R20 R15 saiakera
+
+; x = 7^(r/2) mod 15
+DIV R2 R1 R11
+REGSET R3 1
+LOOPSTART R2
+  MUL R20 R3 R14
+  REGCOPY R21 R12
+  CALL modulua
+  REGCOPY R3 R20
+LOOPEND
+
+; egiaztatu benetako periodoa dela: x^2 = 7^r mod 15 = 1
+MUL R20 R3 R3
+REGCOPY R21 R12
+CALL modulua
+IFNE R20 R10 saiakera
+; x = 1 edo x = 14 (-1) badira, faktoreak hutsalak dira
+IFEQ R3 R10 saiakera
+REGSET R4 14
+IFEQ R3 R4 saiakera
+
+; faktoreak: zkh(x - 1, 15) eta zkh(x + 1, 15)
+SUB R22 R3 R10
+REGCOPY R23 R12
+CALL zkh
+REGCOPY R5 R22
+ADD R22 R3 R10
+REGCOPY R23 R12
+CALL zkh
+REGCOPY R6 R22
+PRINTF "15 = {} x {}  (m = {}, r = {}, {} saiakera)\n" R5 R6 R0 R1 R7
+HALT
+
+; R20 = R20 mod R21, kenketa errepikatuz (biak positiboak)
+modulua:
+IFLT R20 R21 modulua_amaitu
+SUB R20 R20 R21
+JUMP modulua
+modulua_amaitu:
+RETSUB
+
+; R22 = zkh(R22, R23), euklidesen algoritmoa kenketekin (biak positiboak)
+zkh:
+IFEQ R22 R23 zkh_amaitu
+IFGT R22 R23 zkh_a
+SUB R23 R23 R22
+JUMP zkh
+zkh_a:
+SUB R22 R22 R23
+JUMP zkh
+zkh_amaitu:
+RETSUB

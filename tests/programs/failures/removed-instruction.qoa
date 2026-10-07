@@ -1,0 +1,4 @@
+; nahita huts egiten duen proba
+; expect-error: SETPOS was removed in QOA 0.4
+QINIT 1
+SETPOS q0 1 2

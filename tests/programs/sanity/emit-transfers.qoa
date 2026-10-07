@@ -1,0 +1,6 @@
+; EMIT-ek qubitaren kitzikapena fotoi bihurtzen du
+; expect-prob: |0; 1> 1
+QINIT 1
+QMODE 1 3
+X q0
+EMIT q0 o0

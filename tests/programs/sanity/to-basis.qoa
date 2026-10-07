@@ -1,0 +1,5 @@
+; TOBASIS X-k |+> |0> bihurtzen du
+; expect-prob: |0> 1
+QINIT 1
+H q0
+TOBASIS q0 X

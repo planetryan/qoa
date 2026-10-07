@@ -1,0 +1,4 @@
+; nahita huts egiten duen proba
+; expect-error: 10 photons do not fit: the cutoff is 4
+QMODE 1 4
+FOCK o0 10

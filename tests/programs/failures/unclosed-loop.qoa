@@ -1,0 +1,4 @@
+; nahita huts egiten duen proba
+; expect-error: LOOPSTART has no matching LOOPEND
+LOOPSTART 3
+PRINTLN "x"

@@ -1,0 +1,18 @@
+; begizta habiaratuak: 3 x 4 = 12, eta erregistroz gidatutako begizta
+; expect-output: 12 eta 5
+REGSET R0 0
+REGSET R1 1
+LOOPSTART 3
+  LOOPSTART 4
+    ADD R0 R0 R1
+  LOOPEND
+LOOPEND
+REGSET R2 5
+REGSET R3 0
+LOOPSTART R2
+  ADD R3 R3 R1
+LOOPEND
+LOOPSTART 0
+  PRINTLN "zero aldiz exekutatutako begizta ez da inoiz sartzen"
+LOOPEND
+PRINTF "{} eta {}\n" R0 R3

@@ -1,0 +1,24 @@
+; lau fotoi lau modutan, izpi-zatitzaile sare bat eta gero haren alderantzizkoa:
+; egoera |1 1 1 1>-ra itzuli behar da zehazki (muga 5: modu batek gehienez 4 fotoi)
+; expect-prob: |1 1 1 1> 1
+; expect-leakage-below: 1e-12
+QMODE 4 5
+SINGLEPHOTON o0
+SINGLEPHOTON o1
+SINGLEPHOTON o2
+SINGLEPHOTON o3
+BS o0 o1 0.3 0.1
+BS o2 o3 0.7 -0.4
+BS o1 o2 pi/4 1.2
+MODEPHASE o1 0.9
+BS o0 o3 1.1 0.5
+KERR o2 0.37
+CROSSKERR o0 o1 0.21
+; alderantzizkoa, alderantzizko ordenan
+CROSSKERR o0 o1 -0.21
+KERR o2 -0.37
+BS o0 o3 -1.1 0.5
+MODEPHASE o1 -0.9
+BS o1 o2 -pi/4 1.2
+BS o2 o3 -0.7 -0.4
+BS o0 o1 -0.3 0.1

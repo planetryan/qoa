@@ -1,0 +1,4 @@
+; nahita huts egiten duen proba
+; expect-error: cannot go to a classical bit
+QMODE 1
+COUNT o0 -> c0

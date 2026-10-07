@@ -1,0 +1,5 @@
+; emaitza c3-ra bideratuta; c0..c2 ez dira idazten
+; expect-only: 1---
+QINIT 1
+X q0
+MEASURE q0 -> c3

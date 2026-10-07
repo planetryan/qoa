@@ -1,0 +1,6 @@
+; nahita huts egiten duen proba
+; expect-error: LOOPEND reached without running its LOOPSTART
+JUMP barruan
+LOOPSTART 2
+barruan:
+LOOPEND

@@ -1,0 +1,4 @@
+; nahita huts egiten duen proba
+; expect-error: must be between 0 and 1
+QMODE 1
+LOSS o0 1.5

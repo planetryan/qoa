@@ -1,0 +1,7 @@
+; 22 qubiteko ghz (64 MiB egoera) eta 100000 shot laginduta
+; shots: 100000
+; expect-only: 0000000000000000000000 1111111111111111111111
+; expect-share: 0000000000000000000000 0.5 0.01
+QINIT 22
+GHZ q0..q21
+MEASUREALL

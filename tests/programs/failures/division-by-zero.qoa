@@ -1,0 +1,4 @@
+; nahita huts egiten duen proba
+; expect-error: division by zero (R1 is 0)
+REGSET R0 1
+DIV R2 R0 R1

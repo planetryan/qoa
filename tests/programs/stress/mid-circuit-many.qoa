@@ -1,0 +1,10 @@
+; 5000 shot, bakoitza hasieratik simulatua erdiko neurketekin eta adarkatzearekin
+; shots: 5000
+; expect-only: 1
+QINIT 1
+saiatu:
+RESET q0
+RY q0 pi/3
+MEASURE q0 -> R0
+JUMPIFZERO R0 saiatu
+MEASURE q0
