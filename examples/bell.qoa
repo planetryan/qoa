@@ -1,5 +1,7 @@
 ; bell egoera: (|00> + |11>)/sqrt(2)
 ; bi qubitak beti berdin neurtzen dira: 00 edo 11, inoiz ez 01 edo 10
+; expect-only: 00 11
+; expect-share: 00 0.5 0.05
 QINIT 2
 H q0
 CNOT q0 q1

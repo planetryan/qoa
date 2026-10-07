@@ -1,6 +1,7 @@
 ; fasearen estimazio kuantikoa (qpe): T atearen fasea, 2·pi·(1/8), hiru bitekin
 ; q0..q2 kontatzeko qubitak dira, q3 T-ren autobektorea (|1>).
 ; emaitza beti 001 da (c2 c1 c0 ordenan): 1/8 = 0.001 bitarrean.
+; expect-only: -001
 QINIT 4
 X q3                    ; |1> T-ren autobektorea da
 H q0..q2

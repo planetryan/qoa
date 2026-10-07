@@ -1,6 +1,7 @@
 // fitxategi honek proiektuaren estiloa zaintzen du, karpeta guztietan:
 //   - ez dago `///` edo `//!` dokumentazio-iruzkinik (iruzkin arruntak `//` dira)
-//   - iruzkinak euskaraz daude (.rs fitxategietan `//`, .qoa fitxategietan `;`)
+//   - iruzkinak euskaraz daude (.rs fitxategietan `//`, .qoa fitxategietan `;`, .qg fitxategietan `;`-z
+//     hasten den lerroa eta `//`)
 // ingelesa detektatzeko: iruzkin batek ingelesezko funtzio-hitz ohiko bi edo gehiago baditu, ingelesa da.
 
 use std::path::{Path, PathBuf};
@@ -69,7 +70,7 @@ fn comment_of<'a>(line: &'a str, marker: &str) -> Option<&'a str> {
 fn comments_follow_the_project_style() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let mut all = Vec::new();
-    files(root, &["rs", "qoa"], &mut all);
+    files(root, &["rs", "qoa", "qg"], &mut all);
     let mut problems = Vec::new();
     for path in all {
         let rel = path
@@ -88,8 +89,11 @@ fn comments_follow_the_project_style() {
                 problems.push(format!("{}:{}: doc comment (use //)", rel, n + 1));
                 continue;
             }
-            let marker = if is_rs { "//" } else { ";" };
-            if let Some(c) = comment_of(line, marker) {
+            let is_qg = rel.ends_with(".qg");
+            let marker = if is_rs || is_qg { "//" } else { ";" };
+            // .qg: `;` adierazpenen amaiera da; lerro osoko iruzkinak bakarrik `;`-z hasten dira
+            let whole_line = if is_qg { t.strip_prefix(';') } else { None };
+            if let Some(c) = whole_line.or_else(|| comment_of(line, marker)) {
                 // probetako itxaropen-goiburuak eta expect lerroak ez dira iruzkin arruntak
                 let c = c.trim();
                 if c.starts_with("expect")

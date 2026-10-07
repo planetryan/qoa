@@ -1,5 +1,6 @@
 ; qubit-fotoi entrelazamendua: bell bikote bat, eta gero q1-ek bere kitzikapena fotoi gisa igortzen du
 ; emaitza: q0 = 1 denean beti fotoi bat dago o0-n, q0 = 0 denean inoiz ez.
+; expect-only: -0_o0=0 -1_o0=1
 QINIT 2
 QMODE 1 3
 BELL q0 q1

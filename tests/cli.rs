@@ -427,3 +427,26 @@ fn clap_help_and_errors_speak_basque_too() {
     let o = qoa("en", &["visual", "--help"]);
     assert!(stdout(&o).contains("Usage:") && stdout(&o).contains("[default: 60]"));
 }
+
+#[test]
+fn glyph_files_run_import_and_point_errors_at_the_glyph() {
+    let o = qoa("en", &["run", "examples/bell.qg", "--seed", "1"]);
+    assert!(o.status.success(), "{}", stderr(&o));
+    assert!(stdout(&o).contains("examples/bell.qg") && stdout(&o).contains("11"));
+    let o = qoa("en", &["import", "examples/bell.qg"]);
+    assert!(o.status.success());
+    assert_eq!(
+        stdout(&o),
+        "QINIT 2\nH q0\nCNOT q0 q1\nMEASURE q0 -> c0\nMEASURE q1 -> c1\n"
+    );
+    let bad = scratch("bad.qg");
+    std::fs::write(&bad, "Q{2};\nH/Q[0]; FROB/Q[1];\n").unwrap();
+    let o = qoa("eu", &["check", bad.to_str().unwrap()]);
+    assert!(!o.status.success());
+    let err = stderr(&o);
+    assert!(
+        err.contains("bad.qg:2:9") && err.contains("FROB/Q[1]"),
+        "{}",
+        err
+    );
+}

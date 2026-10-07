@@ -4,6 +4,7 @@
 pub mod asm; // .qoa testua -> programa
 pub mod expr; // zenbakizko adierazpenak (pi/2, ...)
 pub mod fock; // eragile optikoak fotoi-kopuruaren oinarrian
+pub mod glyph; // glifo-sintaxia (.qg): QOA trinkoa, lerro bakoitzean agindu askorekin
 pub mod ionq; // ionq json esportazioa
 pub mod isa; // agindu-multzoaren taula
 pub mod kernel; // qubit-ateak: lasterketak, fusioa, cache-blokeak

@@ -1,0 +1,10 @@
+; zure jatorrizko kontzeptua glifo-sintaxiaren 0. zirriborroan (ikus docs/glyph.md):
+;   H/R{3}[0xMEMORY_LOCATION?]; CC"V"%3$>#2PF"Measuring:" PR"R"%O$>#OPF"Result:" PF"O"%O$<<>>; END;
+; R{3}: hiru qubiteko erregistroa. H/R: H hiruretan. M/R$>#V: neurketak V bitetara ($> = "hona doa").
+; PF"..."%#V: V bitak zenbaki gisa inprimatu. <<>>: egoera osoa erakutsi. zortzi emaitzak berdin probableak.
+; expect-output: Measuring:
+; expect-only: 000 001 010 011 100 101 110 111
+; expect-share: 101 0.125 0.03
+H/R{3}; #V{3};
+PF"Measuring:\n"; M/R$>#V; PF"Result: {}\n"%#V;
+<<>>; END;

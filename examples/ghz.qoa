@@ -1,4 +1,6 @@
 ; ghz egoera bost qubitekin: (|00000> + |11111>)/sqrt(2)
+; expect-only: 00000 11111
+; expect-share: 00000 0.5 0.05
 QINIT 5
 GHZ q0..q4              ; H q0, gero CNOT q0-tik beste guztietara
 MEASUREALL

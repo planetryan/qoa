@@ -1,6 +1,7 @@
 ; teleportazio kuantikoa, zuzenketa klasikoekin (aurrera-elikadura)
 ; q0-ren egoera q2-ra bidaltzen da, bi bit klasiko bakarrik erabiliz.
 ; egiaztapena: amaieran q2-ren prestaketa desegiten da; teleportazioak funtzionatu badu, c2 beti 0 da.
+; expect-only: 000 001 010 011
 QINIT 3
 U q0 1.0 0.5 -0.3       ; bidali beharreko egoera "ausazkoa"
 BELL q1 q2              ; q1 (alice) eta q2 (bob) entrelazatuta

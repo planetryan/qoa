@@ -103,6 +103,17 @@ error: CNOT uses qubit 0 twice; the qubits must be different
    |         ^^
 ```
 
+### Glyph syntax (draft)
+
+The same language can also be written densely, many statements per line, in `.qg` files:
+
+```
+Q{2}; #C{2}; H/Q[0]; CX/Q[0],Q[1]; M/Q$>#C; PF"bell: {}\n"%#C;
+```
+
+`qoa import file.qg` shows the plain QOA it stands for, and errors point at the glyph. It is a draft open
+for review: see [docs/glyph.md](docs/glyph.md).
+
 ### How shots are computed
 
 - If every measurement comes at the end, QOA simulates once and samples all shots from that state.
@@ -135,6 +146,7 @@ suite against what its comments claim:
 | `heralded-entanglement` | entangling two distant emitters by interfering their photons |
 | `retry`, `sweep` | repeat-until-success; a classical loop around a quantum measurement |
 | `bell.qasm` | OpenQASM run directly |
+| `*.qg` | the glyph syntax: the original concept, Bell, teleportation, HOM with emitters, retry |
 
 ## Testing
 

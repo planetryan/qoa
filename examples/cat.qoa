@@ -2,6 +2,7 @@
 ; akoplamendu dispertsiboak (pi) |alpha> -> |-alpha> bihurtzen du qubita 1 denean.
 ; qubita H-ren ondoren neurtuta, moduaren paritatea beti qubitaren berdina da:
 ;   q0 = 0 -> katu bikoitia (fotoi-kopuru bikoitiak), q0 = 1 -> katu bakoitia
+; expect-only: 0_o0=0 1_o0=1
 QINIT 1
 QMODE 1 24
 DISPLACE o0 2.0

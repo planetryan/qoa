@@ -1,5 +1,6 @@
 // qoa komando-lerroko tresna. komando bakoitzak gauza bat egiten du eta zuzenean esaten du zer egin duen.
-// programak .qoa (iturburua), .qasm (openqasm, zuzenean inportatua) edo .qx (konpilatua) izan daitezke.
+// programak .qoa (iturburua), .qg (glifo-sintaxia), .qasm (openqasm, zuzenean inportatua) edo .qx (konpilatua)
+// izan daitezke.
 // laguntza-testuak eta mezuak euskaraz edo ingelesez daude (ikus src/lang.rs).
 
 mod visualizer;
@@ -40,7 +41,7 @@ struct Cli {
 
 #[derive(Subcommand, Debug)]
 enum Command {
-    #[command(about = ts!("Run a program (.qoa, .qasm or .qx) and show its results", "Programa bat exekutatu (.qoa, .qasm edo .qx) eta emaitzak erakutsi"))]
+    #[command(about = ts!("Run a program (.qoa, .qg, .qasm or .qx) and show its results", "Programa bat exekutatu (.qoa, .qg, .qasm edo .qx) eta emaitzak erakutsi"))]
     Run {
         #[arg(help = ts!("program file", "programa-fitxategia"))]
         file: PathBuf,
@@ -99,9 +100,12 @@ enum Command {
         #[arg(long, default_value_t = 1024, help = ts!("shots to request (IonQ only)", "eskatu beharreko shot-ak (IonQ bakarrik)"))]
         shots: u64,
     },
-    #[command(about = ts!("Convert an OpenQASM 2.0 file into QOA source", "OpenQASM 2.0 fitxategi bat QOA iturburu bihurtu"))]
+    #[command(about = ts!(
+        "Convert an OpenQASM 2.0 file (.qasm) or a glyph-syntax file (.qg) into plain QOA source",
+        "OpenQASM 2.0 fitxategi bat (.qasm) edo glifo-sintaxiko bat (.qg) QOA iturburu arrunt bihurtu"
+    ))]
     Import {
-        #[arg(help = ts!(".qasm file", ".qasm fitxategia"))]
+        #[arg(help = ts!(".qasm or .qg file", ".qasm edo .qg fitxategia"))]
         file: PathBuf,
         #[arg(short, long, help = ts!("output file (default: print to the terminal)", "irteera-fitxategia (lehenetsia: terminalean inprimatu)"))]
         output: Option<PathBuf>,
@@ -307,6 +311,21 @@ fn load(path: &Path) -> Result<Program, String> {
         "qx" | "qexe" | "oexe" => {
             let data = std::fs::read(path).map_err(read_err)?;
             Program::from_bytes(&data).map_err(|e| format!("{}: {}", name, e))
+        }
+        "qg" => {
+            let src = std::fs::read_to_string(path).map_err(read_err)?;
+            qoa::glyph::assemble(&src, &name).map_err(|d| {
+                format!(
+                    "{}{}\n",
+                    asm::render(&d, &src, &name),
+                    t!(
+                        "{} error(s) in {}",
+                        "{} errore {} fitxategian",
+                        d.len(),
+                        name
+                    )
+                )
+            })
         }
         "qasm" => {
             let src = std::fs::read_to_string(path).map_err(read_err)?;
@@ -620,7 +639,16 @@ fn cmd_import(file: &Path, output: Option<PathBuf>) -> Result<(), String> {
     let name = file.display().to_string();
     let src = std::fs::read_to_string(file)
         .map_err(|e| t!("cannot read {}: {}", "ezin da {} irakurri: {}", name, e))?;
-    let text = qoa::qasm::to_qoa(&src, &name).map_err(|e| format!("{}: {}", name, e))?;
+    let is_glyph = file
+        .extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("qg"));
+    let text = if is_glyph {
+        qoa::glyph::expand(&src)
+            .map_err(|d| asm::render(&d, &src, &name))?
+            .source
+    } else {
+        qoa::qasm::to_qoa(&src, &name).map_err(|e| format!("{}: {}", name, e))?
+    };
     write_or_print(output, &text)
 }
 

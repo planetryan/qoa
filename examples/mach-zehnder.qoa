@@ -2,6 +2,8 @@
 ; bi izpi-zatitzaileren artean fase bat: o0 detektagailuan probabilitatea sin^2(fasea/2) da,
 ; eta o1-en cos^2(fasea/2).
 ; fasea = pi/3 denean, o0 25% eta o1 75%.
+; expect-only: o0=0_o1=1 o0=1_o1=0
+; expect-share: o0=0_o1=1 0.75 0.03
 QMODE 2 3
 SINGLEPHOTON o0
 BS o0 o1 pi/4

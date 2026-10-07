@@ -1,0 +1,9 @@
+; teleportazioa glifo-sintaxian (ikus teleport.qoa): q0-ren egoera q2-ra, bi bit klasikorekin.
+; !x>etiketa: jauzi x 0 bada. amaieran prestaketa desegiten da, beraz c2 beti 0 da.
+; expect-only: 000 001 010 011
+Q{3}; #C{3};
+U(1.0, 0.5, -0.3)/Q[0];
+BELL/Q[1],Q[2]; CX/Q[0],Q[1]; H/Q[0]; M/Q[0..1]$>#C[0..1];
+!#C[1]>x_gabe; X/Q[2]; x_gabe:;
+!#C[0]>z_gabe; Z/Q[2]; z_gabe:;
+U(-1.0, 0.3, -0.5)/Q[2]; M/Q[2]$>#C[2];

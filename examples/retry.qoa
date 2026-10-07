@@ -1,5 +1,6 @@
 ; errepikatu arrakasta lortu arte: qubit bat RY(pi/3)-rekin prestatu (P(1) = 25%)
 ; eta neurtu 1 atera arte. R1-ek saiakerak zenbatzen ditu. kontrol klasikoa eta erdiko neurketak.
+; expect-only: 1
 QINIT 1
 REGSET R1 0
 REGSET R2 1

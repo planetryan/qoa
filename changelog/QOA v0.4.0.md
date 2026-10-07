@@ -28,6 +28,9 @@ distributed and assembly code was never called. 0.4 fixes all of these.
 * **Typed operands and ranges**: `q3`, `o1`, `R2`, `c0`, `H q0..q3`, angle expressions such as `pi/4`.
 * **Errors that point at the problem**, with the line, the column and a suggestion. Instructions that never
   did anything now give an error explaining why and what to use instead.
+* **Glyph syntax (draft)**: the same instructions written densely, many per line, in `.qg` files
+  (`Q{2}; H/Q[0]; CX/Q[0],Q[1]; M/Q$>#C;`), built from the original concept sketch. `qoa import` shows the
+  plain QOA behind it and errors point at the glyph. A draft open for review: [docs/glyph.md](../docs/glyph.md).
 * **OpenQASM 2.0**: the whole language can be imported or run directly (gate definitions, `if`, the full
   `qelib1.inc`), and the qubit part of a program can be exported. IonQ JSON export.
 * **Honest output**: the report says how shots were computed (sampled from one simulation, simulated one by
@@ -105,6 +108,10 @@ konpontzen ditu.
 * **Eragigai motadunak eta tarteak**: `q3`, `o1`, `R2`, `c0`, `H q0..q3`, `pi/4` bezalako angelu-adierazpenak.
 * **Arazoa seinalatzen duten erroreak**, lerroarekin, zutabearekin eta iradokizun batekin. Inoiz ezer egin ez
   zuten aginduek orain errore bat ematen dute, zergatik eta zer erabili azalduz.
+* **Glifo-sintaxia (zirriborroa)**: agindu berak modu trinkoan idatzita, lerro bakoitzean asko, `.qg`
+  fitxategietan (`Q{2}; H/Q[0]; CX/Q[0],Q[1]; M/Q$>#C;`), jatorrizko kontzeptu-zirriborrotik abiatuta.
+  `qoa import`-ek atzean dagoen QOA arrunta erakusten du eta erroreek glifoa seinalatzen dute. Berrikusteko
+  zirriborro bat: [docs/glyph.eu.md](../docs/glyph.eu.md).
 * **OpenQASM 2.0**: lengoaia osoa inporta edo zuzenean exekuta daiteke (`gate` definizioak, `if`, `qelib1.inc`
   osoa), eta programaren qubit-zatia esporta daiteke. IonQ JSON esportazioa.
 * **Irteera zintzoa**: txostenak esaten du nola kalkulatu diren shot-ak (simulazio bakarretik laginduta,

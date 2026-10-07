@@ -1,0 +1,6 @@
+; hong-ou-mandel bi igorlerekin: qubit bakoitzak bere kitzikapena fotoi gisa igortzen du bere moduan (EMIT),
+; eta 50:50 izpi-zatitzaileak fotoiak elkartzen ditu: (2,0) edo (0,2), inoiz ez (1,1).
+; erregistro osoekin, EMIT/E,L bi agindu dira: EMIT q0 o0 eta EMIT q1 o1.
+; expect-only: o0=2_o1=0 o0=0_o1=2
+E{2}; ~L{2}%4;
+X/E; EMIT/E,L; BS(pi/4)/L[0],L[1]; COUNT/L;

@@ -1,4 +1,5 @@
 ; huts estutua: fotoiak bikoteka sortzen dira, beraz kopuru bakoitiak ez dira inoiz agertzen
+; expect-only: o0=0 o0=2 o0=4 o0=6 o0=8 o0=10 o0=12 o0=14 o0=16 o0=18 o0=20 o0=22 o0=24 o0=26 o0=28 o0=30 o0=32 o0=34 o0=36 o0=38
 QMODE 1 40
 SQUEEZE o0 0.8
 COUNT o0

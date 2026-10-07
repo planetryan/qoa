@@ -1,0 +1,7 @@
+; errepikatu arrakasta lortu arte, glifo-sintaxian (ikus retry.qoa): P(1) = 25% saiakera bakoitzean,
+; eta programak 1 lortu arte jarraitzen du. #1 eta #2: R1 eta R2 erregistroak.
+; expect-only: 1
+; expect-output: saiakerak:
+Q{1}; #C{1}; REGSET/#2,(1);
+saiatu:; ADD/#1,#1,#2; RESET/Q; RY(pi/3)/Q; M/Q$>#C; !#C>saiatu;
+PF"saiakerak: {}\n"%#1; END;

@@ -37,7 +37,7 @@ struct Expect {
 fn parse_expect(src: &str) -> Expect {
     let mut e = Expect::default();
     for line in src.lines() {
-        // .qoa fitxategietan `;`, .qasm fitxategietan `//`
+        // .qoa eta .qg fitxategietan `;`, .qasm fitxategietan `//`
         let t = line.trim();
         let Some(rest) = t.strip_prefix(';').or_else(|| t.strip_prefix("//")) else {
             continue;
@@ -107,6 +107,8 @@ fn check(path: &Path) -> Result<(), String> {
             .and_then(|q| {
                 qoa::asm::assemble(&q, &name).map_err(|d| qoa::asm::render(&d, &q, &name))
             })
+    } else if path.extension().is_some_and(|x| x == "qg") {
+        qoa::glyph::assemble(&src, &name).map_err(|d| qoa::asm::render(&d, &src, &name))
     } else {
         qoa::asm::assemble(&src, &name).map_err(|d| qoa::asm::render(&d, &src, &name))
     };
@@ -205,7 +207,10 @@ fn files_in(dir: &str) -> Vec<PathBuf> {
     let mut v: Vec<PathBuf> = std::fs::read_dir(&root)
         .unwrap_or_else(|e| panic!("cannot read {}: {}", root.display(), e))
         .filter_map(|e| e.ok().map(|e| e.path()))
-        .filter(|p| p.extension().is_some_and(|x| x == "qoa" || x == "qasm"))
+        .filter(|p| {
+            p.extension()
+                .is_some_and(|x| x == "qoa" || x == "qasm" || x == "qg")
+        })
         .collect();
     v.sort();
     v

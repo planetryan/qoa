@@ -1,6 +1,7 @@
 ; hong-ou-mandel efektua: bi fotoi berdin 50:50 izpi-zatitzaile batean sartzen dira
 ; eta beti elkarrekin ateratzen dira: (2,0) edo (0,2), inoiz ez (1,1).
 ; interferentzia kuantiko hutsa da; partikula klasikoek (1,1) emango lukete erdietan.
+; expect-only: o0=2_o1=0 o0=0_o1=2
 QMODE 2 4
 SINGLEPHOTON o0
 SINGLEPHOTON o1

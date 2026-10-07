@@ -1,5 +1,6 @@
 ; grover-en bilaketa 3 qubitetan, |101> bilatuz (8 aukeratik 1)
 ; 2 iterazio: arrakasta-probabilitatea ~94.5%
+; expect-share: 101 0.945 0.02
 QINIT 3
 H q0..q2
 LOOPSTART 2
