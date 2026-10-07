@@ -38,13 +38,17 @@ distributed and assembly code was never called. 0.4 fixes all of these.
 * **Tests**: every gate against an independent reference simulator, OpenQASM gates against their official
   definitions, boson sampling against matrix permanents, deep circuits run forward and backward, 150+ test
   programs from sanity checks to 28 qubits.
-* **Builds on stable Rust** (1.89+), about 6x faster than 0.3.5.
+* **Fast**: hand-written SIMD assembly (AVX-512, AVX2, NEON, RVV 1.0, picked at run time and each checked
+  against a scalar version), gate fusion and cache blocking. Single gates run at the memory's speed; a
+  24-qubit, 355-gate circuit takes 0.9 s, against 23 s in 0.3.5 and 3.7 s in Qiskit Aer on the same machine.
+  See [docs/performance.md](../docs/performance.md).
+* **Builds on stable Rust** (1.89+), and on x86-64, ARM and RISC-V.
 
 ## Removed
 
 * GPU (Vulkan/CUDA/OpenCL), distributed rendering, MPI, and the hand-written `.S` assembly: none of it was
-  reachable from QOA, and the assembly no longer assembled. It is preserved on the archive branch. SIMD
-  acceleration returns in 0.4.x as assembly that is actually called and tested.
+  reachable from QOA, and the assembly no longer assembled. It is preserved on the archive branch. The new
+  SIMD assembly is in `src/simd.rs`, is called on every gate, and is tested.
 * Example programs that claimed things they did not do (AES/RSA "decryption", an outline of Shor). They are
   replaced by programs that do what they say: a toy Grover key search, Shor's algorithm factoring 15 in full,
   and heralded entanglement of two emitters. The old programs are kept in `tests/programs/legacy`.
@@ -111,13 +115,17 @@ konpontzen ditu.
 * **Probak**: ate guztiak erreferentziazko simulagailu independente baten aurka, OpenQASM ateak haien
   definizio ofizialen aurka, boson-laginketa matrize-permanenteen aurka, zirkuitu sakonak aurrera eta atzera,
   150 proba-programa baino gehiago, zentzuzko egiaztapenetatik 28 qubitera arte.
-* **Rust egonkorrean konpilatzen da** (1.89+), 0.3.5 baino 6 aldiz azkarrago gutxi gorabehera.
+* **Azkarra**: eskuz idatzitako SIMD mihiztadura (AVX-512, AVX2, NEON, RVV 1.0, exekuzio-garaian aukeratua
+  eta bakoitza bertsio eskalar baten aurka egiaztatua), ate-fusioa eta cache-blokeak. Ate bakarrak memoriaren
+  abiaduran dabiltza; 24 qubit eta 355 ateko zirkuitu batek 0.9 s behar ditu, 0.3.5-en 23 s eta Qiskit
+  Aer-en 3.7 s makina berean. Ikus [docs/performance.eu.md](../docs/performance.eu.md).
+* **Rust egonkorrean konpilatzen da** (1.89+), eta x86-64, ARM eta RISC-V-n.
 
 ## Kendua
 
 * GPU (Vulkan/CUDA/OpenCL), banatutako errendatzea, MPI eta eskuz idatzitako `.S` mihiztadura: ez zen ezer
-  QOA-tik iristen, eta mihiztadura jada ez zen mihiztatzen. Artxibo-adarrean gordeta dago. SIMD azelerazioa
-  0.4.x-n itzuliko da, benetan deitzen eta probatzen den mihiztadura gisa.
+  QOA-tik iristen, eta mihiztadura jada ez zen mihiztatzen. Artxibo-adarrean gordeta dago. SIMD mihiztadura
+  berria `src/simd.rs`-en dago, ate guztietan deitzen da, eta probatuta dago.
 * Egiten ez zutena esaten zuten adibide-programak (AES/RSA "deszifratzea", Shor-en eskema bat). Esaten dutena
   egiten duten programek ordezkatzen dituzte: jostailu-gako baten grover bilaketa, Shor-en algoritmoa 15
   faktorizatzen osorik, eta bi igorleren entrelazamendu iragarria. Programa zaharrak

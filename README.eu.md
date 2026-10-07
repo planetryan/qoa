@@ -51,8 +51,9 @@ cargo build --release
 Irteerak argi esaten du zer exekutatu den eta nola:
 
 ```
-programa   examples/bell.qoa (3 eragiketa)
+programa   examples/bell.qoa (4 eragiketa)
 sistema    2 qubit = 4 anplitude, 64 B
+cpu        avx512 kernelak, 4 hari
 zarata     bat ere ez: ate idealak, fotoi-galerarik gabe
 shots      1024 shot, simulazio bakarretik laginduta (neurketa guztiak amaieran daude)
 hazia      7
@@ -61,7 +62,7 @@ emaitza    c1..c0  kopurua   ehunekoa
            11          515      50.3%  ███████████████
            00          509      49.7%  ██████████████▉
 
-denbora    5.0 ms
+denbora    0.5 ms
 ```
 
 `--json`-ek emaitza bera beste programek irakur dezaketen erregistro gisa inprimatzen du.
@@ -154,10 +155,21 @@ cargo test --release -- --ignored          # mugak ere bai: 28 qubit (4 GiB), fo
 
 ## Errendimendua
 
-4 nukleoko Xeon (2.3 GHz) batean neurtua, 24 qubit eta 355 ateko zirkuitu batekin: QOA 0.4-k 3.9 s inguru
-behar ditu, QOA 0.3.5-ek 23.3 s behar zituen, eta Qiskit Aer-ek 3.7 s (4.6 s ate-fusiorik gabe). Ate-fusioa,
-cache-blokeak eta eskuz idatzitako SIMD mihiztadura (AVX-512, AVX2, NEON, RVV) gehitzen ari dira orain,
-bakoitza erreferentziazko simulagailuaren aurka egiaztatuta.
+Simulazio handi bat memoriaren banda-zabalerak mugatzen du, ez aritmetikak: ate bakoitzak egoera-bektore
+osoa irakurri eta idazten du (28 qubit 4 GiB dira). QOA-k hiru gauza egiten ditu horren aurka:
+
+- **Eskuz idatzitako SIMD mihiztadura** barne-begiztetarako: AVX-512 eta AVX2 x86-64-n, NEON ARM-n, RVV 1.0
+  RISC-V-n, exekuzio-garaian aukeratuta (`QOA_SIMD=scalar`-ek desaktibatzen du). Bertsio bakoitza
+  bertsio eskalar soil baten aurka egiaztatzen da, ARM eta RISC-V-n ere qemu bidez.
+- **Ate-fusioa**: qubit bereko ate jarraituak matrize bakar bihurtzen dira, tartean beste qubitetako ateak
+  egon arren.
+- **Cache-blokeak**: qubit baxuetako ate-segida bat blokez bloke aplikatzen da bloke bakoitza cache-n
+  dagoen bitartean, beraz segidak memoria behin zeharkatzen du, ate bakoitzeko behin beharrean.
+
+4 nukleoko Xeon (2.3 GHz) batean, ate bakarrak memoriaren mugan dabiltza orain (75 GB/s inguru 27
+qubitekin), eta 24 qubit eta 355 ateko zirkuitu batek 0.9 s behar ditu; Qiskit Aer-ek 3.7 s makina berean
+(5.6 s bere ate-fusiorik gabe), eta QOA 0.3.5-ek 23 s. Xehetasunak, neurketak eta nola errepikatu:
+[docs/performance.md](docs/performance.md).
 
 ## Historia
 

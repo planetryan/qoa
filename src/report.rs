@@ -7,7 +7,11 @@ use crate::program::Program;
 use crate::state::{State, format_bytes};
 use crate::vm::{Method, Record, RunConfig, RunOutput, fmt_value};
 use crate::{t, ts};
+use num_complex::Complex64 as C;
+use rayon::prelude::*;
 use serde::Serialize;
+use std::cmp::Reverse;
+use std::collections::BinaryHeap;
 
 #[derive(Serialize, Debug)]
 pub struct Report {
@@ -27,6 +31,9 @@ pub struct Report {
     pub seed: u64,
     pub seed_given: bool,
     pub elapsed_ms: f64,
+    // erabilitako kernelak (avx512, avx2, neon, rvv edo scalar) eta hari-kopurua
+    pub kernels: String,
+    pub threads: usize,
     pub steps_first_shot: u64,
     // bitak: c[n-1]..c[0] ordenan, '-' idatzi gabe; moduak: o0, o1, ... (null idatzi gabe)
     pub counts: Vec<CountEntry>,
@@ -98,7 +105,7 @@ pub fn build(input: ReportInput) -> Report {
     // qubit edo modurik ez badago, ez dago egoerarik erakusteko
     let has_system = p.n_qubits > 0 || p.n_modes > 0;
     let want_state = has_system && (input.show_state || out.method == Method::StateOnly);
-    let state = want_state.then(|| amp_entries(&out.final_state, input.top));
+    let state = want_state.then(|| amp_entries(&out.final_state, input.top).0);
     Report {
         qoa_version: env!("CARGO_PKG_VERSION").to_string(),
         program: p.name.clone(),
@@ -116,6 +123,8 @@ pub fn build(input: ReportInput) -> Report {
         seed: input.config.seed,
         seed_given: input.seed_given,
         elapsed_ms: input.elapsed.as_secs_f64() * 1000.0,
+        kernels: crate::simd::active().name().to_string(),
+        threads: rayon::current_num_threads(),
         steps_first_shot: out.steps,
         counts,
         truncation_leakage: out.leakage,
@@ -182,36 +191,85 @@ fn basis_header(state: &State) -> String {
 }
 
 // probabilitate handieneko `top` anplitudeak (0 = guztiak), 1e-12 baino handiagoak
-fn amp_entries(state: &State, top: usize) -> Vec<AmpEntry> {
-    let amps = state.amplitudes();
-    let mut idx: Vec<usize> = (0..state.len())
-        .filter(|&i| amps[i].norm_sqr() > 1e-12)
-        .collect();
-    idx.sort_by(|&a, &b| {
-        let (pa, pb) = (amps[a].norm_sqr(), amps[b].norm_sqr());
-        pb.partial_cmp(&pa).unwrap().then(a.cmp(&b))
-    });
-    if top > 0 {
-        idx.truncate(top);
+// anplitude baten sailkapena: probabilitate handiena lehenik, berdinketan indize txikiena
+#[derive(PartialEq)]
+struct Ranked(f64, usize);
+
+impl Eq for Ranked {}
+
+impl Ord for Ranked {
+    fn cmp(&self, o: &Self) -> std::cmp::Ordering {
+        self.0.total_cmp(&o.0).then(o.1.cmp(&self.1))
     }
-    idx.into_iter()
+}
+
+impl PartialOrd for Ranked {
+    fn partial_cmp(&self, o: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(o))
+    }
+}
+
+// zero ez diren anplitudeetatik `top` handienak (0: guztiak), ordenatuta, eta zero ez direnen kopurua.
+// egoera handietan zati bakoitzak bere `top` onenak gordetzen ditu (gutxieneko pila batean) paraleloan;
+// ez da bektore osoa ordenatzen (24 qubitekin 16 milioi elementu)
+fn top_amplitudes(amps: &[C], top: usize) -> (Vec<usize>, usize) {
+    let local = |base: usize, chunk: &[C]| {
+        let mut heap = BinaryHeap::new();
+        let mut nonzero = 0;
+        for (j, a) in chunk.iter().enumerate() {
+            let p = a.norm_sqr();
+            if p <= 1e-12 {
+                continue;
+            }
+            nonzero += 1;
+            let r = Ranked(p, base + j);
+            if top == 0 || heap.len() < top {
+                heap.push(Reverse(r));
+            } else if r > heap.peek().unwrap().0 {
+                heap.pop();
+                heap.push(Reverse(r));
+            }
+        }
+        (heap.into_vec(), nonzero)
+    };
+    let chunk = 1 << 16;
+    let (mut found, nonzero) = amps
+        .par_chunks(chunk)
+        .enumerate()
+        .map(|(k, c)| local(k * chunk, c))
+        .reduce(
+            || (Vec::new(), 0),
+            |mut a, b| {
+                a.0.extend(b.0);
+                (a.0, a.1 + b.1)
+            },
+        );
+    // Reverse-n ordena goranzkoa = sailkapenean beheranzkoa: onena lehenik
+    found.sort();
+    if top > 0 {
+        found.truncate(top);
+    }
+    (found.into_iter().map(|Reverse(r)| r.1).collect(), nonzero)
+}
+
+fn amp_entries(state: &State, top: usize) -> (Vec<AmpEntry>, usize) {
+    let amps = state.amplitudes();
+    let (idx, nonzero) = top_amplitudes(amps, top);
+    let entries = idx
+        .into_iter()
         .map(|i| AmpEntry {
             basis: basis_label(state, i),
             re: amps[i].re,
             im: amps[i].im,
             probability: amps[i].norm_sqr(),
         })
-        .collect()
+        .collect();
+    (entries, nonzero)
 }
 
 // DUMPSTATE-k erabiltzen duen taula
 pub fn state_table(state: &State, top: usize) -> String {
-    let entries = amp_entries(state, top);
-    let nonzero = state
-        .amplitudes()
-        .iter()
-        .filter(|a| a.norm_sqr() > 1e-12)
-        .count();
+    let (entries, nonzero) = amp_entries(state, top);
     let header = basis_header(state);
     let width = entries
         .iter()
@@ -339,6 +397,15 @@ pub fn render(r: &Report, style: &Style) -> String {
         format_bytes(r.memory_bytes)
     ));
     line(ts!("system", "sistema"), system);
+    line(
+        ts!("cpu", "cpu"),
+        t!(
+            "{} kernels, {} thread(s)",
+            "{} kernelak, {} hari",
+            r.kernels,
+            r.threads
+        ),
+    );
     let noise = match (r.noise > 0.0, r.loss > 0.0) {
         (false, false) => t!(
             "none: ideal gates, no photon loss",
@@ -591,4 +658,40 @@ fn render_counts(s: &mut String, r: &Report, style: &Style) {
         ));
     }
     s.push('\n');
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn top_amplitudes_match_a_full_sort() {
+        // berdinketak barne (probabilitate bereko bikoteak): indize txikiena lehenik
+        let amps: Vec<C> = (0..200_000u64)
+            .map(|i| {
+                let x = ((i.wrapping_mul(2654435761) >> 7) % 1000) as f64 / 1000.0;
+                if i % 7 == 0 {
+                    C::new(0.0, 0.0)
+                } else {
+                    C::new(x, -x / 3.0)
+                }
+            })
+            .collect();
+        let mut all: Vec<usize> = (0..amps.len())
+            .filter(|&i| amps[i].norm_sqr() > 1e-12)
+            .collect();
+        all.sort_by(|&a, &b| {
+            amps[b]
+                .norm_sqr()
+                .total_cmp(&amps[a].norm_sqr())
+                .then(a.cmp(&b))
+        });
+        for top in [1, 16, 1000] {
+            let (got, nonzero) = top_amplitudes(&amps, top);
+            assert_eq!(nonzero, all.len());
+            assert_eq!(got, all[..top].to_vec(), "top {}", top);
+        }
+        let (got, _) = top_amplitudes(&amps, 0);
+        assert_eq!(got, all);
+    }
 }

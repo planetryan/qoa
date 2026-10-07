@@ -49,8 +49,9 @@ cargo build --release
 Output says plainly what ran and how:
 
 ```
-program    examples/bell.qoa (3 operations)
+program    examples/bell.qoa (4 operations)
 system     2 qubit(s) = 4 amplitudes, 64 B
+cpu        avx512 kernels, 4 thread(s)
 noise      none: ideal gates, no photon loss
 shots      1024 shot(s), sampled from one simulation (every measurement is at the end)
 seed       7
@@ -59,7 +60,7 @@ outcome    c1..c0    count      share
            11          515      50.3%  ███████████████
            00          509      49.7%  ██████████████▉
 
-time       4.1 ms
+time       0.5 ms
 ```
 
 `--json` prints the same result as a record other programs can read.
@@ -151,10 +152,21 @@ cargo test --release -- --ignored          # also the limits: 28 qubits (4 GiB),
 
 ## Performance
 
-Measured on a 4-core Xeon (2.3 GHz) for a 24-qubit, 355-gate circuit: QOA 0.4 takes about 3.9 s, QOA 0.3.5
-took 23.3 s, and Qiskit Aer takes 3.7 s (4.6 s without gate fusion). Gate fusion, cache blocking and
-hand-written SIMD assembly (AVX-512, AVX2, NEON, RVV) are being added next, each verified against the
-reference simulator.
+A large simulation is limited by memory bandwidth, not arithmetic: every gate reads and writes the whole
+state vector (28 qubits is 4 GiB). QOA does three things about it:
+
+- **Hand-written SIMD assembly** for the inner loops: AVX-512 and AVX2 on x86-64, NEON on ARM, RVV 1.0 on
+  RISC-V, picked at run time (`QOA_SIMD=scalar` turns it off). Every version is checked against a plain
+  scalar one, on ARM and RISC-V under qemu too.
+- **Gate fusion**: consecutive gates on the same qubit become one matrix, even with gates on other qubits in
+  between.
+- **Cache blocking**: a run of gates on the low qubits is applied block by block while each block sits in
+  cache, so the run costs one pass over memory instead of one per gate.
+
+On a 4-core Xeon (2.3 GHz), single gates now run at the memory's limit (about 75 GB/s at 27 qubits), and a
+24-qubit, 355-gate circuit takes 0.9 s; Qiskit Aer takes 3.7 s on the same machine (5.6 s without its gate
+fusion), and QOA 0.3.5 took 23 s. Details, measurements and how to reproduce them:
+[docs/performance.md](docs/performance.md).
 
 ## History
 

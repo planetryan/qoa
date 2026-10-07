@@ -8,6 +8,7 @@
 //   - state only: programak ez badu ezer neurtzen, behin exekutatzen da eta egoera zehatza erakusten da
 
 use crate::fock::{self, Mat};
+use crate::kernel::QGate;
 use crate::program::{Basis, BinOp, Cmp, Count, Dest, Gate, NUM_REGS, Op, Program, Source, UnOp};
 use crate::state::State;
 use crate::{t, ts};
@@ -94,6 +95,16 @@ impl std::fmt::Display for RuntimeError {
     }
 }
 
+// zain dauden qubit-ateen sorta handiena: begizta luze batek ez du memoria mugarik gabe betetzen
+const MAX_PENDING: usize = 4096;
+
+const X_MATRIX: [C; 4] = [
+    C::new(0.0, 0.0),
+    C::new(1.0, 0.0),
+    C::new(1.0, 0.0),
+    C::new(0.0, 0.0),
+];
+
 // matrize optikoak behin kalkulatu eta shot guztietan berrerabili
 // gakoa: (mota, lehen parametroaren bitak, bigarrenarenak, muga)
 type MatrixKey = (u8, u64, u64, usize);
@@ -133,7 +144,11 @@ enum Inputs<'a> {
 
 struct Machine<'a> {
     prog: &'a Program,
+    // egoera eta oraindik aplikatu gabeko qubit-ateak: ateak sortan aplikatzen dira (fusioa eta
+    // cache-blokeak, ikus src/kernel.rs) egoera irakurri edo beste eragiketa bat behar den arte.
+    // `state` ez da zuzenean erabiltzen: `st()`-k lehenik sorta aplikatzen du
     state: State,
+    pending: Vec<QGate>,
     regs: [f64; NUM_REGS],
     bits: Vec<Option<u8>>,
     readouts: Vec<Option<u32>>,
@@ -345,6 +360,7 @@ impl<'a> Machine<'a> {
         Ok(Machine {
             prog,
             state,
+            pending: Vec::new(),
             regs: [0.0; NUM_REGS],
             bits: vec![None; prog.n_bits as usize],
             readouts: vec![None; prog.n_modes as usize],
@@ -373,7 +389,7 @@ impl<'a> Machine<'a> {
         let mut pc = 0usize;
         while pc < self.prog.ops.len() {
             if Some(pc) == self.capture_at && self.captured.is_none() {
-                self.captured = Some(self.state.probabilities());
+                self.captured = Some(self.st().probabilities());
             }
             self.steps += 1;
             if self.steps > self.cfg.max_steps {
@@ -388,6 +404,7 @@ impl<'a> Machine<'a> {
                 Flow::Stop => break,
             }
         }
+        self.flush();
         Ok(())
     }
 
@@ -406,10 +423,39 @@ impl<'a> Machine<'a> {
 
     fn gate(&mut self, q: u32, gate: Gate, controls: usize) {
         if gate == Gate::X {
-            self.state.apply_x(q as usize, controls);
+            self.queue(QGate::Mat {
+                q: q as usize,
+                m: X_MATRIX,
+                controls,
+            });
         } else {
-            self.state.apply_1q(q as usize, gate.matrix(), controls);
+            self.queue(QGate::Mat {
+                q: q as usize,
+                m: gate.matrix(),
+                controls,
+            });
         }
+    }
+
+    // qubit-ate bat sortara; sorta luzeegia bada, aplikatu
+    fn queue(&mut self, g: QGate) {
+        self.pending.push(g);
+        if self.pending.len() >= MAX_PENDING {
+            self.flush();
+        }
+    }
+
+    fn flush(&mut self) {
+        if !self.pending.is_empty() {
+            self.state.apply_gates(&self.pending);
+            self.pending.clear();
+        }
+    }
+
+    // egoera, zain dauden ateak aplikatu ondoren
+    fn st(&mut self) -> &mut State {
+        self.flush();
+        &mut self.state
     }
 
     fn mask(qs: &[u32]) -> usize {
@@ -418,7 +464,7 @@ impl<'a> Machine<'a> {
 
     fn measure_z(&mut self, q: u32) -> u8 {
         let r = self.uniform();
-        self.state.measure_qubit(q as usize, r)
+        self.st().measure_qubit(q as usize, r)
     }
 
     // neurketa X edo Y oinarrian: z-ra biratu, neurtu, itzuli
@@ -476,7 +522,7 @@ impl<'a> Machine<'a> {
         }
         for &o in modes {
             let r = self.uniform();
-            self.state.photon_loss(o as usize, g, r);
+            self.st().photon_loss(o as usize, g, r);
         }
     }
 
@@ -503,7 +549,7 @@ impl<'a> Machine<'a> {
             1 => fock::displacement(C::new(a, b), d),
             _ => fock::squeezing(a, b, d),
         });
-        self.state.apply_mode_matrix(o as usize, &m);
+        self.st().apply_mode_matrix(o as usize, &m);
     }
 
     fn print(&mut self, s: &str) {
@@ -542,11 +588,15 @@ impl<'a> Machine<'a> {
                 self.depolarize(&op.gate_qubits());
             }
             Op::PhaseAll { qubits, theta } => {
-                self.state.apply_phase_mask(Self::mask(qubits), *theta);
+                self.queue(QGate::phase(Self::mask(qubits), *theta));
                 self.depolarize(qubits);
             }
             Op::Swap { a, b, controls } => {
-                self.state.apply_swap(*a as usize, *b as usize, Self::mask(controls));
+                self.queue(QGate::Swap {
+                    a: *a as usize,
+                    b: *b as usize,
+                    controls: Self::mask(controls),
+                });
                 self.depolarize(&op.gate_qubits());
             }
             Op::Bell { a, b } => {
@@ -567,7 +617,7 @@ impl<'a> Machine<'a> {
                     self.gate(q, Gate::H, 0);
                 }
                 for w in qubits.windows(2) {
-                    self.state.apply_phase_mask(Self::mask(w), std::f64::consts::PI);
+                    self.queue(QGate::phase(Self::mask(w), std::f64::consts::PI));
                 }
                 self.depolarize(qubits);
             }
@@ -603,6 +653,8 @@ impl<'a> Machine<'a> {
                 }
             }
             Op::ResetAll => {
+                // zain dauden ateak ez dira aplikatu behar: egoera osoa berrezartzen da
+                self.pending.clear();
                 let leak = self.state.leakage;
                 self.state = State::new(self.state.n_qubits(), self.state.n_modes(), self.state.cutoff())
                     .expect("same size as before");
@@ -611,13 +663,13 @@ impl<'a> Machine<'a> {
             Op::ToBasis { q, basis } => self.rotate_into(*q, *basis),
 
             Op::Emit { q, o } => {
-                self.state.emit(*q as usize, *o as usize);
+                self.st().emit(*q as usize, *o as usize);
                 self.depolarize(&[*q]);
                 self.lose_photons(&[*o]);
             }
             Op::PhotonCount { o, dest } => {
                 let r = self.uniform();
-                let n = self.state.measure_photons(*o as usize, r) as u32;
+                let n = self.st().measure_photons(*o as usize, r) as u32;
                 match dest {
                     Dest::Reg(reg) => self.regs[*reg as usize] = n as f64,
                     _ => self.readouts[*o as usize] = Some(n),
@@ -625,19 +677,19 @@ impl<'a> Machine<'a> {
             }
             Op::PhotonDetect { o, dest } => {
                 let r = self.uniform();
-                let v = self.state.measure_click(*o as usize, r);
+                let v = self.st().measure_click(*o as usize, r);
                 self.write_bit(*dest, None, Some(*o), v as u32);
             }
             Op::Parity { o, dest } => {
                 let r = self.uniform();
-                let v = self.state.measure_parity(*o as usize, r);
+                let v = self.st().measure_parity(*o as usize, r);
                 self.write_bit(*dest, None, Some(*o), v as u32);
             }
             Op::Coincidence { modes, dest } => {
                 let mut all = 1u32;
                 for &m in modes {
                     let r = self.uniform();
-                    if self.state.measure_click(m as usize, r) == 0 {
+                    if self.st().measure_click(m as usize, r) == 0 {
                         all = 0;
                     }
                 }
@@ -665,14 +717,14 @@ impl<'a> Machine<'a> {
                 let f: Vec<C> = (0..self.state.cutoff())
                     .map(|n| C::from_polar(1.0, theta * n as f64))
                     .collect();
-                self.state.apply_mode_diagonal(*o as usize, &f);
+                self.st().apply_mode_diagonal(*o as usize, &f);
                 self.lose_photons(&[*o]);
             }
             Op::Kerr { o, kappa } => {
                 let f: Vec<C> = (0..self.state.cutoff())
                     .map(|n| C::from_polar(1.0, kappa * (n * n) as f64))
                     .collect();
-                self.state.apply_mode_diagonal(*o as usize, &f);
+                self.st().apply_mode_diagonal(*o as usize, &f);
                 self.lose_photons(&[*o]);
             }
             Op::CrossKerr { a, b, kappa } => {
@@ -680,64 +732,64 @@ impl<'a> Machine<'a> {
                 let f: Vec<C> = (0..d * d)
                     .map(|i| C::from_polar(1.0, kappa * ((i / d) * (i % d)) as f64))
                     .collect();
-                self.state.apply_two_mode_diagonal(*a as usize, *b as usize, &f);
+                self.st().apply_two_mode_diagonal(*a as usize, *b as usize, &f);
                 self.lose_photons(&[*a, *b]);
             }
             Op::BeamSplitter { a, b, theta, phi } => {
                 let d = self.state.cutoff();
                 let (t, p) = (*theta, *phi);
                 let m = self.cache.get(3, t, p, d, || fock::beamsplitter(t, p, d));
-                self.state.apply_two_mode_matrix(*a as usize, *b as usize, &m);
+                self.st().apply_two_mode_matrix(*a as usize, *b as usize, &m);
                 self.lose_photons(&[*a, *b]);
             }
             Op::ModeSwap { a, b } => {
-                self.state.swap_modes(*a as usize, *b as usize);
+                self.st().swap_modes(*a as usize, *b as usize);
                 self.lose_photons(&[*a, *b]);
             }
             Op::AddPhoton { o } => {
                 let o = *o as usize;
-                let dist = self.state.photon_distribution(o);
+                let dist = self.st().photon_distribution(o);
                 let d = dist.len();
                 let expected: f64 = dist.iter().enumerate().map(|(n, p)| (n + 1) as f64 * p).sum();
                 let dropped = d as f64 * dist[d - 1];
-                self.state.ladder(o, true);
-                self.state.normalize();
+                self.st().ladder(o, true);
+                self.st().normalize();
                 let leak = dropped / expected;
                 if leak > 1e-13 {
-                    self.state.leakage += leak;
+                    self.st().leakage += leak;
                 }
                 self.lose_photons(&[o as u32]);
             }
             Op::SubPhoton { o } => {
-                let mean = self.state.mean_photons(*o as usize);
+                let mean = self.st().mean_photons(*o as usize);
                 if mean < 1e-14 {
                     return Err(self.err(pc, t!(
                         "SUBPHOTON on o{}, which holds no photons: removing a photon from vacuum never succeeds",
                         "SUBPHOTON o{}-n, fotoirik ez duena: hutsetik fotoi bat kentzeak ez du inoiz lortzen",
                         o)));
                 }
-                self.state.ladder(*o as usize, false);
-                self.state.normalize();
+                self.st().ladder(*o as usize, false);
+                self.st().normalize();
                 self.lose_photons(&[*o]);
             }
             Op::Loss { o, gamma } => {
                 let r = self.uniform();
-                self.state.photon_loss(*o as usize, *gamma, r);
+                self.st().photon_loss(*o as usize, *gamma, r);
             }
             Op::Fock { o, n } => {
                 // modua neurtu (hau da, haren edukia baztertu) eta n fotoira eraman
                 let r = self.uniform();
-                let m = self.state.measure_photons(*o as usize, r);
-                self.state.move_photons(*o as usize, m, *n as usize);
+                let m = self.st().measure_photons(*o as usize, r);
+                self.st().move_photons(*o as usize, m, *n as usize);
             }
             Op::Dispersive { q, o, theta } => {
-                self.state.dispersive(*q as usize, *o as usize, *theta);
+                self.st().dispersive(*q as usize, *o as usize, *theta);
                 self.depolarize(&[*q]);
                 self.lose_photons(&[*o]);
             }
 
             Op::DumpState => {
-                let text = crate::report::state_table(&self.state, 16);
+                let text = crate::report::state_table(self.st(), 16);
                 self.print(&t!("state at line {}:\n{}", "egoera {}. lerroan:\n{}", self.prog.line_of(pc), text));
             }
             Op::DumpRegs => {
@@ -754,7 +806,7 @@ impl<'a> Machine<'a> {
                 self.print(&s);
             }
             Op::Expect { q, basis, dest } => {
-                let b = self.state.bloch(*q as usize);
+                let b = self.st().bloch(*q as usize);
                 let v = match basis {
                     Basis::X => b[0],
                     Basis::Y => b[1],
@@ -766,14 +818,14 @@ impl<'a> Machine<'a> {
                 }
             }
             Op::BellCheck { a, b, dest } => {
-                let f = self.state.bell_fidelity(*a as usize, *b as usize);
+                let f = self.st().bell_fidelity(*a as usize, *b as usize);
                 match dest {
                     Some(r) => self.regs[*r as usize] = f,
                     None => self.print(&t!("Bell fidelity of q{} q{} = {:.6}\n", "q{} q{} qubiten bell-fideltasuna = {:.6}\n", a, b, f)),
                 }
             }
             Op::MeanPhoton { o, dest } => {
-                let n = self.state.mean_photons(*o as usize);
+                let n = self.st().mean_photons(*o as usize);
                 match dest {
                     Some(r) => self.regs[*r as usize] = n,
                     None => self.print(&t!("<n> of o{} = {:.6}\n", "o{}-ren <n> = {:.6}\n", o, n)),

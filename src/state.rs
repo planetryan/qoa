@@ -10,12 +10,10 @@
 // galdutako probabilitatea `leakage`-ri gehitzen zaio, jakinarazi ahal izateko.
 
 use crate::fock::Mat;
+use crate::kernel::{self, PARALLEL_MIN, QGate};
 use crate::t;
 use num_complex::Complex64 as C;
 use rayon::prelude::*;
-
-// anplitude gutxiago badira, kernelak hari bakarrean (hariek aurrezten dutena baino gehiago kostatzen dute)
-const PARALLEL_MIN: usize = 1 << 14;
 
 // simulagailuak erreserbatuko duen egoera-bektore handiena (2^32 anplitude = 64 GiB)
 pub const MAX_AMPLITUDES: u128 = 1 << 32;
@@ -154,89 +152,35 @@ impl State {
     // ------------------------------------------------------------------ qubit-ateak
 
     // 2x2 matrizea [m00, m01, m10, m11] q qubitari aplikatu, `controls` maskarako qubit guztiak 1
-    // diren oinarri-egoeretan (`controls` bit-maskara bat da; 0 kontrolik gabe)
+    // diren oinarri-egoeretan (`controls` bit-maskara bat da; 0 kontrolik gabe). ikus src/kernel.rs
     pub fn apply_1q(&mut self, q: usize, m: [C; 4], controls: usize) {
-        let [m00, m01, m10, m11] = m;
-        // ate diagonalek eskalatu bakarrik egiten dute: merkeagoa, eta bikoteak ukitu gabe
-        if m01 == C::new(0.0, 0.0) && m10 == C::new(0.0, 0.0) {
-            let bit = 1usize << q;
-            self.for_each_indexed(|i, a| {
-                if i & controls == controls {
-                    *a *= if i & bit == 0 { m00 } else { m11 };
-                }
-            });
-            return;
-        }
-        pair_kernel(&mut self.amps, q, controls, |a, b| {
-            let x = *a;
-            let y = *b;
-            *a = m00 * x + m01 * y;
-            *b = m10 * x + m11 * y;
-        });
+        kernel::sweep_mat(&mut self.amps, q, &m, controls);
     }
 
-    // pauli-x q-n (kontrolekin edo gabe) trukaketa gisa, biderketarik gabe
+    // pauli-x q-n (kontrolekin edo gabe): trukaketa, biderketarik gabe
     pub fn apply_x(&mut self, q: usize, controls: usize) {
-        pair_kernel(&mut self.amps, q, controls, std::mem::swap);
+        let x = [
+            C::new(0.0, 0.0),
+            C::new(1.0, 0.0),
+            C::new(1.0, 0.0),
+            C::new(0.0, 0.0),
+        ];
+        kernel::sweep_mat(&mut self.amps, q, &x, controls);
     }
 
     // e^{iθ}-z biderkatu `mask`-eko qubit guztiak 1 diren oinarri-egoera guztiak
     pub fn apply_phase_mask(&mut self, mask: usize, theta: f64) {
-        let phase = C::from_polar(1.0, theta);
-        self.for_each_indexed(|i, a| {
-            if i & mask == mask {
-                *a *= phase;
-            }
-        });
+        self.apply_gates(&[QGate::phase(mask, theta)]);
     }
 
-    // a eta b qubitak trukatu, `controls` guztiak 1 diren oinarri-egoeretan.
-    // hi qubitaren bloke bakoitza bi erditan banatzen da (hi=0 | hi=1); erdi baxuko (lo=1) elementua
-    // erdi altuko (lo=0) elementuarekin trukatzen da. erdiak bereiziak direnez, ez da unsafe behar.
+    // a eta b qubitak trukatu, `controls` guztiak 1 diren oinarri-egoeretan
     pub fn apply_swap(&mut self, a: usize, b: usize, controls: usize) {
-        let (lo, hi) = if a < b { (a, b) } else { (b, a) };
-        let lo_bit = 1usize << lo;
-        let half = 1usize << hi;
-        let block = half << 1;
-        let sub = lo_bit << 1;
-        // azpibloke bat: lo erdian lo=1 dutenak (lo_bit..sub), hi erdian lo=0 dutenak (0..lo_bit)
-        let swap_sub = |base: usize, lo_part: &mut [C], hi_part: &mut [C]| {
-            for m in 0..lo_bit {
-                if (base + lo_bit + m) & controls == controls {
-                    std::mem::swap(&mut lo_part[lo_bit + m], &mut hi_part[m]);
-                }
-            }
-        };
-        let n = self.amps.len();
-        let run_block = |k: usize, chunk: &mut [C]| {
-            let (lo_half, hi_half) = chunk.split_at_mut(half);
-            for (s, (lp, hp)) in lo_half
-                .chunks_mut(sub)
-                .zip(hi_half.chunks_mut(sub))
-                .enumerate()
-            {
-                swap_sub(k * block + s * sub, lp, hp);
-            }
-        };
-        if n < PARALLEL_MIN {
-            for (k, chunk) in self.amps.chunks_mut(block).enumerate() {
-                run_block(k, chunk);
-            }
-        } else if n / block >= rayon::current_num_threads() * 4 {
-            self.amps
-                .par_chunks_mut(block)
-                .enumerate()
-                .for_each(|(k, chunk)| run_block(k, chunk));
-        } else {
-            for (k, chunk) in self.amps.chunks_mut(block).enumerate() {
-                let (lo_half, hi_half) = chunk.split_at_mut(half);
-                lo_half
-                    .par_chunks_mut(sub)
-                    .zip(hi_half.par_chunks_mut(sub))
-                    .enumerate()
-                    .for_each(|(s, (lp, hp))| swap_sub(k * block + s * sub, lp, hp));
-            }
-        }
+        kernel::sweep_swap(&mut self.amps, a, b, controls);
+    }
+
+    // ate-sorta bat: fusioarekin eta cache-blokeekin, banan-banan baino memoria-trafiko gutxiagorekin
+    pub fn apply_gates(&mut self, gates: &[QGate]) {
+        kernel::apply_gates(&mut self.amps, self.n_qubits, gates);
     }
 
     fn for_each_indexed(&mut self, f: impl Fn(usize, &mut C) + Sync + Send) {
@@ -662,56 +606,5 @@ pub fn format_bytes(b: u128) -> String {
         format!("{} B", b)
     } else {
         format!("{:.1} {}", v, UNITS[u])
-    }
-}
-
-// q qubitaren bikote bakoitza bisitatu (q bita 0 duen indizea, q bita 1 duen indize bera), kontrol-
-// maskara betetzen den lekuetan, `f(&mut baxua, &mut altua)` deituz. bikote bakoitza behin bakarrik.
-fn pair_kernel(
-    amps: &mut [C],
-    q: usize,
-    controls: usize,
-    f: impl Fn(&mut C, &mut C) + Sync + Send,
-) {
-    let half = 1usize << q;
-    let block = half << 1;
-    let run_block = |base: usize, chunk: &mut [C]| {
-        let (lo, hi) = chunk.split_at_mut(half);
-        if controls == 0 {
-            for (a, b) in lo.iter_mut().zip(hi.iter_mut()) {
-                f(a, b);
-            }
-        } else {
-            for (j, (a, b)) in lo.iter_mut().zip(hi.iter_mut()).enumerate() {
-                if (base + j) & controls == controls {
-                    f(a, b);
-                }
-            }
-        }
-    };
-    let n = amps.len();
-    if n < PARALLEL_MIN {
-        for (k, chunk) in amps.chunks_mut(block).enumerate() {
-            run_block(k * block, chunk);
-        }
-    } else if n / block >= rayon::current_num_threads() * 4 {
-        // bloke txiki asko: zeregin bat bloke bakoitzeko
-        amps.par_chunks_mut(block)
-            .enumerate()
-            .for_each(|(k, chunk)| run_block(k * block, chunk));
-    } else {
-        // bloke handi gutxi (qubit altua): bloke bakoitzaren erdiak harien artean banatu
-        for (k, chunk) in amps.chunks_mut(block).enumerate() {
-            let base = k * block;
-            let (lo, hi) = chunk.split_at_mut(half);
-            lo.par_iter_mut()
-                .zip(hi.par_iter_mut())
-                .enumerate()
-                .for_each(|(j, (a, b))| {
-                    if (base + j) & controls == controls {
-                        f(a, b);
-                    }
-                });
-        }
     }
 }
