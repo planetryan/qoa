@@ -466,7 +466,13 @@ pub fn apply_gates(amps: &mut [C], n_qubits: usize, gates: &[QGate]) {
 
 // probetarako: fusiorik gabe, bloke-tamaina eta qubit altuen kopuru jakin batekin (egoera txikietan ere etapa
 // mota guztiak probatzeko)
-pub fn apply_gates_blocked(amps: &mut [C], n_qubits: usize, gates: &[QGate], block_bits: usize, high_max: usize) {
+pub fn apply_gates_blocked(
+    amps: &mut [C],
+    n_qubits: usize,
+    gates: &[QGate],
+    block_bits: usize,
+    high_max: usize,
+) {
     run_stages(amps, n_qubits, gates, block_bits, high_max);
 }
 
@@ -587,11 +593,19 @@ fn run_gathered(amps: &mut [C], n_qubits: usize, stage: &[QGate], low: usize, hi
         .iter()
         .map(|g| match *g {
             QGate::Mat { q, m, controls } => (
-                QGate::Mat { q: local(q), m, controls: remap(controls) },
+                QGate::Mat {
+                    q: local(q),
+                    m,
+                    controls: remap(controls),
+                },
                 controls & !((1 << low) - 1) & !high,
             ),
             QGate::Swap { a, b, controls } => (
-                QGate::Swap { a: local(a), b: local(b), controls: remap(controls) },
+                QGate::Swap {
+                    a: local(a),
+                    b: local(b),
+                    controls: remap(controls),
+                },
                 controls & !((1 << low) - 1) & !high,
             ),
         })
