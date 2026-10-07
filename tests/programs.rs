@@ -190,12 +190,13 @@ fn check(path: &Path) -> Result<(), String> {
         }
     }
     if let Some(limit) = e.leakage_below
-        && out.leakage >= limit {
-            return Err(format!(
-                "truncation leakage {:e} is not below {:e}",
-                out.leakage, limit
-            ));
-        }
+        && out.leakage >= limit
+    {
+        return Err(format!(
+            "truncation leakage {:e} is not below {:e}",
+            out.leakage, limit
+        ));
+    }
     Ok(())
 }
 

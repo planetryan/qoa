@@ -130,6 +130,11 @@ enum Command {
         ltr: bool,
         #[arg(long, conflicts_with = "ltr", help = ts!("spectrum runs right to left", "espektroa eskuinetik ezkerrera"))]
         rtl: bool,
+        #[arg(long, help = ts!(
+            "random seed: the same seed and audio give the same video (default: a fresh seed, which is printed)",
+            "ausazko hazia: hazi eta audio berak bideo bera ematen dute (lehenetsia: hazi berri bat, inprimatzen dena)"
+        ))]
+        seed: Option<u64>,
         #[arg(long = "ffmpeg-flag", value_name = "FLAG", num_args = 0.., action = clap::ArgAction::Append, help = ts!("extra ffmpeg flags", "ffmpeg-en aukera gehigarriak"))]
         ffmpeg_flags: Vec<String>,
         #[arg(last = true, allow_hyphen_values = true, help = ts!("arguments passed to ffmpeg after --", "-- ondoren ffmpeg-i pasatzen zaizkion argumentuak"))]
@@ -158,8 +163,79 @@ fn probability(s: &str) -> Result<f64, String> {
     }
 }
 
+// clap-ek berak idazten dituen testu finkoak (izenburuak, "[default: ...]", errore ohikoenak) euskaraz.
+// luzeenak lehenago, zatiak bata bestearen barruan daudelako
+const CLAP_EU: &[(&str, &str)] = &[
+    (
+        "Print help (see a summary with '-h')",
+        "Laguntza inprimatu (laburpena: '-h')",
+    ),
+    (
+        "Print help (see more with '--help')",
+        "Laguntza inprimatu (gehiago: '--help')",
+    ),
+    (
+        "Print this message or the help of the given subcommand(s)",
+        "Mezu hau edo azpikomando baten laguntza inprimatu",
+    ),
+    ("Print help", "Laguntza inprimatu"),
+    ("Print version", "Bertsioa inprimatu"),
+    ("Usage:", "Erabilera:"),
+    ("Arguments:", "Argumentuak:"),
+    ("Options:", "Aukerak:"),
+    ("Commands:", "Komandoak:"),
+    ("[default: ", "[lehenetsia: "),
+    ("[possible values: ", "[balio posibleak: "),
+    ("[aliases: ", "[ezizenak: "),
+    ("error: ", "errorea: "),
+    ("tip: ", "aholkua: "),
+    ("unexpected argument '", "ustekabeko argumentua: '"),
+    ("' found", "'"),
+    ("the argument ", ""),
+    ("unrecognized subcommand", "azpikomando ezezaguna"),
+    (
+        "the following required arguments were not provided:",
+        "argumentu hauek falta dira:",
+    ),
+    ("invalid value", "balio baliogabea"),
+    ("for '", "honentzat: '"),
+    ("a value is required", "balio bat behar da"),
+    ("but none was supplied", "baina ez da bat ere eman"),
+    ("cannot be used with", "ezin da honekin erabili:"),
+    (
+        "For more information, try '--help'.",
+        "Informazio gehiagorako: '--help'.",
+    ),
+    // rust-en zenbaki-irakurketaren erroreak (adib. `--shots abc`)
+    ("invalid digit found in string", "ez da zenbaki oso bat"),
+    ("cannot parse integer from empty string", "hutsik dago"),
+    (
+        "number too large to fit in target type",
+        "zenbakia handiegia da",
+    ),
+    ("invalid float literal", "ez da zenbaki bat"),
+    ("to pass ", ""),
+    (" as a value, use ", " balio gisa pasatzeko, erabili "),
+];
+
 fn main() -> ExitCode {
-    let cli = Cli::parse();
+    let cli = match Cli::try_parse() {
+        Ok(cli) => cli,
+        // ingelesez clap-en irteera bere horretan (koloreekin); euskaraz testu finkoak itzulita
+        Err(e) if qoa::lang::is_eu() => {
+            let mut text = e.render().to_string();
+            for (en, eu) in CLAP_EU {
+                text = text.replace(en, eu);
+            }
+            if e.use_stderr() {
+                eprint!("{}", text);
+            } else {
+                print!("{}", text);
+            }
+            return ExitCode::from(e.exit_code() as u8);
+        }
+        Err(e) => e.exit(),
+    };
     let result = match cli.command {
         Command::Run {
             file,
@@ -189,6 +265,7 @@ fn main() -> ExitCode {
             fps,
             ltr,
             rtl,
+            seed,
             ffmpeg_flags,
             ffmpeg_args,
         } => cmd_visual(
@@ -198,8 +275,9 @@ fn main() -> ExitCode {
             fps,
             ltr,
             rtl,
-            ffmpeg_flags,
-            ffmpeg_args,
+            seed,
+            &ffmpeg_flags,
+            &ffmpeg_args,
         ),
     };
     match result {
@@ -649,8 +727,9 @@ fn cmd_visual(
     fps: u32,
     ltr: bool,
     rtl: bool,
-    ffmpeg_flags: Vec<String>,
-    ffmpeg_args: Vec<String>,
+    seed: Option<u64>,
+    ffmpeg_flags: &[String],
+    ffmpeg_args: &[String],
 ) -> Result<(), String> {
     let (width, height) = resolution
         .split_once('x')
@@ -669,19 +748,16 @@ fn cmd_visual(
     } else {
         SpectrumDirection::None
     };
-    let args: Vec<&str> = ffmpeg_args.iter().map(String::as_str).collect();
-    let av = visualizer::AudioVisualizer::new();
-    visualizer::run_qoa_to_video(
-        &av,
-        av.clone(),
+    visualizer::render_video(&visualizer::Options {
         input,
         output,
-        fps,
         width,
         height,
-        &args,
+        fps,
         direction,
-        &ffmpeg_flags,
-    )
+        seed: seed.unwrap_or_else(rand::random::<u64>),
+        ffmpeg_flags,
+        ffmpeg_args,
+    })
     .map_err(|e| format!("visual: {}", e))
 }

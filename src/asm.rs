@@ -538,50 +538,51 @@ impl Asm {
         // hedapena: `H q0..q3` lau H bihurtzen da
         if spec.broadcast
             && let Some(first) = args.first()
-                && first.text.contains("..") {
-                    let Some(list) = self.index_list(first, 'q') else {
+            && first.text.contains("..")
+        {
+            let Some(list) = self.index_list(first, 'q') else {
+                return;
+            };
+            // helmuga ere tartea bada (MEASURE q0..q2 -> c0..c2), bikoteka lotzen dira
+            let dest_range = args
+                .iter()
+                .position(|t| t.text.contains("..") && t.col != first.col);
+            let dest_list = match dest_range {
+                Some(i) => {
+                    let tk = args[i].clone();
+                    let Some(l) = self.dest_list(&tk) else { return };
+                    if l.len() != list.len() {
+                        self.error(Diagnostic::at(
+                            &tk,
+                            t!(
+                                "this range has {} entries but the qubit range has {}",
+                                "tarte honek {} elementu ditu, baina qubit-tarteak {}",
+                                l.len(),
+                                list.len()
+                            ),
+                        ));
                         return;
-                    };
-                    // helmuga ere tartea bada (MEASURE q0..q2 -> c0..c2), bikoteka lotzen dira
-                    let dest_range = args
-                        .iter()
-                        .position(|t| t.text.contains("..") && t.col != first.col);
-                    let dest_list = match dest_range {
-                        Some(i) => {
-                            let tk = args[i].clone();
-                            let Some(l) = self.dest_list(&tk) else { return };
-                            if l.len() != list.len() {
-                                self.error(Diagnostic::at(
-                                    &tk,
-                                    t!(
-                                        "this range has {} entries but the qubit range has {}",
-                                        "tarte honek {} elementu ditu, baina qubit-tarteak {}",
-                                        l.len(),
-                                        list.len()
-                                    ),
-                                ));
-                                return;
-                            }
-                            Some((i, l))
-                        }
-                        None => None,
-                    };
-                    for (k, q) in list.iter().enumerate() {
-                        let mut expanded: Vec<Token> = args.to_vec();
-                        expanded[0] = Token {
-                            text: format!("q{}", q),
-                            ..first.clone()
-                        };
-                        if let Some((i, l)) = &dest_list {
-                            expanded[*i] = Token {
-                                text: l[k].clone(),
-                                ..args[*i].clone()
-                            };
-                        }
-                        self.instruction(spec, head, &expanded);
                     }
-                    return;
+                    Some((i, l))
                 }
+                None => None,
+            };
+            for (k, q) in list.iter().enumerate() {
+                let mut expanded: Vec<Token> = args.to_vec();
+                expanded[0] = Token {
+                    text: format!("q{}", q),
+                    ..first.clone()
+                };
+                if let Some((i, l)) = &dest_list {
+                    expanded[*i] = Token {
+                        text: l[k].clone(),
+                        ..args[*i].clone()
+                    };
+                }
+                self.instruction(spec, head, &expanded);
+            }
+            return;
+        }
         self.instruction(spec, head, args);
     }
 
@@ -717,14 +718,15 @@ impl Asm {
         for (i, g) in groups.iter().enumerate() {
             for _ in g {
                 if let Some(arrow) = &arrow_before[pos]
-                    && specs[i].kind != 'd' {
-                        self.error(Diagnostic::at(arrow, t!(
+                    && specs[i].kind != 'd'
+                {
+                    self.error(Diagnostic::at(arrow, t!(
                             "-> can only come before a result destination; {} takes none here",
                             "-> emaitzaren helmuga baten aurretik bakarrik joan daiteke; {}-k ez du hemen helmugarik hartzen",
                             spec.name
                         )).help(usage));
-                        return None;
-                    }
+                    return None;
+                }
                 pos += 1;
             }
         }
@@ -1193,44 +1195,125 @@ impl Asm {
         // laguntzaileak: eragigaiak motaren arabera atera
         let idx = |i: usize| match &v[i] {
             Arg::Index(n) => *n,
-            other => panic!("{}", t!("operand {} of {} is {:?}, not an index (QOA bug)", "{1}-ren {0}. eragigaia {2:?} da, ez indize bat (QOA-ren akatsa)", i, spec.name, other)),
+            other => panic!(
+                "{}",
+                t!(
+                    "operand {} of {} is {:?}, not an index (QOA bug)",
+                    "{1}-ren {0}. eragigaia {2:?} da, ez indize bat (QOA-ren akatsa)",
+                    i,
+                    spec.name,
+                    other
+                )
+            ),
         };
         let list = |i: usize| match &v[i] {
             Arg::Indices(l) => l.clone(),
             Arg::Missing => Vec::new(),
-            other => panic!("{}", t!("operand {} of {} is {:?}, not a list (QOA bug)", "{1}-ren {0}. eragigaia {2:?} da, ez zerrenda bat (QOA-ren akatsa)", i, spec.name, other)),
+            other => panic!(
+                "{}",
+                t!(
+                    "operand {} of {} is {:?}, not a list (QOA bug)",
+                    "{1}-ren {0}. eragigaia {2:?} da, ez zerrenda bat (QOA-ren akatsa)",
+                    i,
+                    spec.name,
+                    other
+                )
+            ),
         };
         let float = |i: usize, default: f64| match &v[i] {
             Arg::Float(f) => *f,
             Arg::Missing => default,
-            other => panic!("{}", t!("operand {} of {} is {:?}, not a number (QOA bug)", "{1}-ren {0}. eragigaia {2:?} da, ez zenbaki bat (QOA-ren akatsa)", i, spec.name, other)),
+            other => panic!(
+                "{}",
+                t!(
+                    "operand {} of {} is {:?}, not a number (QOA bug)",
+                    "{1}-ren {0}. eragigaia {2:?} da, ez zenbaki bat (QOA-ren akatsa)",
+                    i,
+                    spec.name,
+                    other
+                )
+            ),
         };
         let int = |i: usize| match &v[i] {
             Arg::Int(n) => *n,
-            other => panic!("{}", t!("operand {} of {} is {:?}, not an integer (QOA bug)", "{1}-ren {0}. eragigaia {2:?} da, ez zenbaki oso bat (QOA-ren akatsa)", i, spec.name, other)),
+            other => panic!(
+                "{}",
+                t!(
+                    "operand {} of {} is {:?}, not an integer (QOA bug)",
+                    "{1}-ren {0}. eragigaia {2:?} da, ez zenbaki oso bat (QOA-ren akatsa)",
+                    i,
+                    spec.name,
+                    other
+                )
+            ),
         };
         let dest = |i: usize| match &v[i] {
             Arg::Dest(d) => *d,
             Arg::Missing => Dest::Own,
-            other => panic!("{}", t!("operand {} of {} is {:?}, not a destination (QOA bug)", "{1}-ren {0}. eragigaia {2:?} da, ez helmuga bat (QOA-ren akatsa)", i, spec.name, other)),
+            other => panic!(
+                "{}",
+                t!(
+                    "operand {} of {} is {:?}, not a destination (QOA bug)",
+                    "{1}-ren {0}. eragigaia {2:?} da, ez helmuga bat (QOA-ren akatsa)",
+                    i,
+                    spec.name,
+                    other
+                )
+            ),
         };
         let opt_reg = |i: usize| match &v[i] {
             Arg::Index(n) => Some(*n),
             Arg::Missing => None,
-            other => panic!("{}", t!("operand {} of {} is {:?}, not a register (QOA bug)", "{1}-ren {0}. eragigaia {2:?} da, ez erregistro bat (QOA-ren akatsa)", i, spec.name, other)),
+            other => panic!(
+                "{}",
+                t!(
+                    "operand {} of {} is {:?}, not a register (QOA bug)",
+                    "{1}-ren {0}. eragigaia {2:?} da, ez erregistro bat (QOA-ren akatsa)",
+                    i,
+                    spec.name,
+                    other
+                )
+            ),
         };
         let basis = |i: usize| match &v[i] {
             Arg::Basis(b) => *b,
-            other => panic!("{}", t!("operand {} of {} is {:?}, not a basis (QOA bug)", "{1}-ren {0}. eragigaia {2:?} da, ez oinarri bat (QOA-ren akatsa)", i, spec.name, other)),
+            other => panic!(
+                "{}",
+                t!(
+                    "operand {} of {} is {:?}, not a basis (QOA bug)",
+                    "{1}-ren {0}. eragigaia {2:?} da, ez oinarri bat (QOA-ren akatsa)",
+                    i,
+                    spec.name,
+                    other
+                )
+            ),
         };
         let text = |i: usize| match &v[i] {
             Arg::Text(s) => s.clone(),
             Arg::Missing => String::new(),
-            other => panic!("{}", t!("operand {} of {} is {:?}, not text (QOA bug)", "{1}-ren {0}. eragigaia {2:?} da, ez testua (QOA-ren akatsa)", i, spec.name, other)),
+            other => panic!(
+                "{}",
+                t!(
+                    "operand {} of {} is {:?}, not text (QOA bug)",
+                    "{1}-ren {0}. eragigaia {2:?} da, ez testua (QOA-ren akatsa)",
+                    i,
+                    spec.name,
+                    other
+                )
+            ),
         };
         let label = |i: usize| match &v[i] {
             Arg::Label(l) => l.clone(),
-            other => panic!("{}", t!("operand {} of {} is {:?}, not a label (QOA bug)", "{1}-ren {0}. eragigaia {2:?} da, ez etiketa bat (QOA-ren akatsa)", i, spec.name, other)),
+            other => panic!(
+                "{}",
+                t!(
+                    "operand {} of {} is {:?}, not a label (QOA bug)",
+                    "{1}-ren {0}. eragigaia {2:?} da, ez etiketa bat (QOA-ren akatsa)",
+                    i,
+                    spec.name,
+                    other
+                )
+            ),
         };
         let tok = |i: usize| groups[i].first().cloned().unwrap_or_else(|| head.clone());
 

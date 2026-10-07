@@ -236,3 +236,194 @@ fn bad_arguments_are_rejected() {
     assert!(!o.status.success());
     assert!(stderr(&o).contains("cannot read"), "{}", stderr(&o));
 }
+
+// probetarako wav txiki bat: 0.5 s, 8000 Hz, estereo, 16 bit; tonu bat eta kolpe batzuk
+fn write_wav(path: &Path) {
+    let rate = 8000u32;
+    let n = rate / 2;
+    let mut data = Vec::new();
+    for i in 0..n {
+        let t = i as f64 / rate as f64;
+        let beat = if i % 1000 < 80 { 0.5 } else { 0.0 };
+        let l = 0.4 * (2.0 * std::f64::consts::PI * 440.0 * t).sin() + beat;
+        let r = 0.4 * (2.0 * std::f64::consts::PI * 660.0 * t).sin() - beat;
+        for v in [l, r] {
+            data.extend_from_slice(&((v * 32767.0) as i16).to_le_bytes());
+        }
+    }
+    let mut f = Vec::new();
+    f.extend_from_slice(b"RIFF");
+    f.extend_from_slice(&(36 + data.len() as u32).to_le_bytes());
+    f.extend_from_slice(b"WAVEfmt ");
+    f.extend_from_slice(&16u32.to_le_bytes());
+    f.extend_from_slice(&1u16.to_le_bytes()); // pcm
+    f.extend_from_slice(&2u16.to_le_bytes()); // kanalak
+    f.extend_from_slice(&rate.to_le_bytes());
+    f.extend_from_slice(&(rate * 4).to_le_bytes());
+    f.extend_from_slice(&4u16.to_le_bytes());
+    f.extend_from_slice(&16u16.to_le_bytes());
+    f.extend_from_slice(b"data");
+    f.extend_from_slice(&(data.len() as u32).to_le_bytes());
+    f.extend_from_slice(&data);
+    std::fs::write(path, f).unwrap();
+}
+
+fn have_ffmpeg() -> bool {
+    Command::new("ffmpeg")
+        .arg("-version")
+        .output()
+        .is_ok_and(|o| o.status.success())
+}
+
+#[test]
+fn visual_explains_bad_input() {
+    let o = qoa("en", &["visual", "examples/bell.qoa", "out.mp4"]);
+    assert!(!o.status.success());
+    assert!(stderr(&o).contains("is not a .wav file"), "{}", stderr(&o));
+    let o = qoa("eu", &["visual", "ez-dago.wav", "out.mp4"]);
+    assert!(!o.status.success());
+    assert!(
+        stderr(&o).contains("ezin da 'ez-dago.wav' irakurri"),
+        "{}",
+        stderr(&o)
+    );
+    let wav = scratch("visual-bad.wav");
+    write_wav(&wav);
+    let o = qoa(
+        "en",
+        &[
+            "visual",
+            wav.to_str().unwrap(),
+            "out.mp4",
+            "--resolution",
+            "wide",
+        ],
+    );
+    assert!(!o.status.success());
+    assert!(
+        stderr(&o).contains("should look like 1920x1080"),
+        "{}",
+        stderr(&o)
+    );
+}
+
+// irudi gordinak fitxategi batera (kodetu gabe), bideoa pixelez pixel konparatzeko
+fn render_raw(wav: &Path, out: &Path, seed: &str) -> Vec<u8> {
+    let o = qoa(
+        "en",
+        &[
+            "visual",
+            wav.to_str().unwrap(),
+            out.to_str().unwrap(),
+            "--resolution",
+            "96x54",
+            "--fps",
+            "20",
+            "--ltr",
+            "--seed",
+            seed,
+            "--",
+            "-an",
+            "-c:v",
+            "rawvideo",
+            "-pix_fmt",
+            "rgb24",
+            "-f",
+            "rawvideo",
+        ],
+    );
+    assert!(o.status.success(), "{}{}", stdout(&o), stderr(&o));
+    let report = stdout(&o);
+    for want in [
+        "input",
+        "0.50 s, 8000 Hz, 2 channel(s) mixed to mono",
+        "video",
+        "96x54, 20 frames/s, 10 frames",
+        "seed",
+        "note",
+        "time",
+    ] {
+        assert!(report.contains(want), "missing {:?} in:\n{}", want, report);
+    }
+    std::fs::read(out).unwrap()
+}
+
+#[test]
+fn visual_renders_the_same_video_for_the_same_seed() {
+    if !have_ffmpeg() {
+        eprintln!("ffmpeg ez dago; proba hau saltatzen da");
+        return;
+    }
+    let wav = scratch("visual.wav");
+    write_wav(&wav);
+    let a = render_raw(&wav, &scratch("visual-a.rgb"), "5");
+    let b = render_raw(&wav, &scratch("visual-b.rgb"), "5");
+    let c = render_raw(&wav, &scratch("visual-c.rgb"), "6");
+    // 0.5 s * 20 irudi/s = 10 irudi, bakoitza 96 * 54 * 3 byte
+    assert_eq!(a.len(), 10 * 96 * 54 * 3);
+    assert!(a == b, "hazi berak bideo bera eman behar du");
+    assert!(a != c, "hazi desberdinak bideo desberdina eman behar du");
+    // espektroa: 440 Hz-ko tonua 22. bin-ean dago (20 Hz bin bakoitzeko); 201 bin 96 zutabetan, beraz
+    // 10. zutabean, eta barra gorri betea da (altuera 54 / 4 = 13 pixel)
+    let frame = &a[..96 * 54 * 3];
+    let px = |x: usize, y: usize| &frame[(y * 96 + x) * 3..(y * 96 + x) * 3 + 3];
+    for y in 41..54 {
+        assert!(
+            px(10, y)[0] >= 204 && px(10, y)[1] < 52,
+            "{} {:?}",
+            y,
+            px(10, y)
+        );
+    }
+    assert!(px(10, 40)[0] < 204 || px(10, 40)[1] > 51);
+
+    // mp4 bat ere bai, kodetzaile lehenetsiekin
+    let mp4 = scratch("visual.mp4");
+    let o = qoa(
+        "eu",
+        &[
+            "visual",
+            wav.to_str().unwrap(),
+            mp4.to_str().unwrap(),
+            "--resolution",
+            "64x36",
+            "--fps",
+            "10",
+            "--seed",
+            "1",
+        ],
+    );
+    assert!(o.status.success(), "{}{}", stdout(&o), stderr(&o));
+    assert!(stdout(&o).contains("monora nahastuta") && stdout(&o).contains("arte-tresna"));
+    assert!(std::fs::metadata(&mp4).unwrap().len() > 1000);
+}
+
+#[test]
+fn clap_help_and_errors_speak_basque_too() {
+    let o = qoa("eu", &["visual", "--help"]);
+    assert!(o.status.success());
+    let out = stdout(&o);
+    for want in [
+        "Erabilera:",
+        "Argumentuak:",
+        "Aukerak:",
+        "[lehenetsia: 60]",
+        "Laguntza inprimatu",
+    ] {
+        assert!(out.contains(want), "missing {:?} in:\n{}", want, out);
+    }
+    for unwanted in ["Usage:", "Options:", "[default:", "Print help"] {
+        assert!(!out.contains(unwanted), "{:?} in:\n{}", unwanted, out);
+    }
+    let o = qoa("eu", &["run", "examples/bell.qoa", "--shots", "abc"]);
+    assert_eq!(o.status.code(), Some(2));
+    assert!(
+        stderr(&o).contains("errorea: balio baliogabea 'abc'")
+            && stderr(&o).contains("ez da zenbaki oso bat"),
+        "{}",
+        stderr(&o)
+    );
+    // ingelesez clap-en testuak bere horretan
+    let o = qoa("en", &["visual", "--help"]);
+    assert!(stdout(&o).contains("Usage:") && stdout(&o).contains("[default: 60]"));
+}

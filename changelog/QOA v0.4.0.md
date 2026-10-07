@@ -55,7 +55,13 @@ distributed and assembly code was never called. 0.4 fixes all of these.
 * `QINIT n` now declares the number of qubits once, as the 0.3 README described. Programs that used one
   `QINIT` per qubit get an error that says so.
 * The `visual` command (audio spectrum video) is kept, and described honestly: it is an art tool, it does not
-  visualize a quantum state.
+  visualize a quantum state. It was rewritten: frames go straight to ffmpeg instead of through PNG files on
+  disk (3 s of 1080p audio used to leave 571 MB of PNGs behind), the same `--seed` gives the same video, and
+  it builds on ARM and RISC-V. Bugs fixed on the way: at exactly 1920x1080 and 3840x2160 the pattern ignored
+  the audio, the AVX-512 colour blend read the red channel for all three colours, the sine approximation was
+  50% off for half its inputs, and the noise field repeated itself for negative coordinates. Rendering alone
+  is about 5x faster; most of the remaining time is spent by the H.264 encoder (`--ffmpeg-flag=-preset
+  --ffmpeg-flag=ultrafast` trades file size for speed).
 
 **Thank you for using QOA.**
 
@@ -123,7 +129,14 @@ konpontzen ditu.
 * `QINIT n`-k orain qubit-kopurua adierazten du behin, 0.3-ko README-ak deskribatzen zuen bezala. Qubit
   bakoitzeko `QINIT` bat erabiltzen zuten programek hala dioen errore bat jasotzen dute.
 * `visual` komandoa (audio-espektroaren bideoa) mantentzen da, eta zintzotasunez deskribatuta: arte-tresna
-  bat da, ez du egoera kuantikorik bistaratzen.
+  bat da, ez du egoera kuantikorik bistaratzen. Berridatzi egin da: irudiak zuzenean doaz ffmpeg-era, diskoko
+  PNG fitxategien bidez joan beharrean (1080p-ko 3 s-ko audio batek 571 MB PNG uzten zituen), `--seed` berak
+  bideo bera ematen du, eta ARM eta RISC-V-n konpilatzen da. Bidean konpondutako akatsak: 1920x1080 eta
+  3840x2160 bereizmenetan ereduak ez zion audioari kasurik egiten, AVX-512 kolore-nahasketak kolore
+  guztietarako kanal gorria irakurtzen zuen, sinuaren hurbilketak % 50eko errorea zuen sarreren erdian, eta
+  zarata-eremua errepikatu egiten zen koordenatu negatiboetan. Errendatzea bakarrik 5 aldiz azkarragoa da
+  gutxi gorabehera; geratzen den denboraren zatirik handiena H.264 kodetzaileak hartzen du
+  (`--ffmpeg-flag=-preset --ffmpeg-flag=ultrafast`-ek fitxategi-tamaina abiadurarekin trukatzen du).
 
 **Eskerrik asko QOA erabiltzeagatik.**
 

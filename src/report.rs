@@ -264,7 +264,7 @@ impl Style {
     }
 
     // etiketa ezkerrean, zabalera finkoan, ilun
-    fn label(&self, s: &str) -> String {
+    pub fn label(&self, s: &str) -> String {
         let padded = format!("{:<9}", s);
         if self.color {
             format!("\x1b[2m{}\x1b[0m", padded)

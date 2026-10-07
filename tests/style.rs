@@ -6,11 +6,12 @@
 use std::path::{Path, PathBuf};
 
 // oraindik itzuli gabeak (bakoitza bere zereginarekin); hutsik egon behar luke azkenean
-const NOT_YET: &[&str] = &["src/visualizer.rs"];
+const NOT_YET: &[&str] = &[];
 
 const ENGLISH: &[&str] = &[
-    "the", "and", "is", "are", "this", "that", "with", "for", "of", "to", "we", "it", "be", "from", "not",
-    "which", "when", "should", "will", "can", "into", "only", "each", "every", "if", "or", "an", "by", "its",
+    "the", "and", "is", "are", "this", "that", "with", "for", "of", "to", "we", "it", "be", "from",
+    "not", "which", "when", "should", "will", "can", "into", "only", "each", "every", "if", "or",
+    "an", "by", "its",
 ];
 
 fn files(root: &Path, exts: &[&str], out: &mut Vec<PathBuf>) {
@@ -22,7 +23,10 @@ fn files(root: &Path, exts: &[&str], out: &mut Vec<PathBuf>) {
         }
         if p.is_dir() {
             files(&p, exts, out);
-        } else if p.extension().is_some_and(|e| exts.contains(&e.to_str().unwrap())) {
+        } else if p
+            .extension()
+            .is_some_and(|e| exts.contains(&e.to_str().unwrap()))
+        {
             out.push(p);
         }
     }
@@ -36,7 +40,11 @@ fn looks_english(comment: &str) -> bool {
         .filter(|w| !w.is_empty())
         .map(|w| w.to_lowercase())
         .collect();
-    let hits: std::collections::HashSet<&str> = ENGLISH.iter().copied().filter(|e| words.iter().any(|w| w == e)).collect();
+    let hits: std::collections::HashSet<&str> = ENGLISH
+        .iter()
+        .copied()
+        .filter(|e| words.iter().any(|w| w == e))
+        .collect();
     hits.len() >= 2
 }
 
@@ -64,7 +72,11 @@ fn comments_follow_the_project_style() {
     files(root, &["rs", "qoa"], &mut all);
     let mut problems = Vec::new();
     for path in all {
-        let rel = path.strip_prefix(root).unwrap().to_string_lossy().replace('\\', "/");
+        let rel = path
+            .strip_prefix(root)
+            .unwrap()
+            .to_string_lossy()
+            .replace('\\', "/");
         if NOT_YET.contains(&rel.as_str()) {
             continue;
         }
@@ -80,7 +92,11 @@ fn comments_follow_the_project_style() {
             if let Some(c) = comment_of(line, marker) {
                 // probetako itxaropen-goiburuak eta expect lerroak ez dira iruzkin arruntak
                 let c = c.trim();
-                if c.starts_with("expect") || c.starts_with("shots:") || c.starts_with("seed:") || c.starts_with("max-steps:") {
+                if c.starts_with("expect")
+                    || c.starts_with("shots:")
+                    || c.starts_with("seed:")
+                    || c.starts_with("max-steps:")
+                {
                     continue;
                 }
                 if looks_english(c) {
@@ -89,5 +105,10 @@ fn comments_follow_the_project_style() {
             }
         }
     }
-    assert!(problems.is_empty(), "{} style problem(s):\n{}", problems.len(), problems.join("\n"));
+    assert!(
+        problems.is_empty(),
+        "{} style problem(s):\n{}",
+        problems.len(),
+        problems.join("\n")
+    );
 }

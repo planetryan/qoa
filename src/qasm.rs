@@ -356,15 +356,15 @@ impl Importer {
             && targets
                 .iter()
                 .any(|t| matches!(t, Target::All(_, n) if *n != w))
-            {
-                return Err(qerr(
-                    line,
-                    t!(
-                        "registers of different sizes in one gate call",
-                        "tamaina desberdineko erregistroak ate-dei berean"
-                    ),
-                ));
-            }
+        {
+            return Err(qerr(
+                line,
+                t!(
+                    "registers of different sizes in one gate call",
+                    "tamaina desberdineko erregistroak ate-dei berean"
+                ),
+            ));
+        }
         for k in 0..width.unwrap_or(1) {
             let qs: Vec<u32> = targets
                 .iter()
