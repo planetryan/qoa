@@ -34,6 +34,10 @@ distributed and assembly code was never called. 0.4 fixes all of these.
   linear optics against Quandela's Perceval. See [docs/hardware.md](../docs/hardware.md).
 * **What it is for**: where QOA is useful today, where other tools are better, and what stands in the way of
   adopting it, with the next steps that would help most. See [docs/use-cases.md](../docs/use-cases.md).
+* **Qubit gates on a GPU**: `qoa run --gpu` applies batches of qubit gates through Vulkan, in 64-bit floats,
+  in shared-memory tiles (many gates per pass over memory, like the CPU's cache blocks), with cheaper paths
+  for diagonal, X and real gates. It errors clearly when no usable device exists. Verified against the CPU
+  on lavapipe; not yet timed on a real GPU. See [docs/gpu.md](../docs/gpu.md).
 * **A Kerr black hole**: `examples/kerr.rs` traces light through the metric of a fast-spinning black hole
   (shadow, lensed disk, Doppler shift) and computes its Hawking pairs with QOA's own squeezers and
   beamsplitter: their photon numbers follow Planck's law and always come in pairs. See
@@ -61,9 +65,10 @@ distributed and assembly code was never called. 0.4 fixes all of these.
 
 ## Removed
 
-* GPU (Vulkan/CUDA/OpenCL), distributed rendering, MPI, and the hand-written `.S` assembly: none of it was
-  reachable from QOA, and the assembly no longer assembled. It is preserved on the archive branch. The new
-  SIMD assembly is in `src/simd.rs`, is called on every gate, and is tested.
+* The old GPU code (Vulkan/CUDA/OpenCL, 32-bit shaders), distributed rendering, MPI, and the hand-written
+  `.S` assembly: none of it was reachable from QOA, and the assembly no longer assembled. It is preserved on
+  the archive branch. The new SIMD assembly is in `src/simd.rs`, is called on every gate, and is tested; the
+  new GPU path is `--gpu` (above).
 * Example programs that claimed things they did not do (AES/RSA "decryption", an outline of Shor). They are
   replaced by programs that do what they say: a toy Grover key search, Shor's algorithm factoring 15 in full,
   and heralded entanglement of two emitters. The old programs are kept in `tests/programs/legacy`.
@@ -127,6 +132,11 @@ konpontzen ditu.
   Perceval-en aurka egiaztatzen du. Ikus [docs/hardware.eu.md](../docs/hardware.eu.md).
 * **Zertarako den**: non den QOA baliagarria gaur, non diren beste tresnak hobeak, eta zerk eragozten duen
   hartzea, gehien lagunduko luketen hurrengo urratsekin. Ikus [docs/use-cases.eu.md](../docs/use-cases.eu.md).
+* **Qubit-ateak GPU batean**: `qoa run --gpu`-k qubit-ate sortak vulkan bidez aplikatzen ditu, 64 biteko
+  koma higikorrean, memoria partekatuko lauzetan (ate asko memoriaren gaineko pasaldi bakoitzean, CPUaren
+  cache-blokeak bezala), ate diagonal, X eta errealentzako bide merkeagoekin. Gailu erabilgarririk ez badago
+  argi huts egiten du. CPUaren aurka egiaztatua lavapipe-n; oraindik ez da GPU erreal batean neurtu. Ikus
+  [docs/gpu.eu.md](../docs/gpu.eu.md).
 * **Kerr zulo beltz bat**: `examples/kerr.rs`-ek argia trazatzen du azkar biraka dagoen zulo beltz baten
   metrikan (itzala, lenteatutako diskoa, doppler efektua) eta bere hawking bikoteak QOA-ren estutzaile eta
   izpi-zatitzaileekin kalkulatzen ditu: haien fotoi-kopuruek planck-en legea jarraitzen dute eta beti
@@ -155,9 +165,10 @@ konpontzen ditu.
 
 ## Kendua
 
-* GPU (Vulkan/CUDA/OpenCL), banatutako errendatzea, MPI eta eskuz idatzitako `.S` mihiztadura: ez zen ezer
-  QOA-tik iristen, eta mihiztadura jada ez zen mihiztatzen. Artxibo-adarrean gordeta dago. SIMD mihiztadura
-  berria `src/simd.rs`-en dago, ate guztietan deitzen da, eta probatuta dago.
+* GPU kode zaharra (Vulkan/CUDA/OpenCL, 32 biteko shader-ak), banatutako errendatzea, MPI eta eskuz
+  idatzitako `.S` mihiztadura: ez zen ezer QOA-tik iristen, eta mihiztadura jada ez zen mihiztatzen.
+  Artxibo-adarrean gordeta dago. SIMD mihiztadura berria `src/simd.rs`-en dago, ate guztietan deitzen da, eta
+  probatuta dago; GPU bide berria `--gpu` da (goian).
 * Egiten ez zutena esaten zuten adibide-programak (AES/RSA "deszifratzea", Shor-en eskema bat). Esaten dutena
   egiten duten programek ordezkatzen dituzte: jostailu-gako baten grover bilaketa, Shor-en algoritmoa 15
   faktorizatzen osorik, eta bi igorleren entrelazamendu iragarria. Programa zaharrak

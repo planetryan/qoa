@@ -8,6 +8,7 @@
 //   - state only: programak ez badu ezer neurtzen, behin exekutatzen da eta egoera zehatza erakusten da
 
 use crate::fock::{self, Mat};
+use crate::gpu::Gpu;
 use crate::kernel::QGate;
 use crate::program::{Basis, BinOp, Cmp, Count, Dest, Gate, NUM_REGS, Op, Program, Source, UnOp};
 use crate::state::State;
@@ -30,6 +31,8 @@ pub struct RunConfig {
     // eragiketa optiko bakoitzaren ondoren, fotoi bakoitza galtzeko probabilitatea
     pub loss: f64,
     pub max_steps: u64,
+    // qubit-ate sortak GPU honetan (`qoa run --gpu`); bestela CPUan
+    pub gpu: Option<Arc<Gpu>>,
 }
 
 impl Default for RunConfig {
@@ -40,6 +43,7 @@ impl Default for RunConfig {
             noise: 0.0,
             loss: 0.0,
             max_steps: 100_000_000,
+            gpu: None,
         }
     }
 }
@@ -164,6 +168,8 @@ struct Machine<'a> {
     // laginketarako: pc honetara iristean probabilitateak gorde
     capture_at: Option<usize>,
     captured: Option<Vec<f64>>,
+    // GPUak huts egin badu: exekuzioa hurrengo urratsean errore honekin gelditzen da
+    gpu_error: Option<String>,
 }
 
 pub fn run(
@@ -375,6 +381,7 @@ impl<'a> Machine<'a> {
             steps: 0,
             capture_at: None,
             captured: None,
+            gpu_error: None,
         })
     }
 
@@ -398,14 +405,24 @@ impl<'a> Machine<'a> {
                     "{} urratsen ondoren gelditua; programak benetan gehiago behar baditu, handitu --max-steps",
                     self.cfg.max_steps)));
             }
-            match self.step(pc)? {
+            let flow = self.step(pc)?;
+            if let Some(e) = self.gpu_error.take() {
+                return Err(self.err(pc, e));
+            }
+            match flow {
                 Flow::Next => pc += 1,
                 Flow::Goto(t) => pc = t,
                 Flow::Stop => break,
             }
         }
         self.flush();
-        Ok(())
+        match self.gpu_error.take() {
+            Some(e) => Err(RuntimeError {
+                line: 0,
+                message: e,
+            }),
+            None => Ok(()),
+        }
     }
 
     fn err(&self, pc: usize, message: impl Into<String>) -> RuntimeError {
@@ -446,10 +463,18 @@ impl<'a> Machine<'a> {
     }
 
     fn flush(&mut self) {
-        if !self.pending.is_empty() {
-            self.state.apply_gates(&self.pending);
-            self.pending.clear();
+        if self.pending.is_empty() {
+            return;
         }
+        match &self.cfg.gpu {
+            Some(gpu) => {
+                if let Err(e) = self.state.apply_gates_on(gpu, &self.pending) {
+                    self.gpu_error.get_or_insert(e);
+                }
+            }
+            None => self.state.apply_gates(&self.pending),
+        }
+        self.pending.clear();
     }
 
     // egoera, zain dauden ateak aplikatu ondoren

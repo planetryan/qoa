@@ -1,0 +1,172 @@
+#version 460
+// fitxategi honek qubit-ate sorta bat aplikatzen du GPUan (vulkan), src/gpu.rs-ek planifikatuta.
+//
+// lan-talde bakoitzak egoeraren "lauza" bat hartzen du: 2^TILE_BITS anplitude, `pos`-eko qubitak aldatuz eta
+// beste guztiak finko. lauza memoria partekatura kargatzen da, etapako ate guztiak han aplikatzen dira, eta
+// itzuli egiten da: memoria globala behin irakurri eta idazten da etapa osorako (src/kernel.rs-eko
+// bilketa-blokeen ideia bera, L2-ren ordez memoria partekatuarekin). lehen `low` posizioak 0..low-1 dira,
+// beraz hari jarraituek anplitude jarraituak irakurtzen dituzte (sarbide bateratuak).
+//
+// zehaztasuna: f64 dena (shaderFloat64). egoera 2^chunk_bits anplitudeko zatietan dago, bakoitza bere
+// helbidearekin (buffer device address): vulkan-ek buffer bakoitzaren tamaina mugatzen du, egoerak ez.
+//
+// berreraiki: tools/shaders.sh (glslangValidator)
+
+#extension GL_EXT_buffer_reference : require
+#extension GL_EXT_buffer_reference_uvec2 : require
+
+const uint TILE_BITS = 10;
+const uint TILE = 1u << TILE_BITS;
+const uint THREADS = 256;
+const uint PER = TILE / THREADS;
+
+// atearen mota (src/gpu.rs-eko GATE_* berdinak)
+const uint GENERAL = 0;
+const uint DIAGONAL = 1;
+const uint SWAP = 2;
+// pauli-x: bikotea trukatu, biderketarik gabe
+const uint FLIP = 3;
+// matrize erreala (h, ry, ...): kalkuluaren erdia baino gutxiago
+const uint REAL = 4;
+
+layout(local_size_x = THREADS) in;
+
+layout(buffer_reference, std430, buffer_reference_align = 16) buffer Amps {
+    dvec2 a[];
+};
+
+// ate bat tokiko qubitekin: `t` helburua (edo trukaketaren lehena), `u` trukaketaren bigarrena, `cmask`
+// lauzaren barruko kontrolak, `outside` lauzatik kanpoko kontrolak (qubit globalak, lauzaren oinarriarekin
+// egiaztatzen dira), `sync` 1 ondoren barrera behar bada
+struct Gate {
+    dvec2 m[4];
+    uint kind;
+    uint t;
+    uint u;
+    uint cmask;
+    uint outside;
+    uint sync;
+    uint pad0;
+    uint pad1;
+};
+
+layout(std430, set = 0, binding = 0) readonly buffer Gates {
+    Gate gates[];
+};
+
+layout(std430, set = 0, binding = 1) readonly buffer Chunks {
+    uvec2 chunk[];
+};
+
+layout(push_constant) uniform Push {
+    uint pos[TILE_BITS];
+    uint low;
+    uint first;
+    uint count;
+    uint len;
+    uint groups;
+    uint chunk_bits;
+} pc;
+
+shared dvec2 tile[TILE];
+
+dvec2 cmul(dvec2 a, dvec2 b) {
+    return dvec2(a.x * b.x - a.y * b.y, a.x * b.y + a.y * b.x);
+}
+
+// x-ri 0 bit bat sartu p posizioan
+uint insert_zero(uint x, uint p) {
+    return ((x >> p) << (p + 1)) | (x & ((1u << p) - 1u));
+}
+
+void main() {
+    uint g = gl_WorkGroupID.y * gl_NumWorkGroups.x + gl_WorkGroupID.x;
+    // lan-talde osoak batera irteten du: barrerak ez dira zatitzen
+    if (g >= pc.groups) {
+        return;
+    }
+    // lauzaren oinarria: g-ren bitak lauzakoak ez diren posizioetan
+    uint base = g << pc.low;
+    for (uint j = pc.low; j < TILE_BITS; j++) {
+        base = insert_zero(base, pc.pos[j]);
+    }
+    uint tid = gl_LocalInvocationID.x;
+    uint low_mask = (1u << pc.low) - 1u;
+    uint in_chunk = (1u << pc.chunk_bits) - 1u;
+    uint idx[PER];
+    for (uint e = 0; e < PER; e++) {
+        uint l = tid + e * THREADS;
+        uint off = l & low_mask;
+        uint hi = l >> pc.low;
+        for (uint j = pc.low; j < TILE_BITS; j++) {
+            off |= (hi & 1u) << pc.pos[j];
+            hi >>= 1;
+        }
+        uint i = base + off;
+        idx[e] = i;
+        if (i < pc.len) {
+            tile[l] = Amps(chunk[i >> pc.chunk_bits]).a[i & in_chunk];
+        } else {
+            tile[l] = dvec2(0.0);
+        }
+    }
+    barrier();
+
+    for (uint k = 0; k < pc.count; k++) {
+        Gate G = gates[pc.first + k];
+        if ((base & G.outside) == G.outside) {
+            if (G.kind == DIAGONAL) {
+                // elementu bakoitza bere hariak: aurreko ate diagonalaren ondoren barrerarik ez
+                for (uint e = 0; e < PER; e++) {
+                    uint l = tid + e * THREADS;
+                    if ((l & G.cmask) == G.cmask) {
+                        tile[l] = cmul(((l >> G.t) & 1u) != 0u ? G.m[3] : G.m[0], tile[l]);
+                    }
+                }
+            } else if (G.kind == SWAP) {
+                uint lo = min(G.t, G.u);
+                uint hi = max(G.t, G.u);
+                for (uint r = tid; r < TILE / 4; r += THREADS) {
+                    uint i = insert_zero(insert_zero(r, lo), hi);
+                    if ((i & G.cmask) == G.cmask) {
+                        uint x = i | (1u << G.t);
+                        uint y = i | (1u << G.u);
+                        dvec2 v = tile[x];
+                        tile[x] = tile[y];
+                        tile[y] = v;
+                    }
+                }
+            } else {
+                for (uint r = tid; r < TILE / 2; r += THREADS) {
+                    uint i0 = insert_zero(r, G.t);
+                    if ((i0 & G.cmask) == G.cmask) {
+                        uint i1 = i0 | (1u << G.t);
+                        dvec2 a = tile[i0];
+                        dvec2 b = tile[i1];
+                        if (G.kind == FLIP) {
+                            tile[i0] = b;
+                            tile[i1] = a;
+                        } else if (G.kind == REAL) {
+                            tile[i0] = G.m[0].x * a + G.m[1].x * b;
+                            tile[i1] = G.m[2].x * a + G.m[3].x * b;
+                        } else {
+                            tile[i0] = cmul(G.m[0], a) + cmul(G.m[1], b);
+                            tile[i1] = cmul(G.m[2], a) + cmul(G.m[3], b);
+                        }
+                    }
+                }
+            }
+        }
+        // saltatutako ate batek ere bere barrera egiten du: hurrengo ateak aurrekoaren idazketak behar ditu
+        if (G.sync != 0u) {
+            barrier();
+        }
+    }
+
+    for (uint e = 0; e < PER; e++) {
+        uint i = idx[e];
+        if (i < pc.len) {
+            Amps(chunk[i >> pc.chunk_bits]).a[i & in_chunk] = tile[tid + e * THREADS];
+        }
+    }
+}

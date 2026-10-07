@@ -1,7 +1,7 @@
 // fitxategi honek proiektuaren estiloa zaintzen du, karpeta guztietan:
 //   - ez dago `///` edo `//!` dokumentazio-iruzkinik (iruzkin arruntak `//` dira)
-//   - iruzkinak euskaraz daude (.rs fitxategietan `//`, .qoa fitxategietan `;`, .qg fitxategietan `;`-z
-//     hasten den lerroa eta `//`)
+//   - iruzkinak euskaraz daude (.rs eta .comp fitxategietan `//`, .qoa fitxategietan `;`, .qg fitxategietan
+//     `;`-z hasten den lerroa eta `//`, .py eta .sh fitxategietan `#`)
 // ingelesa detektatzeko: iruzkin batek ingelesezko funtzio-hitz ohiko bi edo gehiago baditu, ingelesa da.
 
 use std::path::{Path, PathBuf};
@@ -70,7 +70,7 @@ fn comment_of<'a>(line: &'a str, marker: &str) -> Option<&'a str> {
 fn comments_follow_the_project_style() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let mut all = Vec::new();
-    files(root, &["rs", "qoa", "qg"], &mut all);
+    files(root, &["rs", "comp", "qoa", "qg", "py", "sh"], &mut all);
     let mut problems = Vec::new();
     for path in all {
         let rel = path
@@ -82,7 +82,8 @@ fn comments_follow_the_project_style() {
             continue;
         }
         let text = std::fs::read_to_string(&path).unwrap();
-        let is_rs = rel.ends_with(".rs");
+        let is_rs = rel.ends_with(".rs") || rel.ends_with(".comp");
+        let is_hash = rel.ends_with(".py") || rel.ends_with(".sh");
         for (n, line) in text.lines().enumerate() {
             let t = line.trim_start();
             if is_rs && (t.starts_with("///") || t.starts_with("//!")) {
@@ -90,7 +91,16 @@ fn comments_follow_the_project_style() {
                 continue;
             }
             let is_qg = rel.ends_with(".qg");
-            let marker = if is_rs || is_qg { "//" } else { ";" };
+            if is_hash && t.starts_with("#!") {
+                continue;
+            }
+            let marker = if is_rs || is_qg {
+                "//"
+            } else if is_hash {
+                "#"
+            } else {
+                ";"
+            };
             // .qg: `;` adierazpenen amaiera da; lerro osoko iruzkinak bakarrik `;`-z hasten dira
             let whole_line = if is_qg { t.strip_prefix(';') } else { None };
             if let Some(c) = whole_line.or_else(|| comment_of(line, marker)) {

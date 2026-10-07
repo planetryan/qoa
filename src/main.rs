@@ -76,6 +76,11 @@ enum Command {
             "exekuzioa gelditu hainbeste agindu exekutatu ondoren (amaigabeko begizten aurkako babesa)"
         ))]
         max_steps: u64,
+        #[arg(long, help = ts!(
+            "apply qubit gates on a GPU through Vulkan (64-bit floats); measurements, optics and noise stay on the cpu. Fails if no usable device is found",
+            "qubit-ateak GPU batean aplikatu vulkan bidez (64 biteko koma higikorra); neurketak, optika eta zarata cpu-an geratzen dira. huts egiten du gailu erabilgarririk ez badago"
+        ))]
+        gpu: bool,
     },
     #[command(about = ts!("Assemble a program and report what it needs, without running it", "Programa bat mihiztatu eta zer behar duen esan, exekutatu gabe"))]
     Check {
@@ -251,7 +256,10 @@ fn main() -> ExitCode {
             top,
             json,
             max_steps,
-        } => cmd_run(&file, shots, seed, noise, loss, state, top, json, max_steps),
+            gpu,
+        } => cmd_run(
+            &file, shots, seed, noise, loss, state, top, json, max_steps, gpu,
+        ),
         Command::Check { file } => cmd_check(&file),
         Command::Compile { file, output } => cmd_compile(&file, output),
         Command::Export {
@@ -368,14 +376,22 @@ fn cmd_run(
     top: usize,
     json: bool,
     max_steps: u64,
+    gpu: bool,
 ) -> Result<(), String> {
     let program = load(file)?;
+    let gpu = if gpu {
+        let g = qoa::gpu::Gpu::open().map_err(|e| format!("--gpu: {e}"))?;
+        Some(std::sync::Arc::new(g))
+    } else {
+        None
+    };
     let config = RunConfig {
         shots: shots.unwrap_or(1024),
         seed: seed.unwrap_or_else(rand::random::<u64>),
         noise,
         loss,
         max_steps,
+        gpu,
     };
     let start = Instant::now();
     // json moduan programaren irteera bildu egiten da; testu moduan zuzenean ateratzen da

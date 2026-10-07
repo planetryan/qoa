@@ -5,6 +5,7 @@ pub mod asm; // .qoa testua -> programa
 pub mod expr; // zenbakizko adierazpenak (pi/2, ...)
 pub mod fock; // eragile optikoak fotoi-kopuruaren oinarrian
 pub mod glyph; // glifo-sintaxia (.qg): QOA trinkoa, lerro bakoitzean agindu askorekin
+pub mod gpu; // qubit-ateak GPUan: planifikazioa eta emulazioa
 pub mod ionq; // ionq json esportazioa
 pub mod isa; // agindu-multzoaren taula
 pub mod kernel; // qubit-ateak: lasterketak, fusioa, cache-blokeak
@@ -15,3 +16,5 @@ pub mod report; // emaitzen txostena (testua eta json)
 pub mod simd; // kernel beroak mihiztaduran: avx-512, avx2, neon, rvv
 pub mod state; // egoera-bektorea: qubitak eta modu optikoak
 pub mod vm; // makina birtuala eta shot-ak
+#[cfg(feature = "vulkan")]
+pub mod vulkan; // vulkan gailua (src/shaders/tile.comp)

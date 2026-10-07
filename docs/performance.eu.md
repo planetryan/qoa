@@ -135,5 +135,5 @@ abiadura: QOA ez da neurtu ARM edo RISC-V hardware errealean.
 
 ## Oraindik egin gabe
 
-- Matrize erreala duten ateek (H, RY) aritmetikaren erdia saihets lezakete cachearen barruan.
-- GPU backend bat (Vulkan) bereiz aztertzen ari da.
+- Matrize erreala duten ateek (H, RY) aritmetikaren erdia saihets lezakete cachearen barruan, GPU bideak
+  dagoeneko egiten duen bezala (`qoa run --gpu`, [gpu.eu.md](gpu.eu.md)).

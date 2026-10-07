@@ -450,3 +450,44 @@ fn glyph_files_run_import_and_point_errors_at_the_glyph() {
         err
     );
 }
+
+// --gpu: gailurik gabe argi huts egiten du (ez du isilean cpu-a erabiltzen); gailuarekin emaitza berak eta
+// txostenak zer egin duen esaten du
+#[test]
+fn gpu_runs_match_the_cpu_or_fail_saying_why() {
+    let o = Command::new(env!("CARGO_BIN_EXE_qoa"))
+        .args(["run", "examples/bell.qoa", "--gpu"])
+        .env("QOA_LANG", "en")
+        .env("VK_ICD_FILENAMES", "/nonexistent/qoa-test.json")
+        .current_dir(env!("CARGO_MANIFEST_DIR"))
+        .output()
+        .unwrap();
+    assert!(!o.status.success());
+    assert!(stderr(&o).contains("--gpu:"), "{}", stderr(&o));
+
+    let args = ["run", "examples/ghz.qoa", "--seed", "4", "--json"];
+    let cpu = qoa("en", &args);
+    let gpu = qoa("en", &[&args[..], &["--gpu"]].concat());
+    qoa::lang::set(qoa::lang::Lang::En);
+    if let Err(why) = qoa::gpu::Gpu::open() {
+        assert!(!gpu.status.success());
+        assert!(stderr(&gpu).contains(&why), "{}", stderr(&gpu));
+        eprintln!("GPU proba saltatua, ez dago gailurik: {why}");
+        return;
+    }
+    assert!(gpu.status.success(), "{}", stderr(&gpu));
+    let cpu: serde_json::Value = serde_json::from_slice(&cpu.stdout).unwrap();
+    let gpu: serde_json::Value = serde_json::from_slice(&gpu.stdout).unwrap();
+    assert_eq!(cpu["counts"], gpu["counts"]);
+    assert!(cpu["gpu"].is_null());
+    assert!(gpu["gpu"]["batches"].as_u64().unwrap() >= 1);
+    assert!(gpu["gpu"]["device"].as_str().is_some_and(|d| !d.is_empty()));
+    let text = stdout(&qoa(
+        "eu",
+        &["run", "examples/ghz.qoa", "--seed", "4", "--gpu"],
+    ));
+    assert!(
+        text.contains("gpu lana") && text.contains("qubit-ate sorta"),
+        "{text}"
+    );
+}

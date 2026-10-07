@@ -10,6 +10,7 @@
 // galdutako probabilitatea `leakage`-ri gehitzen zaio, jakinarazi ahal izateko.
 
 use crate::fock::Mat;
+use crate::gpu::Gpu;
 use crate::kernel::{self, PARALLEL_MIN, QGate};
 use crate::simd::{self, Spans};
 use crate::t;
@@ -188,6 +189,11 @@ impl State {
     // ate-sorta bat: fusioarekin eta cache-blokeekin, banan-banan baino memoria-trafiko gutxiagorekin
     pub fn apply_gates(&mut self, gates: &[QGate]) {
         kernel::apply_gates(&mut self.amps, self.n_qubits, gates);
+    }
+
+    // sorta bera GPUan (src/gpu.rs)
+    pub fn apply_gates_on(&mut self, gpu: &Gpu, gates: &[QGate]) -> Result<(), String> {
+        gpu.apply(&mut self.amps, self.n_qubits, gates)
     }
 
     // ------------------------------------------------------------------ neurketa

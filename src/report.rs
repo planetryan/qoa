@@ -34,6 +34,8 @@ pub struct Report {
     // erabilitako kernelak (avx512, avx2, neon, rvv edo scalar) eta hari-kopurua
     pub kernels: String,
     pub threads: usize,
+    // `--gpu`: gailua eta zer egin duen (bestela null)
+    pub gpu: Option<crate::gpu::Stats>,
     pub steps_first_shot: u64,
     // bitak: c[n-1]..c[0] ordenan, '-' idatzi gabe; moduak: o0, o1, ... (null idatzi gabe)
     pub counts: Vec<CountEntry>,
@@ -125,6 +127,7 @@ pub fn build(input: ReportInput) -> Report {
         elapsed_ms: input.elapsed.as_secs_f64() * 1000.0,
         kernels: crate::simd::active().name().to_string(),
         threads: rayon::current_num_threads(),
+        gpu: input.config.gpu.as_ref().map(|g| g.stats()),
         steps_first_shot: out.steps,
         counts,
         truncation_leakage: out.leakage,
@@ -406,6 +409,31 @@ pub fn render(r: &Report, style: &Style) -> String {
             r.threads
         ),
     );
+    if let Some(g) = &r.gpu {
+        line(
+            ts!("gpu", "gpu"),
+            format!("{} ({})", g.device, g.device_type),
+        );
+        let work = if g.batches == 0 {
+            t!(
+                "nothing ran on it: the program applied no qubit gates",
+                "ez da ezer exekutatu bertan: programak ez du qubit-aterik aplikatu"
+            )
+        } else {
+            t!(
+                "{} batch(es) of qubit gates: {} gates in {} pass(es) over the state, {:.3} s computing; the state went up and back {} time(s) ({} each way, {:.3} s). measurements, optics and noise ran on the cpu",
+                "{} qubit-ate sorta: {} ate egoeraren gaineko {} pasalditan, {:.3} s kalkulatzen; egoera {} aldiz igo eta jaitsi da ({} norabide bakoitzean, {:.3} s). neurketak, optika eta zarata cpu-an exekutatu dira",
+                g.batches,
+                g.gates,
+                g.passes,
+                g.compute_seconds,
+                g.batches,
+                crate::state::format_bytes(g.bytes_up as u128),
+                g.transfer_seconds
+            )
+        };
+        line(ts!("gpu work", "gpu lana"), work);
+    }
     let noise = match (r.noise > 0.0, r.loss > 0.0) {
         (false, false) => t!(
             "none: ideal gates, no photon loss",

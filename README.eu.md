@@ -194,7 +194,12 @@ osoa irakurri eta idazten du (28 qubit 4 GiB dira). QOA-k hiru gauza egiten ditu
 4 nukleoko Xeon (2.3 GHz) batean, ate bakarrak memoriaren mugan dabiltza orain (75 GB/s inguru 27
 qubitekin), eta 24 qubit eta 355 ateko zirkuitu batek 0.9 s behar ditu; Qiskit Aer-ek 3.7 s makina berean
 (5.6 s bere ate-fusiorik gabe), eta QOA 0.3.5-ek 23 s. Xehetasunak, neurketak eta nola errepikatu:
-[docs/performance.md](docs/performance.md).
+[docs/performance.eu.md](docs/performance.eu.md).
+
+`qoa run --gpu`-k qubit-ateak vulkan GPU batean aplikatzen ditu horren ordez, 64 biteko koma higikorrean,
+ideia berarekin (ate asko memoriaren gaineko pasaldi bakoitzean, memoria partekatuko lauzetan). CPUaren
+aurka egiaztatua dago software bidezko vulkan driver batean, baina oraindik ez da GPU erreal batean neurtu;
+zer irabazi beharko lukeen, eta nola neurtu: [docs/gpu.eu.md](docs/gpu.eu.md).
 
 ## Historia
 

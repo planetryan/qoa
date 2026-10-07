@@ -128,5 +128,5 @@ real ARM or RISC-V hardware.
 
 ## What is not done yet
 
-- Gates whose matrix is real (H, RY) could skip half the arithmetic inside the cache.
-- A GPU backend (Vulkan) is being investigated separately.
+- Gates whose matrix is real (H, RY) could skip half the arithmetic inside the cache, as the GPU path
+  already does (`qoa run --gpu`, [gpu.md](gpu.md)).
