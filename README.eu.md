@@ -36,6 +36,9 @@ Zer **ez** duen egiten: bere kabuz hardware kuantikoan exekutatu, 30 qubit ingur
 (egoera-bektorea bikoiztu egiten da qubit bakoitzeko; 28 qubit 4 GiB dira), edo denbora jarraituko fisika
 modelatu (pultsuak, dekoherentzia-tasak). Zarata eredu sinple eta dokumentatu bat da (`--noise`, `--loss`).
 
+Non den baliagarria, non diren beste tresnak hobeak, eta zerk eragozten duen hartzea:
+[docs/use-cases.eu.md](docs/use-cases.eu.md).
+
 ## Hasteko
 
 QOA-k Rust 1.89 edo berriagoa behar du (egonkorra).

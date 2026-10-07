@@ -1,0 +1,113 @@
+# Zertarako den QOA, eta zerk eragozten duen
+
+[In English: use-cases.md](use-cases.md)
+
+QOA 0.4 qubitentzat eta fotoientzat egoera bakarrean dagoen simulagailu txiki eta zehatz bat da, benetako
+kontrol klasikoa duen mihiztadura-lengoaia batek gidatua. Orrialde honek esaten du non den baliagarria gaur,
+non ez, eta zerk lagunduko edo eragotziko lukeen jendeak hartzea.
+
+## Zer den QOA, paragrafo batean
+
+Egoera-bektore bakar batek qubitak eta modu optikoak (fotoi-kopuruak muga bateraino) gordetzen ditu, beraz
+qubit batek fotoi bat igor dezake modu batera, fotoi batek qubit baten fasea alda dezake, eta biak neur
+daitezke emaitzak programa gidatzen duela. Inprimatzen duen zenbaki bakoitza zehazki kalkulatua eta
+egiaztatua da: ateak simulagailu independente baten aurka, izpi-zatitzaileak matrize-permanenteen aurka,
+esportatutako programak qiskit-en aurka, optika lineala Quandela-ren Perceval-en aurka. OpenQASM 2.0
+irakurri eta idazten du, IonQ JSON idazten du, txosten arrunt bat edo JSON erregistro bat inprimatzen du,
+euskaraz eta ingelesez hitz egiten du, eta memoriaren abiaduran dabil x86-64, ARM eta RISC-V-n. 28-30 qubit
+inguruan gelditzen da (edo anplitude-kopuru baliokidean), egoera-bektoreko simulagailu zehatz guztiak bezala.
+
+## Non den baliagarria
+
+**1. Optika kuantikoa eta informazio kuantikoa batera irakastea.** Ikastaro gehienek biak bereizten dituzte:
+zirkuitu-tresnek (qiskit, cirq) ez dute fotoirik, optika-tresnek (QuTiP, Strawberry Fields, Perceval) ez
+dute kontrol-fluxudun qubit-programarik. QOA-ren adibideek bi fotoiren interferentzia, mach-zehnder
+interferometro bat, argi koherentea eta estutua, qubit batekin egindako schrödinger-en katu bat,
+igorle-fotoi entrelazamendua eta urrutiko bi igorleren entrelazamendu iragarria hartzen dituzte, bell, GHZ,
+teleportazio, grover eta shor-en (15) ondoan, lengoaia bakarrean, bakoitzaren emaitza esperatuak
+proba-multzoak egiaztatuta. Txostenak esaten du zer kalkulatu den eta nola (laginduta, shot-ez shot
+simulatuta, edo zehatza), ikasle batek emaitzak ondo irakurtzeko behar duena.
+
+**2. Euskaraz irakastea.** Mezu, errore eta laguntza-testu guztiak euskaraz daude, baita kodeko iruzkinak
+ere. Guk dakigunez, beste programazio-tresna kuantiko batek ere ez du hori egiten. Garrantzitsua da
+euskarazko unibertsitate-ikastaroetarako eta bigarren hezkuntzako dibulgaziorako, eta bat dator Euskal
+Herriak teknologia kuantikoan egiten duen inbertsio publikoarekin (BasQ programa eta Donostiako IBM
+ordenagailu kuantikoa), non euskaraz ikasten duten ikasleak bestela lehen egunean ingelesezko tresnetara
+pasatzen diren.
+
+**3. Sare kuantikoen protokoloak eskala txikian prototipatzea.** Entrelazamendu iragarriak, entrelazamendu-
+trukaketak, arrakasta lortu arteko errepikapenak eta aurrera-elikadurako zuzenketek qubitak, fotoiak,
+neurketak eta logika klasikoa behar dituzte programa berean. QOA-k hauek zehazki exekutatzen ditu igorle
+eta modu gutxi batzuekin, nahikoa protokolo baten logika eta arrakasta-probabilitateak zuzenak direla
+egiaztatzeko, denbora eta memoriaren degradazioa eskalan modelatzen dituen sare-simulagailu batera
+(NetSquid, SeQUeNCe) pasatu aurretik.
+
+**4. Esperimentu fotoniko txikiak planifikatzea.** Muntaketa bat eraiki aurretik, laborategi batek
+espero diren kontaketak jakin nahi ditu: hong-ou-mandel ikusgarritasuna galera batekin, argi estutuaren
+fotoi-estatistikak, katu-egoera batek zenbat fotoi behar dituen, fotoi-muga finitu batek erantzuna nola
+desitxuratzen duen. QOA-k erantzun zehatzak ematen ditu modu eta fotoi gutxi batzuetarako, trunkatzea
+ezkutatu beharrean jakinarazten du, eta bere optika linealeko emaitzak Perceval-ekin bat datoz 1e-15-raino.
+
+**5. Agindu-multzo hibridoen espezifikazio exekutagarri bat.** Qubit-moduluak fotoiekin lotzen dituzten
+arkitekturek (ioi edo atomo prozesadoreen arteko lotura fotonikoak, igorleetan oinarritutako makina
+fotonikoak) biei buruz hitz egiten duen agindu-geruza bat behar dute. QOA geruza horren adibide zehatz eta
+probatu bat da, formatu bitar batekin, testu-forma irakurgarri batekin, glifo-forma trinko batekin eta
+OpenQASM zubi batekin. Konpiladore- eta arkitektura-ikerketak erreferentzia gisa erabil dezake, harantz
+konpilatzeko edo haren aurka egiaztatzeko.
+
+**6. Beste tresnak probatzeko erreferentzia.** Bere emaitzak zehatzak eta gurutzatuta egiaztatuak direnez,
+QOA beste proiektu baten probetako erantzun "ona" izan daiteke: zirkuitu bat esportatu, biak exekutatu,
+konparatu (`tools/hardware_check.py`-k hori bera egiten du qiskit eta Perceval-ekin).
+
+**7. Errendimendu-ingeniaritza irakastea.** `src/simd.rs`-ek hiru kernel berak ditu AVX-512, AVX2, NEON eta
+RVV mihiztaduran, bakoitza bertsio eskalar baten aurka probatua, eta `cargo bench --bench bandwidth`-ek
+makinaren memoria-mugaren ondoan erakusten ditu. Memoriak mugatutako kodearen, cache-blokeen eta ISA
+bakoitzeko SIMD-aren adibide trinko eta erreal bat da.
+
+**8. Dibulgazioa eta artea.** `qoa visual` (audiotik bideora) eta kerr zulo beltzaren adibidea (lenteo-efektua
+gehi QOA-k estatistikak kalkulatzen dituen hawking bikoteak) fisika kuantikoari buruzko elkarrizketa bat
+hasteko bideak dira, inoiz zirkuitu-diagrama bat irekiko ez lukeen jendearekin.
+
+## Non ez den tresna egokia
+
+| beharra | tresna hobeak | zergatik |
+|---|---|---|
+| 30 qubit inguru baino gehiago | Qiskit Aer (MPS), cuQuantum, tentsore-sareko simulagailuak | egoera-bektore zehatz bat bikoiztu egiten da qubit bakoitzeko |
+| optika gaussiar handia (modu asko, estutzea) | Strawberry Fields, The Walrus | egoera gaussiarrek deskribapen trinkoak dituzte; QOA-k fotoi-kopuruko anplitude guztiak gordetzen ditu |
+| gailu-zarata errealista (T1, T2, pultsuak, gurutzaketa) | Qiskit Aer-en zarata-ereduak, Qiskit Dynamics, QuTiP | QOA-ren zarata eredu sinple eta dokumentatu bat da |
+| kimika, optimizazioa, ikasketa automatikoa | Qiskit, PennyLane, CUDA-Q | QOA-k ez du algoritmo-liburutegirik |
+| sareen denbora eta memoria-degradazioa eskalan | NetSquid, SeQUeNCe | QOA-k ez du denbora-nozioa |
+| hardwarean egunero exekutatzea | hornitzaileen SDKak | QOA-k haietara esportatzen du, baina ez du lanen kudeaketarik |
+
+## Hartzea: zer doan QOA-ren aurka, eta zer alde
+
+Jendeak ez ditu tresnak merituagatik bakarrik aukeratzen. Dagoeneko erabiltzen dutenean mantentzen
+dituzten indarrak:
+
+| indarra | QOA-ri zenbat eragiten dion | QOA-k dagoeneko duena | gehien lagunduko lukeena |
+|---|---|---|---|
+| **Python ohitura**: ikastaroek, koadernoek eta lanek `pip install` eta Python suposatzen dituzte | gogor | edozein lengoaiak irakur dezakeen JSON txosten bat; OpenQASM sarrera eta irteera | Python pakete bat (pyo3 eta maturin-ekin), `run(iturburua)`-k txostena hiztegi gisa itzultzen duela, eta qiskit-eko zirkuituetara eta haietatik bihurketak |
+| **Instalatzeko marruskadura**: Rust tresna-kate bat oztopo bat da ikasleentzat | gogor | bitar bakar bat, sistemaren C liburutegia baino behar ez duena (eta ffmpeg `qoa visual`-erako) | aurrez konpilatutako bitarrak x86-64, ARM eta RISC-V-rako GitHub Releases-en; `cargo install qoa` |
+| **Ekosistema eta babesa**: IBM, Google, Xanadu, Quandela daude tresna handien atzean | gogor, eta ez konpongarria | elkarreragingarritasuna: QOA-k ez dio inori eskatzen qiskit edo Perceval uzteko | QOA lagun gisa kokatu, ez ordezko gisa |
+| **"Mihiztadura" zaila dirudi** | ertaina | mnemoniko irakurgarriak, lerroa iradokizun batekin seinalatzen duten erroreak, glifo-sintaxia dentsitaterako | jendeak dagoeneko ezagutzen duen OpenQASM-etik hasten den bost minutuko tutorial bat |
+| **Konfiantza**: proiektu txiki bat zuzena al da? | ertaina | ohiz kanpoko proba-multzo zorrotz bat: erreferentziazko simulagailua, permanenteak, qiskit eta Perceval egiaztapen gurutzatuak, adibide guztien baieztapenak egiaztatuak | etengabeko integrazioa GitHub-en (probak x86-64-n, eta ARM eta RISC-V qemu-n) txapa ikusgai batekin |
+| **Mantentzaile bakarra**: hemendik urtebetera egongo da? | ertaina | kode-oinarri txiki eta irakurgarri bat, erabaki dokumentatuak | ekarpen-gida bat, arazo-txantiloiak, hasteko arazo on batzuk |
+| **Lizentzia**: GPL-3.0-k enpresa batzuk txertatzetik aldentzen ditu | baxua irakaskuntza eta ikerketarako, erreala industriarako | GPL-k proiektuaren irekitasuna babesten du | jabearen erabakia; LGPL edo lizentzia bikoitza dira ohiko konpromisoak |
+| **Hizkuntza**: tresna gehienak ingelesez bakarrik daude | QOA-ren *alde* doa euskarazko irakaskuntzan | euskara eta ingelesa osorik | euskarazko tutorialak; UPV/EHU eta BasQ-ekin harremana |
+
+QOA-ren alde doana, batez ere, **lehendik daudenak mehe diren lekuan desberdina izatea** da: qubitak eta
+fotoiak programa bakarrean, egiazta daitezkeen erantzun zehatzak, nola kalkulatu diren esaten duten
+emaitzak, eta bigarren hizkuntza bat. Ez du qiskit-i irabazi behar erabiltzea merezi izateko; lan jakin
+gutxi batzuetarako tresna onena izan behar du, eta sartzeko aldaketa merkeena da dagoeneko OpenQASM
+irakurri eta idazten duela.
+
+## Hurrengo urrats gomendatuak, ahaleginaren araberako balioaren ordenan
+
+1. Aurrez konpilatutako bitarrak GitHub Releases-en, eta etengabeko integrazioa txapa batekin.
+2. Python pakete bat API minimo batekin (exekutatu, txostena hiztegi gisa, qiskit bihurketa) eta hiru
+   koaderno (HOM, entrelazamendu iragarria, kerr zulo beltza) ingelesez eta euskaraz.
+3. OpenQASM 3 esportazioa, begiztak, erregistroak eta arrakasta lortu arteko errepikapenak dituzten
+   programak hardwarera irits daitezen.
+4. Harremana euskarazko ikastaro kuantikoekin eta BasQ programarekin.
+5. Glifo-sintaxia finkatu (bere galdera irekiak [glyph.eu.md](glyph.eu.md)-n daude) eta JSON txostenaren
+   egonkortasuna, beste programek emaitzak irakurtzeko erabiltzen duten "ABI klasikoa".

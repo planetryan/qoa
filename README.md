@@ -34,6 +34,9 @@ What it does **not** do: run on quantum hardware by itself, simulate more than a
 vector doubles with every qubit; 28 qubits is 4 GiB), or model continuous-time physics (pulses, decoherence
 rates). Noise is a simple, documented model (`--noise`, `--loss`).
 
+Where it is useful, where other tools are better, and what stands in the way of adopting it:
+[docs/use-cases.md](docs/use-cases.md).
+
 ## Quick start
 
 QOA needs Rust 1.89 or newer (stable).

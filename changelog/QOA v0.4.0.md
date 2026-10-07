@@ -32,6 +32,8 @@ distributed and assembly code was never called. 0.4 fixes all of these.
   OpenQASM `if`, so teleportation and Grover search export. `tools/hardware_check.py` checks the exported
   programs against Qiskit, transpiles them for IBM device models with their real noise, and checks the
   linear optics against Quandela's Perceval. See [docs/hardware.md](../docs/hardware.md).
+* **What it is for**: where QOA is useful today, where other tools are better, and what stands in the way of
+  adopting it, with the next steps that would help most. See [docs/use-cases.md](../docs/use-cases.md).
 * **A Kerr black hole**: `examples/kerr.rs` traces light through the metric of a fast-spinning black hole
   (shadow, lensed disk, Doppler shift) and computes its Hawking pairs with QOA's own squeezers and
   beamsplitter: their photon numbers follow Planck's law and always come in pairs. See
@@ -123,6 +125,8 @@ konpontzen ditu.
   esportatzen dira. `tools/hardware_check.py`-k esportatutako programak qiskit-en aurka egiaztatzen ditu, IBM
   gailu-modeloetarako transpilatzen ditu haien benetako zaratarekin, eta optika lineala Quandela-ren
   Perceval-en aurka egiaztatzen du. Ikus [docs/hardware.eu.md](../docs/hardware.eu.md).
+* **Zertarako den**: non den QOA baliagarria gaur, non diren beste tresnak hobeak, eta zerk eragozten duen
+  hartzea, gehien lagunduko luketen hurrengo urratsekin. Ikus [docs/use-cases.eu.md](../docs/use-cases.eu.md).
 * **Kerr zulo beltz bat**: `examples/kerr.rs`-ek argia trazatzen du azkar biraka dagoen zulo beltz baten
   metrikan (itzala, lenteatutako diskoa, doppler efektua) eta bere hawking bikoteak QOA-ren estutzaile eta
   izpi-zatitzaileekin kalkulatzen ditu: haien fotoi-kopuruek planck-en legea jarraitzen dute eta beti
