@@ -10,6 +10,8 @@ CPU klasiko batean exekutatzen da. Emaitza guztiak zehazki kalkulatzen dira egoe
 dira hardware kuantikoan neurtzen. Beraz, programa kuanto-optikoak ikasteko, prototipatzeko eta egiaztatzeko
 tresna bat da, ez ordenagailu kuantiko bat.
 
+[![ci](https://github.com/planetryan/qoa/actions/workflows/ci.yml/badge.svg)](https://github.com/planetryan/qoa/actions/workflows/ci.yml)
+
 [In English: README.md](README.md) · [Aginduen erreferentzia](docs/ISA.eu.md) · [Bertsio-oharrak](<changelog/QOA v0.4.0.md>) · [Discord](https://discord.gg/W8HQdxmMG8)
 
 ---
@@ -41,10 +43,25 @@ Non den baliagarria, non diren beste tresnak hobeak, eta zerk eragozten duen har
 
 ## Hasteko
 
-QOA-k Rust 1.89 edo berriagoa behar du (egonkorra).
+**Konpilatu gabe:** jaitsi bertsio bat [GitHub Releases](https://github.com/planetryan/qoa/releases)-etik.
+Artxibo bat dago sistema bakoitzeko, eta `qoa-<bertsioa>-all.zip`-ek sistema guztiak batera ditu:
+
+| sistema | prozesadoreak | exekutatu |
+|---|---|---|
+| Windows 10 / 11 | x64, ARM64 | `qoa.exe run examples\bell.qoa`, edo `run.cmd ...` / `.\run.ps1 ...` |
+| Linux (glibc 2.35 edo berriagoa) | x86-64, ARM64, RISC-V 64 | `./qoa run examples/bell.qoa`, edo `./run.sh ...` |
+| macOS | Intel, Apple Silicon | `./qoa run examples/bell.qoa`, edo `./run.sh ...` |
+
+`run` script-ek exekutatzen diren makinarako bitar egokia aukeratzen dute. Iturburu-kopia batean QOA
+konpilatzen dute lehenik. `SHA256SUMS`-ek fitxategi guztien laburpenak ditu. Bitarrak ez daude sinatuta:
+macOS-ek jaitsitako bat irekitzeari uko egin diezaioke `xattr -d com.apple.quarantine qoa` exekutatu arte,
+eta PowerShell-ek `run.ps1` blokea dezake, `run.cmd` edo `powershell -ExecutionPolicy Bypass -File run.ps1
+...` erabiltzen ez baduzu.
+
+**Iturburutik**, Rust 1.89 edo berriagoarekin (egonkorra):
 
 ```sh
-cargo build --release
+cargo build --release                              # edo ./run.sh besterik ez (windows: run.cmd), konpilatu eta exekutatzen du
 ./target/release/qoa run examples/bell.qoa
 ./target/release/qoa run examples/hom.qoa          # bi fotoi izpi-zatitzaile batean
 ./target/release/qoa run examples/shor15.qoa       # shor-en algoritmoa 15 faktorizatzen, hasieratik amaierara

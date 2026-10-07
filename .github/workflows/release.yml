@@ -1,0 +1,171 @@
+# fitxategi honek QOA-ren bitarrak konpilatzen ditu sistema eta arkitektura guztietarako, eta `v*` etiketa
+# batean (adib. v0.4.0) GitHub argitalpen bat sortzen du haiekin:
+#
+#   qoa-<bertsioa>-<helburua>.zip / .tar.gz   helburu bakoitzeko: qoa edo qoa.exe, abiarazlea, adibideak
+#   qoa-<bertsioa>-all.zip                    guztiak batera: bin/<helburua>/, run.sh, run.ps1, run.cmd
+#   SHA256SUMS                                fitxategi guztien laburpenak
+#
+# helburuak: linux (x86_64, aarch64, riscv64gc), windows (x86_64, aarch64), macos (x86_64, aarch64).
+# linux-ekoak ubuntu 22.04-n konpilatzen dira (glibc 2.35), banaketa zaharragoetan ere ibil daitezen.
+# pull request batean (fitxategi hau, abiarazleak edo Cargo aldatzen badira) eta eskuz ere exekutatzen da,
+# argitaratu gabe: konpilazioa eta paketeak egiaztatzeko.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+    paths:
+      - .github/workflows/release.yml
+      - run.sh
+      - run.ps1
+      - run.cmd
+      - Cargo.toml
+      - Cargo.lock
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: x86_64-unknown-linux-gnu, os: ubuntu-22.04, run: "" }
+          - { target: aarch64-unknown-linux-gnu, os: ubuntu-22.04, packages: gcc-aarch64-linux-gnu qemu-user, run: "qemu-aarch64 -L /usr/aarch64-linux-gnu" }
+          - { target: riscv64gc-unknown-linux-gnu, os: ubuntu-22.04, packages: gcc-riscv64-linux-gnu qemu-user, run: "qemu-riscv64 -L /usr/riscv64-linux-gnu" }
+          - { target: x86_64-pc-windows-msvc, os: windows-latest, run: "" }
+          - { target: aarch64-pc-windows-msvc, os: windows-latest }
+          - { target: x86_64-apple-darwin, os: macos-latest }
+          - { target: aarch64-apple-darwin, os: macos-latest, run: "" }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - name: cross toolchain
+        if: matrix.packages
+        run: sudo apt-get update && sudo apt-get install -y ${{ matrix.packages }}
+      - name: build
+        shell: bash
+        run: cargo build --release --locked --target ${{ matrix.target }}
+        env:
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+          CARGO_TARGET_RISCV64GC_UNKNOWN_LINUX_GNU_LINKER: riscv64-linux-gnu-gcc
+      - name: package
+        id: package
+        shell: bash
+        run: |
+          case "${{ matrix.target }}" in *windows*) exe=qoa.exe ;; *) exe=qoa ;; esac
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then version="$GITHUB_REF_NAME"; else version="dev-${GITHUB_SHA::7}"; fi
+          name="qoa-$version-${{ matrix.target }}"
+          mkdir -p "dist/$name" "bin/${{ matrix.target }}"
+          cp "target/${{ matrix.target }}/release/$exe" "dist/$name/"
+          cp "target/${{ matrix.target }}/release/$exe" "bin/${{ matrix.target }}/"
+          cp README.md README.eu.md LICENSE "dist/$name/"
+          cp -r examples "dist/$name/"
+          case "${{ matrix.target }}" in
+            *windows*) cp run.ps1 run.cmd "dist/$name/"; (cd dist && 7z a -tzip "$name.zip" "$name" > /dev/null) ;;
+            *) cp run.sh "dist/$name/"; tar -C dist -czf "dist/$name.tar.gz" "$name" ;;
+          esac
+          rm -r "dist/$name"
+          echo "exe=$exe" >> "$GITHUB_OUTPUT"
+      - name: check the binary runs
+        if: matrix.run != null
+        shell: bash
+        run: |
+          ${{ matrix.run }} "bin/${{ matrix.target }}/${{ steps.package.outputs.exe }}" --version
+          ${{ matrix.run }} "bin/${{ matrix.target }}/${{ steps.package.outputs.exe }}" run examples/bell.qoa --seed 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: build-${{ matrix.target }}
+          path: |
+            dist/
+            bin/
+
+  bundle:
+    name: all-platform bundle
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: build-*
+          merge-multiple: true
+      - name: bundle and checksums
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then version="$GITHUB_REF_NAME"; else version="dev-${GITHUB_SHA::7}"; fi
+          name="qoa-$version-all"
+          mkdir -p "$name"
+          cp -r bin "$name/"
+          chmod +x "$name"/bin/*/qoa || true
+          cp run.sh run.ps1 run.cmd README.md README.eu.md LICENSE "$name/"
+          cp -r examples "$name/"
+          zip -qr "dist/$name.zip" "$name"
+          (cd dist && sha256sum * > SHA256SUMS)
+          cat dist/SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release
+          path: dist/
+
+  # pakete osoa sistema bakoitzean: abiarazleak makina horren bitarra aurkitzen eta exekutatzen dutela
+  try:
+    name: bundle on ${{ matrix.os }}
+    needs: bundle
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release
+      - name: unpack
+        shell: bash
+        run: unzip -q qoa-*-all.zip && mv qoa-*-all bundle
+      - name: run.sh
+        if: runner.os != 'Windows'
+        run: cd bundle && ./run.sh run examples/bell.qoa --seed 1
+      - name: run.ps1
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: cd bundle; ./run.ps1 run examples/bell.qoa --seed 1
+      - name: run.cmd
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: cd bundle && run.cmd run examples\bell.qoa --seed 1
+
+  publish:
+    name: publish the release
+    needs: [bundle, try]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: release
+          path: dist
+      - name: the tag must match Cargo.toml
+        run: |
+          want="v$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)"
+          if [ "$GITHUB_REF_NAME" != "$want" ]; then
+            echo "tag $GITHUB_REF_NAME, but Cargo.toml says $want"; exit 1
+          fi
+      - name: create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          notes="changelog/QOA $GITHUB_REF_NAME.md"
+          if [ -f "$notes" ]; then flag=(--notes-file "$notes"); else flag=(--generate-notes); fi
+          gh release create "$GITHUB_REF_NAME" dist/* --title "QOA $GITHUB_REF_NAME" "${flag[@]}"

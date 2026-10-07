@@ -9,6 +9,8 @@ It runs on a classical CPU. Every result is computed exactly by simulating the q
 on quantum hardware. That makes it a tool for learning, prototyping and checking quantum-optical programs,
 not a quantum computer.
 
+[![ci](https://github.com/planetryan/qoa/actions/workflows/ci.yml/badge.svg)](https://github.com/planetryan/qoa/actions/workflows/ci.yml)
+
 [Euskaraz: README.eu.md](README.eu.md) · [Instruction reference](docs/ISA.md) · [Release notes](<changelog/QOA v0.4.0.md>) · [Discord](https://discord.gg/W8HQdxmMG8)
 
 ---
@@ -39,10 +41,25 @@ Where it is useful, where other tools are better, and what stands in the way of 
 
 ## Quick start
 
-QOA needs Rust 1.89 or newer (stable).
+**Without building:** download a release from
+[GitHub Releases](https://github.com/planetryan/qoa/releases). There is one archive per system, and
+`qoa-<version>-all.zip` holds every system at once:
+
+| system | processors | run |
+|---|---|---|
+| Windows 10 / 11 | x64, ARM64 | `qoa.exe run examples\bell.qoa`, or `run.cmd ...` / `.\run.ps1 ...` |
+| Linux (glibc 2.35 or newer) | x86-64, ARM64, RISC-V 64 | `./qoa run examples/bell.qoa`, or `./run.sh ...` |
+| macOS | Intel, Apple Silicon | `./qoa run examples/bell.qoa`, or `./run.sh ...` |
+
+The `run` scripts pick the right binary for the machine they run on. In a source checkout they build QOA
+first. `SHA256SUMS` lists every file's checksum. The binaries are not signed: macOS may refuse to open a
+downloaded one until you run `xattr -d com.apple.quarantine qoa`, and PowerShell may block `run.ps1`
+unless you use `run.cmd` or `powershell -ExecutionPolicy Bypass -File run.ps1 ...`.
+
+**From source**, with Rust 1.89 or newer (stable):
 
 ```sh
-cargo build --release
+cargo build --release                              # or just ./run.sh (Windows: run.cmd), which builds and runs
 ./target/release/qoa run examples/bell.qoa
 ./target/release/qoa run examples/hom.qoa          # two photons on a beamsplitter
 ./target/release/qoa run examples/shor15.qoa       # Shor's algorithm factoring 15, start to finish

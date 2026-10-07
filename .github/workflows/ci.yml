@@ -1,0 +1,116 @@
+# fitxategi honek QOA egiaztatzen du push eta pull request bakoitzean:
+#   - formatua eta clippy (vulkan-ekin eta gabe), abisurik gabe
+#   - rust 1.89 (Cargo.toml-eko rust-version) konpilatzen dela
+#   - proba guztiak linux, windows eta macos-en (macos: arm64, NEON kernelak natiboan); linux-en GPU probak
+#     lavapipe-rekin (software bidezko vulkan), eta QOA_REQUIRE_GPU=1 saltatu ez daitezen
+#   - ARM64 eta RISC-V (RVV, bi bektore-luzera) qemu-n: SIMD, kernel, erreferentzia eta GPU-planaren probak
+#   - abiarazleak (run.sh, run.ps1, run.cmd)
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  lint:
+    name: fmt and clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --check
+      - run: cargo clippy --release --locked --all-targets -- -D warnings
+      - run: cargo clippy --release --locked --no-default-features --all-targets -- -D warnings
+
+  msrv:
+    name: rust 1.89
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.89"
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release --locked
+
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: lavapipe (software vulkan) and ffmpeg
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y mesa-vulkan-drivers ffmpeg
+      - name: test
+        run: cargo test --release --locked
+        env:
+          QOA_REQUIRE_GPU: ${{ runner.os == 'Linux' && '1' || '0' }}
+      - name: run.sh
+        if: runner.os != 'Windows'
+        run: ./run.sh run examples/bell.qoa --seed 1
+      - name: run.ps1
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./run.ps1 run examples/bell.qoa --seed 1
+      - name: run.cmd
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: run.cmd run examples\bell.qoa --seed 1
+
+  qemu:
+    name: test ${{ matrix.name }} (qemu)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: aarch64 neon
+            target: aarch64-unknown-linux-gnu
+            packages: qemu-user gcc-aarch64-linux-gnu libc6-dev-arm64-cross
+          - name: riscv64 rvv vlen 128
+            target: riscv64gc-unknown-linux-gnu
+            packages: qemu-user gcc-riscv64-linux-gnu libc6-dev-riscv64-cross
+            vlen: 128
+          - name: riscv64 rvv vlen 512
+            target: riscv64gc-unknown-linux-gnu
+            packages: qemu-user gcc-riscv64-linux-gnu libc6-dev-riscv64-cross
+            vlen: 512
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+      - run: sudo apt-get update && sudo apt-get install -y ${{ matrix.packages }}
+      - name: test
+        run: >
+          cargo test --release --locked --target ${{ matrix.target }}
+          --test simd --test kernel --test reference --test optics --test gpu
+        env:
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUNNER: qemu-aarch64 -cpu max -L /usr/aarch64-linux-gnu
+          CARGO_TARGET_RISCV64GC_UNKNOWN_LINUX_GNU_LINKER: riscv64-linux-gnu-gcc
+          CARGO_TARGET_RISCV64GC_UNKNOWN_LINUX_GNU_RUNNER: qemu-riscv64 -cpu rv64,v=true,vlen=${{ matrix.vlen || 128 }} -L /usr/riscv64-linux-gnu

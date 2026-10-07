@@ -1,0 +1,9 @@
+# fitxategi honek lerro-amaierak finkatzen ditu: LF sistema guztietan (windows barne). probek testuak byte
+# bitan konparatzen dituzte (docs/ISA.md sortzailearekin, tile.comp bere markarekin), eta CRLF batek huts
+# eginaraziko lituzke
+* text=auto eol=lf
+*.cmd text eol=crlf
+*.spv binary
+*.png binary
+*.xcf binary
+*.svg binary

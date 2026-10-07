@@ -1,7 +1,8 @@
 // fitxategi honek proiektuaren estiloa zaintzen du, karpeta guztietan:
 //   - ez dago `///` edo `//!` dokumentazio-iruzkinik (iruzkin arruntak `//` dira)
 //   - iruzkinak euskaraz daude (.rs, .comp eta .qasm fitxategietan `//`, .qoa fitxategietan `;`, .qg
-//     fitxategietan `;`-z hasten den lerroa eta `//`, .py, .sh eta .toml fitxategietan `#`)
+//     fitxategietan `;`-z hasten den lerroa eta `//`, .py, .sh, .ps1, .yml eta .toml fitxategietan `#`,
+//     .cmd fitxategietan `rem`)
 // ingelesa detektatzeko: iruzkin batek ingelesezko funtzio-hitz ohiko bi edo gehiago baditu, ingelesa da.
 
 use std::path::{Path, PathBuf};
@@ -19,7 +20,7 @@ fn files(root: &Path, exts: &[&str], out: &mut Vec<PathBuf>) {
     for entry in std::fs::read_dir(root).unwrap().flatten() {
         let p = entry.path();
         let name = p.file_name().unwrap().to_string_lossy().to_string();
-        if name == "target" || name.starts_with('.') || name == "legacy" {
+        if name == "target" || (name.starts_with('.') && name != ".github") || name == "legacy" {
             continue;
         }
         if p.is_dir() {
@@ -72,7 +73,9 @@ fn comments_follow_the_project_style() {
     let mut all = Vec::new();
     files(
         root,
-        &["rs", "comp", "qasm", "qoa", "qg", "py", "sh", "toml"],
+        &[
+            "rs", "comp", "qasm", "qoa", "qg", "py", "sh", "ps1", "yml", "toml", "cmd",
+        ],
         &mut all,
     );
     let mut problems = Vec::new();
@@ -87,7 +90,10 @@ fn comments_follow_the_project_style() {
         }
         let text = std::fs::read_to_string(&path).unwrap();
         let is_rs = rel.ends_with(".rs") || rel.ends_with(".comp");
-        let is_hash = rel.ends_with(".py") || rel.ends_with(".sh") || rel.ends_with(".toml");
+        let is_hash = [".py", ".sh", ".ps1", ".yml", ".toml"]
+            .iter()
+            .any(|e| rel.ends_with(e));
+        let is_cmd = rel.ends_with(".cmd");
         let is_qasm = rel.ends_with(".qasm");
         for (n, line) in text.lines().enumerate() {
             let t = line.trim_start();
@@ -107,7 +113,13 @@ fn comments_follow_the_project_style() {
                 ";"
             };
             // .qg: `;` adierazpenen amaiera da; lerro osoko iruzkinak bakarrik `;`-z hasten dira
-            let whole_line = if is_qg { t.strip_prefix(';') } else { None };
+            let whole_line = if is_qg {
+                t.strip_prefix(';')
+            } else if is_cmd {
+                Some(t.strip_prefix("rem ").unwrap_or(""))
+            } else {
+                None
+            };
             if let Some(c) = whole_line.or_else(|| comment_of(line, marker)) {
                 // probetako itxaropen-goiburuak eta expect lerroak ez dira iruzkin arruntak
                 let c = c.trim();
