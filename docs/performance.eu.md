@@ -46,7 +46,12 @@ konpara daiteke.
    dagoen bitartean; gehienez lau qubit altu ere ukitzen dituzten ateak *bildutako* blokeei (qubit baxuetako
    16 KiB-eko lasterketak gehi qubit altuak). Bi kasuetan etapa batek memoria behin irakurri eta idazten du,
    dituen ate-kopurua edozein dela ere.
-5. Txostenak anplitude probableenak top-k hautaketa paralelo batekin erakusten ditu, egoera osoa ordenatu
+5. **Modu optikoak** era berean tratatzen dira: modu batean fotoi-kopuru bera duten anplitudeek xafla
+   jarraituak osatzen dituzte, beraz faseek, Kerr terminoek, galerek eta eskailera-eragileek xafla osoetan
+   lan egiten dute, eta izpi-zatitzaileek eta bi moduko beste eragileek d x d xafletatik bildutako zatietan,
+   paraleloan. Izpi-zatitzaile batek fotoi-kopuru osoa gordetzen du, beraz bere d² x d² matrizea sakabanatuta
+   gordetzen da (d³ elementu inguru, d⁴ beharrean).
+6. Txostenak anplitude probableenak top-k hautaketa paralelo batekin erakusten ditu, egoera osoa ordenatu
    beharrean (16 milioi anplitude ordenatzeak simulazioak baino gehiago irauten zuen).
 
 Txostenaren `cpu` lerroak esaten du zein kernel exekutatu diren.
@@ -86,6 +91,7 @@ Zirkuitu osoak:
 |---|---|---|---|---|
 | 24 qubit, H, CNOT katea eta RZ-ren 5 geruza (355 ate) | 23.3 s | 4.1 s | 0.83 - 0.90 s | 3.7 s (5.6 s fusiorik gabe) |
 | 27 qubit, 27 H ateko geruza bat | | 1.5 s (27 bidaia) | 0.68 s | |
+| 16 qubit eta 6 mailako 3 modu (14 milioi anplitude), 1200 eragiketa hibrido (tests/programs/limits) | | 81 - 93 s | 6.8 s | |
 
 Guztiak makina berean; Aer bere Python APIaren bidez, `method='statevector'`-ekin, beroketa baten ondoren
 hiru exekuzioetatik onena.
@@ -130,6 +136,4 @@ abiadura: QOA ez da neurtu ARM edo RISC-V hardware errealean.
 ## Oraindik egin gabe
 
 - Matrize erreala duten ateek (H, RY) aritmetikaren erdia saihets lezakete cachearen barruan.
-- Modu optikoen eragiketek (izpi-zatitzaileak, Kerr, igorleak) Rust begizta arruntak erabiltzen dituzte
-  oraindik; fotoi-espazio handiak dituzten programak tamaina bereko qubit-zirkuituak baino motelagoak dira.
 - GPU backend bat (Vulkan) bereiz aztertzen ari da.

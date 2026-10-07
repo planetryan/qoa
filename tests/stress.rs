@@ -3,7 +3,7 @@
 //
 // `cargo test --release --test stress` proba arruntak exekutatzen ditu (segundo batzuk).
 // `cargo test --release --test stress -- --ignored` mugetako probak ere bai: 28 qubit (4 GiB),
-// hamarnaka milioi anplitudeko boson-laginketa eta sistema hibrido erraldoi bat. minutuak behar ditu
+// hamarnaka milioi anplitudeko boson-laginketa eta sistema hibrido erraldoi bat. minutu bat inguru behar du
 // eta 15 GiB inguruko ram-a duen makina batean probatu da.
 
 use num_complex::Complex64 as C;

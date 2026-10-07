@@ -41,7 +41,12 @@ GB/s for a gate is 2 x state size / time (read and write), so it can be compared
    the low qubits are applied to 256 KiB blocks while each block sits in cache; gates that also touch up to
    four high qubits are applied to *gathered* blocks (16 KiB runs from the low qubits plus the high
    qubits). Either way a stage reads and writes memory once, however many gates it holds.
-5. The report shows the most likely amplitudes with a parallel top-k selection instead of sorting the whole
+5. **Optical modes** are handled the same way: amplitudes with the same photon number in a mode form
+   contiguous slabs, so phases, Kerr terms, losses and ladder operators work on whole slabs, and
+   beamsplitters and other two-mode operators work on tiles gathered from d x d slabs in parallel. A
+   beamsplitter keeps the total photon number, so its d² x d² matrix is stored sparse (about d³ entries
+   instead of d⁴).
+6. The report shows the most likely amplitudes with a parallel top-k selection instead of sorting the whole
    state (sorting 16 million amplitudes used to take longer than the simulation).
 
 The report's `cpu` line says which kernels ran.
@@ -81,6 +86,7 @@ Whole circuits:
 |---|---|---|---|---|
 | 24 qubits, 5 layers of H, CNOT chain, RZ (355 gates) | 23.3 s | 4.1 s | 0.83 - 0.90 s | 3.7 s (5.6 s without fusion) |
 | 27 qubits, one layer of 27 H gates | | 1.5 s (27 passes) | 0.68 s | |
+| 16 qubits and 3 modes of 6 levels (14 million amplitudes), 1200 hybrid operations (tests/programs/limits) | | 81 - 93 s | 6.8 s | |
 
 All on the same machine; Aer through its Python API with `method='statevector'`, best of three runs after
 a warm-up.
@@ -123,6 +129,4 @@ real ARM or RISC-V hardware.
 ## What is not done yet
 
 - Gates whose matrix is real (H, RY) could skip half the arithmetic inside the cache.
-- Optical-mode operations (beamsplitters, Kerr, emitters) still use plain Rust loops; programs with large
-  photon spaces are slower than qubit circuits of the same size.
 - A GPU backend (Vulkan) is being investigated separately.
