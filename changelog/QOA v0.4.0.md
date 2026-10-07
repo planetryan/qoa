@@ -28,6 +28,12 @@ distributed and assembly code was never called. 0.4 fixes all of these.
 * **Typed operands and ranges**: `q3`, `o1`, `R2`, `c0`, `H q0..q3`, angle expressions such as `pi/4`.
 * **Errors that point at the problem**, with the line, the column and a suggestion. Instructions that never
   did anything now give an error explaining why and what to use instead.
+* **A Kerr black hole**: `examples/kerr.rs` traces light through the metric of a fast-spinning black hole
+  (shadow, lensed disk, Doppler shift) and computes its Hawking pairs with QOA's own squeezers and
+  beamsplitter: their photon numbers follow Planck's law and always come in pairs. See
+  [docs/kerr.md](../docs/kerr.md).
+* **Exact optics**: displacement and squeezing matrices come from closed forms instead of a padded matrix
+  exponential, faster and exact at cutoffs where the old method silently stopped short.
 * **Glyph syntax (draft)**: the same instructions written densely, many per line, in `.qg` files
   (`Q{2}; H/Q[0]; CX/Q[0],Q[1]; M/Q$>#C;`), built from the original concept sketch. `qoa import` shows the
   plain QOA behind it and errors point at the glyph. A draft open for review: [docs/glyph.md](../docs/glyph.md).
@@ -108,6 +114,12 @@ konpontzen ditu.
 * **Eragigai motadunak eta tarteak**: `q3`, `o1`, `R2`, `c0`, `H q0..q3`, `pi/4` bezalako angelu-adierazpenak.
 * **Arazoa seinalatzen duten erroreak**, lerroarekin, zutabearekin eta iradokizun batekin. Inoiz ezer egin ez
   zuten aginduek orain errore bat ematen dute, zergatik eta zer erabili azalduz.
+* **Kerr zulo beltz bat**: `examples/kerr.rs`-ek argia trazatzen du azkar biraka dagoen zulo beltz baten
+  metrikan (itzala, lenteatutako diskoa, doppler efektua) eta bere hawking bikoteak QOA-ren estutzaile eta
+  izpi-zatitzaileekin kalkulatzen ditu: haien fotoi-kopuruek planck-en legea jarraitzen dute eta beti
+  bikoteka datoz. Ikus [docs/kerr.eu.md](../docs/kerr.eu.md).
+* **Optika zehatza**: desplazamendu- eta estutze-matrizeak forma itxietatik datoz, matrize-esponentzial
+  betegarridun baten ordez: azkarragoak, eta zehatzak metodo zaharra isilean laburra geratzen zen mugetan.
 * **Glifo-sintaxia (zirriborroa)**: agindu berak modu trinkoan idatzita, lerro bakoitzean asko, `.qg`
   fitxategietan (`Q{2}; H/Q[0]; CX/Q[0],Q[1]; M/Q$>#C;`), jatorrizko kontzeptu-zirriborrotik abiatuta.
   `qoa import`-ek atzean dagoen QOA arrunta erakusten du eta erroreek glifoa seinalatzen dute. Berrikusteko

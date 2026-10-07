@@ -147,6 +147,7 @@ suite against what its comments claim:
 | `retry`, `sweep` | repeat-until-success; a classical loop around a quantum measurement |
 | `bell.qasm` | OpenQASM run directly |
 | `*.qg` | the glyph syntax: the original concept, Bell, teleportation, HOM with emitters, retry |
+| `kerr.rs` | light around a spinning black hole, with its Hawking pairs computed by QOA: `cargo run --release --example kerr -- --still kerr.png` ([docs/kerr.md](docs/kerr.md)) |
 
 ## Testing
 

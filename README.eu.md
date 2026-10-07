@@ -149,6 +149,7 @@ egiaztatua bere iruzkinek diotenaren aurka:
 | `retry`, `sweep` | errepikatu arrakasta lortu arte; neurketa kuantiko baten inguruko begizta klasikoa |
 | `bell.qasm` | OpenQASM zuzenean exekutatuta |
 | `*.qg` | glifo-sintaxia: jatorrizko kontzeptua, bell, teleportazioa, HOM igorleekin, errepikatzea |
+| `kerr.rs` | argia biraka dagoen zulo beltz baten inguruan, bere hawking bikoteak QOA-k kalkulatuta: `cargo run --release --example kerr -- --still kerr.png` ([docs/kerr.eu.md](docs/kerr.eu.md)) |
 
 ## Probak
 
