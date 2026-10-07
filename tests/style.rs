@@ -1,7 +1,7 @@
 // fitxategi honek proiektuaren estiloa zaintzen du, karpeta guztietan:
 //   - ez dago `///` edo `//!` dokumentazio-iruzkinik (iruzkin arruntak `//` dira)
-//   - iruzkinak euskaraz daude (.rs eta .comp fitxategietan `//`, .qoa fitxategietan `;`, .qg fitxategietan
-//     `;`-z hasten den lerroa eta `//`, .py eta .sh fitxategietan `#`)
+//   - iruzkinak euskaraz daude (.rs, .comp eta .qasm fitxategietan `//`, .qoa fitxategietan `;`, .qg
+//     fitxategietan `;`-z hasten den lerroa eta `//`, .py, .sh eta .toml fitxategietan `#`)
 // ingelesa detektatzeko: iruzkin batek ingelesezko funtzio-hitz ohiko bi edo gehiago baditu, ingelesa da.
 
 use std::path::{Path, PathBuf};
@@ -70,7 +70,11 @@ fn comment_of<'a>(line: &'a str, marker: &str) -> Option<&'a str> {
 fn comments_follow_the_project_style() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let mut all = Vec::new();
-    files(root, &["rs", "comp", "qoa", "qg", "py", "sh"], &mut all);
+    files(
+        root,
+        &["rs", "comp", "qasm", "qoa", "qg", "py", "sh", "toml"],
+        &mut all,
+    );
     let mut problems = Vec::new();
     for path in all {
         let rel = path
@@ -83,7 +87,8 @@ fn comments_follow_the_project_style() {
         }
         let text = std::fs::read_to_string(&path).unwrap();
         let is_rs = rel.ends_with(".rs") || rel.ends_with(".comp");
-        let is_hash = rel.ends_with(".py") || rel.ends_with(".sh");
+        let is_hash = rel.ends_with(".py") || rel.ends_with(".sh") || rel.ends_with(".toml");
+        let is_qasm = rel.ends_with(".qasm");
         for (n, line) in text.lines().enumerate() {
             let t = line.trim_start();
             if is_rs && (t.starts_with("///") || t.starts_with("//!")) {
@@ -94,7 +99,7 @@ fn comments_follow_the_project_style() {
             if is_hash && t.starts_with("#!") {
                 continue;
             }
-            let marker = if is_rs || is_qg {
+            let marker = if is_rs || is_qg || is_qasm {
                 "//"
             } else if is_hash {
                 "#"

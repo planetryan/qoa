@@ -1435,7 +1435,9 @@ impl Spec {
         self.operands
             .split_whitespace()
             .map(|item| {
-                let (kind, rest) = item.split_once(':').expect("operand spec has kind:name");
+                let (kind, rest) = item
+                    .split_once(':')
+                    .expect("eragigai-zehaztapenak mota:izena forma du");
                 let (name, optional, repeat) = if let Some(n) = rest.strip_suffix('?') {
                     (n, true, Repeat::One)
                 } else if let Some(n) = rest.strip_suffix('+') {
@@ -1639,9 +1641,9 @@ mod tests {
     fn names_and_aliases_are_unique() {
         let mut seen = std::collections::HashSet::new();
         for s in SPECS {
-            assert!(seen.insert(s.name), "duplicate name {}", s.name);
+            assert!(seen.insert(s.name), "izen bikoiztua: {}", s.name);
             for a in s.aliases {
-                assert!(seen.insert(a), "duplicate alias {} (on {})", a, s.name);
+                assert!(seen.insert(a), "ezizen bikoiztua: {} ({}-n)", a, s.name);
             }
         }
     }

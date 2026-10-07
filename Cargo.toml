@@ -6,11 +6,11 @@ rust-version = "1.89"
 authors = ["GitHub: @planetryan"]
 description = "QOA (Quantum Optical Assembly): an assembly language and simulator for qubits and optical modes"
 license-file = "LICENSE"
-# the old build.rs compiled hand-written assembly that nothing called; v0.4 has no build script
+# build.rs zaharrak inork deitzen ez zuen eskuzko mihiztadura konpilatzen zuen; v0.4-k ez du konpilazio-scriptik
 build = false
 
 [dependencies]
-# core: assembler, simulator, cli
+# nukleoa: mihiztatzailea, simulagailua, cli
 clap = { version = "4.5", features = ["derive"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

@@ -129,7 +129,7 @@ pub fn from_program(p: &Program, shots: u64) -> Result<String, Vec<ExportError>>
             "circuit": circuit,
         }
     });
-    Ok(serde_json::to_string_pretty(&doc).expect("json serializes"))
+    Ok(serde_json::to_string_pretty(&doc).expect("json-a beti serializatzen da"))
 }
 
 // ionq-ren ate-izenak: si = s†, ti = t†, v = √x, vi = √x†; u ateak rz·ry·rz bihurtzen dira

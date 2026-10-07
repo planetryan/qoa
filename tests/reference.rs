@@ -91,7 +91,7 @@ fn ref_gate(name: &str, p: &[f64]) -> [C; 4] {
                 C::from_polar((t / 2.0).cos(), ph + l),
             ]
         }
-        _ => panic!("no reference for {}", name),
+        _ => panic!("ez dago erreferentziarik {}-rentzat", name),
     }
 }
 

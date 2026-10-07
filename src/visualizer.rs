@@ -745,7 +745,7 @@ pub fn render_video(o: &Options) -> Result<(), String> {
         })?;
 
     // idazle-haria: irudiak ffmpeg-i pasatzen dizkio eta bufferrak itzultzen ditu berriz erabiltzeko
-    let mut stdin = child.stdin.take().expect("stdin");
+    let mut stdin = child.stdin.take().expect("ffmpeg-en sarrera");
     let (to_writer, from_main) = mpsc::sync_channel::<Vec<u8>>(2);
     let (to_main, recycled) = mpsc::channel::<Vec<u8>>();
     let writer = std::thread::spawn(move || -> std::io::Result<()> {
@@ -762,7 +762,7 @@ pub fn render_video(o: &Options) -> Result<(), String> {
             "{elapsed_precise} {bar:40} {pos}/{len} frames, {per_sec}, {eta} left",
             "{elapsed_precise} {bar:40} {pos}/{len} irudi, {per_sec}, {eta} falta"
         ))
-        .expect("template")
+        .expect("aurrerapen-barraren txantiloia")
         .progress_chars("█▉▊▋▌▍▎▏ "),
     );
 
@@ -778,7 +778,8 @@ pub fn render_video(o: &Options) -> Result<(), String> {
         let chunk = &audio[i * per_frame..((i + 1) * per_frame).min(audio.len())];
         fft_in.fill(0.0);
         fft_in[..chunk.len()].copy_from_slice(chunk);
-        fft.process(&mut fft_in, &mut fft_out).expect("fft");
+        fft.process(&mut fft_in, &mut fft_out)
+            .expect("fft-aren tamainak");
         let mags: Vec<f64> = fft_out.iter().map(|c| c.norm() as f64).collect();
         let feats = features(chunk, &mags, bin_hz, prev_rms);
         prev_rms = feats.rms;
@@ -807,7 +808,7 @@ pub fn render_video(o: &Options) -> Result<(), String> {
     }
     drop(to_writer);
     progress.finish_and_clear();
-    let written = writer.join().expect("writer thread");
+    let written = writer.join().expect("idazle-haria");
     let status = child
         .wait()
         .map_err(|e| t!("ffmpeg: {}", "ffmpeg: {}", e))?;

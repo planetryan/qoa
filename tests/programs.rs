@@ -220,7 +220,7 @@ fn files_in(dir: &str) -> Vec<PathBuf> {
 fn check_dir(dir: &str) {
     lang::set(Lang::En);
     let files = files_in(dir);
-    assert!(!files.is_empty(), "no programs in {}", dir);
+    assert!(!files.is_empty(), "ez dago programarik {}-n", dir);
     let mut failures = Vec::new();
     for f in &files {
         if let Err(why) = check(f) {
@@ -311,11 +311,25 @@ fn legacy_programs_run_or_explain_what_changed() {
             }
             (Err(d), Some(w)) => {
                 let text = qoa::asm::render(&d, &src, name);
-                assert!(text.contains(w), "{}: expected {:?} in:\n{}", name, w, text);
+                assert!(
+                    text.contains(w),
+                    "{}: {:?} espero zen hemen:\n{}",
+                    name,
+                    w,
+                    text
+                );
                 // erroreek kausa erakutsi behar dute, ez kaskada bat
-                assert!(d.len() <= 31, "{}: {} errors is a cascade", name, d.len());
+                assert!(
+                    d.len() <= 31,
+                    "{}: {} errore, kaskada bat da",
+                    name,
+                    d.len()
+                );
             }
-            (Ok(_), Some(w)) => panic!("{} assembled, but it should fail with {:?}", name, w),
+            (Ok(_), Some(w)) => panic!(
+                "{} mihiztatu da, baina {:?}-rekin huts egin behar zuen",
+                name, w
+            ),
             (Err(d), None) => panic!(
                 "{} should assemble:\n{}",
                 name,

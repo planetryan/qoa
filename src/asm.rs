@@ -384,7 +384,7 @@ fn set_target(op: &mut Op, target: usize) {
         Op::Jump { to } | Op::JumpIf { to, .. } | Op::Branch { to, .. } | Op::Call { to } => {
             *to = target
         }
-        _ => unreachable!("only jumps have label fixups"),
+        _ => unreachable!("jauziek bakarrik dituzte etiketa-zuzenketak"),
     }
 }
 
@@ -753,7 +753,7 @@ impl Asm {
                     }
                     return Some(Arg::Indices(all));
                 }
-                _ => unreachable!("{}: repeat only for q, o, c, r", spec.name),
+                _ => unreachable!("{}: errepikapena q, o, c eta r-rentzat bakarrik", spec.name),
             }
         }
         let tk = &toks[0];
@@ -1858,7 +1858,7 @@ impl Asm {
                 text: text(1),
             },
             "DUMPREGS" => Op::DumpRegs,
-            other => unreachable!("instruction {} has no builder", other),
+            other => unreachable!("{} aginduak ez du eraikitzailerik", other),
         };
         self.emit(op, line);
     }

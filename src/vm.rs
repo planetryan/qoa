@@ -225,7 +225,7 @@ pub fn run(
     if shots > 1 {
         match method {
             Method::Sampled => {
-                let probs = captured.expect("probabilities captured at the first readout");
+                let probs = captured.expect("probabilitateak lehen irakurketan gorde dira");
                 let split = split.unwrap();
                 // banaketa metatua, bilaketa bitarrerako
                 let mut cumulative = probs;
@@ -682,7 +682,7 @@ impl<'a> Machine<'a> {
                 self.pending.clear();
                 let leak = self.state.leakage;
                 self.state = State::new(self.state.n_qubits(), self.state.n_modes(), self.state.cutoff())
-                    .expect("same size as before");
+                    .expect("lehengo tamaina bera");
                 self.state.leakage = leak;
             }
             Op::ToBasis { q, basis } => self.rotate_into(*q, *basis),

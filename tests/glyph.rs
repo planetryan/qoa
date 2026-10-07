@@ -15,7 +15,7 @@ fn expand(src: &str) -> String {
 fn errors(src: &str) -> Vec<(u32, u32, String)> {
     lang::set(Lang::En);
     match qoa::glyph::assemble(src, "proba.qg") {
-        Ok(_) => panic!("should not assemble: {}", src),
+        Ok(_) => panic!("ez luke mihiztatu behar: {}", src),
         Err(d) => d.into_iter().map(|d| (d.line, d.col, d.message)).collect(),
     }
 }

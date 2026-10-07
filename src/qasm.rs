@@ -882,7 +882,7 @@ fn native_lines(name: &str, p: &[f64], qs: &[u32]) -> Vec<String> {
         ],
         "c3x" => vec![format!("MCX {} {} {} {}", q(0), q(1), q(2), q(3))],
         "c4x" => vec![format!("MCX {} {} {} {} {}", q(0), q(1), q(2), q(3), q(4))],
-        _ => unreachable!("native_arity and native_lines disagree on {}", name),
+        _ => unreachable!("native_arity eta native_lines ez datoz bat {}-n", name),
     }
 }
 

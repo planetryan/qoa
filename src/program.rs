@@ -684,7 +684,7 @@ impl Program {
         let mut out = Vec::new();
         out.extend_from_slice(Self::MAGIC);
         out.extend_from_slice(&Self::FORMAT_VERSION.to_le_bytes());
-        out.extend(bincode::serialize(self).expect("program serializes"));
+        out.extend(bincode::serialize(self).expect("programa beti serializatzen da"));
         out
     }
 

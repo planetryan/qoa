@@ -45,7 +45,7 @@ fn run_prints_a_direct_report() {
         "11",
         "time",
     ] {
-        assert!(out.contains(want), "missing {:?} in:\n{}", want, out);
+        assert!(out.contains(want), "falta da {:?} hemen:\n{}", want, out);
     }
 }
 
@@ -57,7 +57,7 @@ fn run_speaks_basque() {
     for want in [
         "programa", "sistema", "zarata", "hazia", "emaitza", "kopurua", "ehunekoa", "denbora",
     ] {
-        assert!(out.contains(want), "missing {:?} in:\n{}", want, out);
+        assert!(out.contains(want), "falta da {:?} hemen:\n{}", want, out);
     }
 }
 
@@ -343,7 +343,12 @@ fn render_raw(wav: &Path, out: &Path, seed: &str) -> Vec<u8> {
         "note",
         "time",
     ] {
-        assert!(report.contains(want), "missing {:?} in:\n{}", want, report);
+        assert!(
+            report.contains(want),
+            "falta da {:?} hemen:\n{}",
+            want,
+            report
+        );
     }
     std::fs::read(out).unwrap()
 }
@@ -410,10 +415,10 @@ fn clap_help_and_errors_speak_basque_too() {
         "[lehenetsia: 60]",
         "Laguntza inprimatu",
     ] {
-        assert!(out.contains(want), "missing {:?} in:\n{}", want, out);
+        assert!(out.contains(want), "falta da {:?} hemen:\n{}", want, out);
     }
     for unwanted in ["Usage:", "Options:", "[default:", "Print help"] {
-        assert!(!out.contains(unwanted), "{:?} in:\n{}", unwanted, out);
+        assert!(!out.contains(unwanted), "{:?} hemen:\n{}", unwanted, out);
     }
     let o = qoa("eu", &["run", "examples/bell.qoa", "--shots", "abc"]);
     assert_eq!(o.status.code(), Some(2));
