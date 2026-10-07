@@ -1,9 +1,10 @@
 // fitxategi honek eragile optikoak kalkulatzen ditu fotoi-kopuruaren oinarrian (fock oinarria).
 //
-// modu bakoitzak 0..d-1 fotoi gordetzen ditu (d = muga). fotoiak sortzen dituzten eragileak
-// (desplazamendua, estutzea) espazio handiago batean kalkulatzen dira eta gero d x d-ra mozten dira,
-// gordetako elementuak zehatzak izan daitezen; mugaz kanpora bultzatzen duten probabilitatea
-// simulagailuak neurtzen du eta trunkatze-ihes gisa jakinarazten da, ezkutatu gabe.
+// modu bakoitzak 0..d-1 fotoi gordetzen ditu (d = muga). fotoiak sortzen dituzten eragileen (desplazamendua,
+// estutzea) d x d elementuak zehatzak dira: eragile infinituaren elementuak dira, ez eragile moztu baten
+// esponentziala. horretarako ordena normaleko formak erabiltzen dira (a† ezkerrean, a eskuinean): bitarteko
+// batura d-ren barruko egoeretan bakarrik ibiltzen da, beraz mozteak ez du ezer aldatzen. mugaz kanpora
+// bultzatzen duten probabilitatea simulagailuak neurtzen du eta trunkatze-ihes gisa jakinarazten da.
 // izpi-zatitzaileak fotoi-kopuru osoa mantentzen du, beraz zehazki kalkulatzen da, fotoi-kopuru
 // osoaren azpiespazio bakoitzean bereiz.
 
@@ -141,6 +142,106 @@ pub fn creation(n: usize) -> Mat {
     m
 }
 
+// desplazamendua D(α) = exp(α a† − α* a), d x d bloke gisa. ordena normalean
+// D(α) = e^(-|α|²/2) e^(α a†) e^(-α* a), eta elementuak laguerre-ren polinomioak dira:
+//   ⟨m|D|n⟩ = e^(-|α|²/2) √(n!/m!) α^(m-n) L_n^(m-n)(|α|²)            m >= n denean
+//   ⟨m|D|n⟩ = e^(-|α|²/2) √(m!/n!) (-α*)^(n-m) L_m^(n-m)(|α|²)        m < n denean
+pub fn displacement(alpha: C, d: usize) -> Mat {
+    let x = alpha.norm_sqr();
+    let mut out = Mat::zeros(d);
+    if x == 0.0 {
+        return Mat::identity(d);
+    }
+    let ln_abs = alpha.norm().ln();
+    // L_j^(k)(x), j = 0..d, k bakoitzeko, aurreranzko errekurtsioarekin
+    for k in 0..d {
+        let mut lag = vec![0.0; d];
+        lag[0] = 1.0;
+        if d > 1 {
+            lag[1] = 1.0 + k as f64 - x;
+        }
+        for j in 1..d.saturating_sub(1) {
+            lag[j + 1] = ((2 * j + 1 + k) as f64 - x) * lag[j] / (j + 1) as f64
+                - (j + k) as f64 * lag[j - 1] / (j + 1) as f64;
+        }
+        for (j, l) in lag.iter().enumerate() {
+            if j + k >= d {
+                break;
+            }
+            let (lo, hi) = (j, j + k);
+            // √(lo!/hi!) |α|^k e^(-x/2), log-ean gainezkatzerik ez izateko
+            let mag = (0.5 * (ln_factorial(lo as u32) - ln_factorial(hi as u32))
+                + k as f64 * ln_abs
+                - x / 2.0)
+                .exp();
+            // m >= n: α^k (m = hi, n = lo); m < n: (-α*)^k (m = lo, n = hi)
+            let phase_down = C::from_polar(1.0, k as f64 * alpha.arg());
+            let phase_up = C::from_polar(1.0, k as f64 * (-alpha.conj()).arg());
+            out.set(hi, lo, phase_down * (mag * l));
+            if k > 0 {
+                out.set(lo, hi, phase_up * (mag * l));
+            }
+        }
+    }
+    out
+}
+
+// estutzea S(z) = exp((z* a² − z a†²) / 2), z = r e^{iφ}, d x d bloke gisa.
+// φ = 0 eta r > 0 direnean x koadratura estutzen da. ordena normalean (t = e^{iφ} tanh r):
+//   S(z) = exp(-t a†² / 2) (sech r)^(a†a + 1/2) exp(t* a² / 2)
+// ⟨m|S|n⟩ = Σ_k ⟨m|e^(-t a†²/2)|k⟩ (sech r)^(k + 1/2) ⟨k|e^(t* a²/2)|n⟩, k <= min(m, n) eta paritate berekoa.
+// baturaren gaiek zeinu txandakatuak dituzte; fotoi-kopuru handietan (m, n > 40 inguru, r txikiekin) gai
+// handiak elkar ezeztatzen dira eta zehaztasuna galtzen da. gai handiena 1e4 baino handiagoa bada (1e-10
+// baino errore handiagoa), sortzailearen esponentziala erabiltzen da espazio handiago batean
+pub fn squeezing(r: f64, phi: f64, d: usize) -> Mat {
+    if r == 0.0 {
+        return Mat::identity(d);
+    }
+    // r < 0 -> |r| eta φ + π (z bera)
+    let (r, phi) = if r < 0.0 {
+        (-r, phi + std::f64::consts::PI)
+    } else {
+        (r, phi)
+    };
+    let (th, ch) = (r.tanh(), r.cosh());
+    let ln_half_t = (th / 2.0).ln();
+    let ln_fact: Vec<f64> = (0..d).map(|n| ln_factorial(n as u32)).collect();
+    // ⟨m|e^(c a†²)|k⟩ = c^j / j! √(m!/k!), m = k + 2j; hemen |c| = tanh r / 2 eta fasea bereiz
+    let ln_raise = |m: usize, k: usize| -> f64 {
+        let j = (m - k) / 2;
+        j as f64 * ln_half_t - ln_fact[j] + 0.5 * (ln_fact[m] - ln_fact[k])
+    };
+    let mut out = Mat::zeros(d);
+    let mut largest: f64 = 0.0;
+    for m in 0..d {
+        for n in (m % 2..d).step_by(2) {
+            let mut acc = C::new(0.0, 0.0);
+            for k in (m % 2..=m.min(n)).step_by(2) {
+                let (jm, jn) = ((m - k) / 2, (n - k) / 2);
+                let term = (ln_raise(m, k) + ln_raise(n, k) - (k as f64 + 0.5) * ch.ln()).exp();
+                largest = largest.max(term);
+                // faseak: (-e^{iφ})^jm eta (e^{-iφ})^jn
+                let sign = if jm % 2 == 0 { 1.0 } else { -1.0 };
+                acc += C::from_polar(sign * term, phi * (jm as f64 - jn as f64));
+            }
+            out.set(m, n, acc);
+        }
+    }
+    if largest <= 1e4 {
+        return out;
+    }
+    let z = C::from_polar(r, phi);
+    padded_exp(d, (8.0 * r.sinh().powi(2)) as usize + 16, |n| {
+        let (a, ad) = (annihilation(n), creation(n));
+        let (a2, ad2) = (a.mul(&a), ad.mul(&ad));
+        let mut g = Mat::zeros(n);
+        for i in 0..n * n {
+            g.a[i] = (z.conj() * a2.a[i] - z * ad2.a[i]) * 0.5;
+        }
+        g
+    })
+}
+
 // exp(sortzailea), betegarria handituz gordetako d x d blokea egonkortu arte
 fn padded_exp(d: usize, start_pad: usize, generator: impl Fn(usize) -> Mat) -> Mat {
     let mut pad = start_pad.max(16);
@@ -153,38 +254,6 @@ fn padded_exp(d: usize, start_pad: usize, generator: impl Fn(usize) -> Mat) -> M
         }
         prev = next;
     }
-}
-
-// desplazamendua D(α) = exp(α a† − α* a), d x d bloke gisa
-pub fn displacement(alpha: C, d: usize) -> Mat {
-    let start = (4.0 * alpha.norm_sqr()) as usize + 8;
-    padded_exp(d, start, |n| {
-        let ad = creation(n);
-        let a = annihilation(n);
-        let mut g = Mat::zeros(n);
-        for i in 0..n * n {
-            g.a[i] = alpha * ad.a[i] - alpha.conj() * a.a[i];
-        }
-        g
-    })
-}
-
-// estutzea S(z) = exp((z* a² − z a†²) / 2), z = r e^{iφ}, d x d bloke gisa.
-// φ = 0 eta r > 0 direnean x koadratura estutzen da.
-pub fn squeezing(r: f64, phi: f64, d: usize) -> Mat {
-    let z = C::from_polar(r, phi);
-    let start = (8.0 * r.sinh().powi(2)) as usize + 16;
-    padded_exp(d, start, |n| {
-        let a = annihilation(n);
-        let ad = creation(n);
-        let a2 = a.mul(&a);
-        let ad2 = ad.mul(&ad);
-        let mut g = Mat::zeros(n);
-        for i in 0..n * n {
-            g.a[i] = (z.conj() * a2.a[i] - z * ad2.a[i]) * 0.5;
-        }
-        g
-    })
 }
 
 // izpi-zatitzailea B(θ, φ) = exp(θ (e^{iφ} a b† − e^{−iφ} a† b)) bi modutan, d² x d² matrize gisa,
@@ -258,6 +327,87 @@ mod tests {
             }
         }
         worst
+    }
+
+    // erreferentzia: sortzailearen esponentziala espazio handiago batean, d x d-ra moztuta (lehengo metodoa)
+    fn padded(d: usize, generator: impl Fn(usize) -> Mat) -> Mat {
+        generator(d + 160).expm().block(d)
+    }
+
+    fn displacement_by_expm(alpha: C, d: usize) -> Mat {
+        padded(d, |n| {
+            let (ad, a) = (creation(n), annihilation(n));
+            let mut g = Mat::zeros(n);
+            for i in 0..n * n {
+                g.a[i] = alpha * ad.a[i] - alpha.conj() * a.a[i];
+            }
+            g
+        })
+    }
+
+    fn squeezing_by_expm(r: f64, phi: f64, d: usize) -> Mat {
+        let z = C::from_polar(r, phi);
+        padded(d, |n| {
+            let (a, ad) = (annihilation(n), creation(n));
+            let (a2, ad2) = (a.mul(&a), ad.mul(&ad));
+            let mut g = Mat::zeros(n);
+            for i in 0..n * n {
+                g.a[i] = (z.conj() * a2.a[i] - z * ad2.a[i]) * 0.5;
+            }
+            g
+        })
+    }
+
+    #[test]
+    fn closed_forms_match_the_exponential_of_the_generator() {
+        for alpha in [
+            C::new(0.3, 0.0),
+            C::new(1.1, -0.4),
+            C::new(-2.0, 1.5),
+            C::new(0.0, 3.0),
+        ] {
+            let d = 30;
+            let diff = displacement(alpha, d).max_abs_diff(&displacement_by_expm(alpha, d));
+            assert!(diff < 1e-10, "D({}) {}", alpha, diff);
+        }
+        for (r, phi) in [(0.2, 0.0), (0.6, 1.0), (1.2, -2.0), (-0.5, 0.3)] {
+            let d = 30;
+            let diff = squeezing(r, phi, d).max_abs_diff(&squeezing_by_expm(r, phi, d));
+            assert!(diff < 1e-10, "S({}, {}) {}", r, phi, diff);
+        }
+    }
+
+    #[test]
+    fn large_cutoffs_stay_exact_and_unitary() {
+        // muga handiekin ere elementuak zehatzak dira (betegarririk gabe). zutabe baxuen buztana mugaren
+        // azpitik geratzen da, beraz zutabe horiek unitarioak dira
+        let d = displacement(C::new(2.5, -1.0), 90);
+        assert!(is_unitary_on_low_states(&d, 30) < 1e-10);
+        assert!(
+            displacement(C::new(4.0, 2.0), 70)
+                .max_abs_diff(&displacement_by_expm(C::new(4.0, 2.0), 70))
+                < 1e-12
+        );
+        // estutze handia muga txikian (forma itxia) eta txikia muga handian (esponentzialera itzultzen da)
+        // r = 2: erreferentzia esponentzialak ez du konbergitzen (fotoiak ehunka dira), beraz zutabe analitikoak:
+        //   ⟨2j|S|0⟩ = (-e^{iφ} tanh r)^j √((2j)!) / (2^j j!) / √(cosh r)
+        //   ⟨2j+1|S|1⟩ = (-e^{iφ} tanh r)^j √((2j+1)!) / (2^j j!) / (cosh r)^(3/2)
+        let (r, phi, d) = (2.0f64, 0.4, 24);
+        let s = squeezing(r, phi, d);
+        for j in 0..d / 2 {
+            let base = C::from_polar(r.tanh(), phi) * -1.0;
+            let common =
+                (0.5 * ln_factorial(2 * j as u32) - j as f64 * 2f64.ln() - ln_factorial(j as u32))
+                    .exp();
+            let want0 = base.powu(j as u32) * common / r.cosh().sqrt();
+            let want1 =
+                base.powu(j as u32) * common * ((2 * j + 1) as f64).sqrt() / r.cosh().powf(1.5);
+            assert!((s.get(2 * j, 0) - want0).norm() < 1e-12, "j={}", j);
+            assert!((s.get(2 * j + 1, 1) - want1).norm() < 1e-12, "j={}", j);
+        }
+        let s = squeezing(0.5, 0.0, 70);
+        assert!(s.max_abs_diff(&squeezing_by_expm(0.5, 0.0, 70)) < 1e-10);
+        assert!((s.get(0, 0).norm_sqr() - 1.0 / 0.5f64.cosh()).abs() < 1e-12);
     }
 
     #[test]
