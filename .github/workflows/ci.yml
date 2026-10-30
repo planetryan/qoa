@@ -102,6 +102,9 @@ jobs:
           - name: aarch64 static musl
             target: aarch64-unknown-linux-musl
             packages: qemu-user gcc-aarch64-linux-gnu
+          - name: s390x big-endian
+            target: s390x-unknown-linux-gnu
+            packages: qemu-user gcc-s390x-linux-gnu libc6-dev-s390x-cross
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -124,3 +127,5 @@ jobs:
           CARGO_TARGET_POWERPC64LE_UNKNOWN_LINUX_GNU_RUNNER: qemu-ppc64le -cpu power10 -L /usr/powerpc64le-linux-gnu
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER: aarch64-linux-gnu-gcc
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_RUNNER: qemu-aarch64 -cpu max
+          CARGO_TARGET_S390X_UNKNOWN_LINUX_GNU_LINKER: s390x-linux-gnu-gcc
+          CARGO_TARGET_S390X_UNKNOWN_LINUX_GNU_RUNNER: qemu-s390x -L /usr/s390x-linux-gnu

@@ -21,11 +21,14 @@ Builds on [0.4.0](<QOA v0.4.0.md>): real-device noise, exact sums, and two more 
   * `--save-model` keeps the model and the transpiled circuit.
   * `examples/bell-torino.qasm` with `examples/bell-torino.json` is a ready example.
 
-* **More systems**:
+* **More systems** (all 64-bit), from 9 builds to 15:
   * IBM POWER8 and newer (`powerpc64le-unknown-linux-gnu`), including POWER10 and POWER11.
-  * A static ARM64 build (`aarch64-unknown-linux-musl`) that runs on any ARM64 Linux, Android (Termux)
-    included.
-  * Both are tested under emulation in CI and give bit-identical results to x86 for the same seed.
+  * IBM Z (`s390x-unknown-linux-gnu`), the first big-endian build.
+  * LoongArch 64 (`loongarch64-unknown-linux-gnu`).
+  * Static builds for any Linux, with no glibc needed (`x86_64`, `aarch64` and `riscv64gc` with musl). The
+    ARM64 one runs on Android under Termux.
+  * POWER, IBM Z and static ARM64 run the core test suites under emulation in CI. All give bit-identical
+    results to x86 for the same seed.
 
 ## Changed
 
@@ -65,12 +68,14 @@ Builds on [0.4.0](<QOA v0.4.0.md>): real-device noise, exact sums, and two more 
   * `--save-model`-ek eredua eta zirkuitu transpilatua gordetzen ditu.
   * `examples/bell-torino.qasm` `examples/bell-torino.json`-ekin adibide prest bat da.
 
-* **Sistema gehiago**:
+* **Sistema gehiago** (denak 64 bitekoak), 9 bitarretik 15era:
   * IBM POWER8 eta berriagoak (`powerpc64le-unknown-linux-gnu`), POWER10 eta POWER11 barne.
-  * ARM64 bitar estatiko bat (`aarch64-unknown-linux-musl`), edozein ARM64 linux-en ibiltzen dena,
-    Android (Termux) barne.
-  * Biak emulazioan probatzen dira CI-n, eta x86-ren emaitza berberak ematen dituzte bitez bit hazi
-    berarekin.
+  * IBM Z (`s390x-unknown-linux-gnu`), lehen big-endian bitarra.
+  * LoongArch 64 (`loongarch64-unknown-linux-gnu`).
+  * Edozein linux-erako bitar estatikoak, glibc-rik gabe (`x86_64`, `aarch64` eta `riscv64gc` musl-ekin).
+    ARM64-ekoa Android-en ibiltzen da Termux-en.
+  * POWER, IBM Z eta ARM64 estatikoak oinarrizko probak emulazioan exekutatzen dituzte CI-n. Denek x86-ren
+    emaitza berberak ematen dituzte bitez bit hazi berarekin.
 
 ## Aldatua
 

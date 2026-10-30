@@ -4,8 +4,8 @@
 #   - iturburu-kopia batean (Cargo.toml eta cargo badaude): `cargo build --release` (eguneratuta badago,
 #     berehala) eta target/release/qoa
 #   - argitalpen-pakete batean: bin/<helburua>/qoa, makina honen sistema eta arkitekturaren arabera
-#     (x86_64, aarch64, riscv64gc, powerpc64le; linux edo macos), edo script-aren ondoko qoa. android-en
-#     (termux) eta glibc gabeko linux-etan, aarch64 estatikoa (musl)
+#     (x86_64, aarch64, riscv64gc, powerpc64le, s390x, loongarch64; linux edo macos), edo script-aren ondoko
+#     qoa. android-en (termux) eta glibc egokirik gabeko linux-etan, bitar estatikoa (musl)
 # argumentu guztiak qoa-ri pasatzen zaizkio bere horretan.
 set -eu
 here=$(cd "$(dirname "$0")" && pwd)
@@ -32,6 +32,7 @@ case "$arch" in
     aarch64 | arm64) cpu=aarch64 ;;
     riscv64) cpu=riscv64gc ;;
     ppc64le) cpu=powerpc64le ;;
+    loongarch64) cpu=loongarch64 ;;
     *) cpu=$arch ;;
 esac
 target="$cpu-$sys"
