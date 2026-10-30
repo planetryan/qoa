@@ -21,6 +21,14 @@
 
 ## Changed
 
+* **Exact sums over the state**:
+  * Norms, measurement probabilities, the sampling distribution and expectation values are summed in
+    double-double arithmetic (~106 bits, error-free transformations with FMA where the CPU has it).
+  * They are correct to a 64-bit float's precision at any state size.
+  * They give the same bits whatever the thread count; plain parallel sums differed in their last digits
+    from run to run.
+  * The report's new `numerics` line (and `norm_error` in json) shows how far the final state's norm has
+    drifted from 1.
 * `qoa export --help` lists every export format.
 * JSON numbers are read with exact round-tripping.
 
@@ -49,5 +57,13 @@
 
 ## Aldatua
 
+* **Egoeraren gaineko batura zehatzak**:
+  * Arauak, neurketa-probabilitateak, laginketa-banaketa eta itxarondako balioak double-double
+    aritmetikan batzen dira (~106 bit, errorerik gabeko transformazioak, prozesadoreak FMA badu harekin).
+  * 64 biteko koma higikorraren zehaztasunera arte zuzenak dira egoeraren tamaina edozein dela ere.
+  * Bit berberak ematen dituzte hari-kopurua edozein dela ere; batura paralelo arruntak azken digituetan
+    aldatzen ziren exekuzio batetik bestera.
+  * Txostenaren `numerics` lerro berriak (eta json-eko `norm_error`-ek) amaierako egoeraren araua 1etik
+    zenbat desbideratu den erakusten du.
 * `qoa export --help`-ek esportazio-formatu guztiak zerrendatzen ditu.
 * JSON zenbakiak zehaztasun osoz irakurtzen dira.

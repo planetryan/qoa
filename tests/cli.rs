@@ -39,6 +39,8 @@ fn run_prints_a_direct_report() {
         "noise",
         "shots",
         "seed",
+        "numerics",
+        "double-double",
         "outcome",
         "c1..c0",
         "00",

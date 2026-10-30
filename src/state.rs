@@ -8,7 +8,12 @@
 // paraleloan). ate unitarioek araua mantentzen dute, beraz ez da ezer normalizatzen haien ondoren;
 // neurketek eta eragiketa optiko ez-unitarioek bakarrik normalizatzen dute, eta fotoi-mugaz kanpo
 // galdutako probabilitatea `leakage`-ri gehitzen zaio, jakinarazi ahal izateko.
+//
+// baturak (araua, neurketa-probabilitateak, banaketak, itxarondako balioak) double-double aritmetikan
+// egiten dira (src/dd.rs): emaitza f64 baten zehaztasunera arte zuzena da egoeraren tamaina edozein dela
+// ere, eta ez dago hari-kopuruaren araberako biribiltzearen menpe.
 
+use crate::dd::{self, Dd};
 use crate::fock::Mat;
 use crate::gpu::Gpu;
 use crate::kernel::{self, PARALLEL_MIN, QGate};
@@ -132,11 +137,24 @@ impl State {
     }
 
     pub fn norm_sqr(&self) -> f64 {
+        self.norm_dd().value()
+    }
+
+    fn norm_dd(&self) -> Dd {
         if self.amps.len() >= PARALLEL_MIN {
-            self.amps.par_iter().map(|a| a.norm_sqr()).sum()
+            self.amps
+                .par_chunks(PIECE)
+                .map(dd::norm_sum)
+                .reduce(|| Dd::ZERO, Dd::plus)
         } else {
-            self.amps.iter().map(|a| a.norm_sqr()).sum()
+            dd::norm_sum(&self.amps)
         }
+    }
+
+    // |1 - ‖ψ‖²|: ate unitarioek araua mantentzen dute, beraz hau koma higikorreko biribiltzeak metatu
+    // duen errorearen behe-muga da (azken normalizaziotik)
+    pub fn norm_error(&self) -> f64 {
+        Dd::from(1.0).plus(-self.norm_dd()).value().abs()
     }
 
     // o moduaren ondoz ondoko fotoi-kopuruen arteko distantzia indize-espazioan
@@ -201,11 +219,15 @@ impl State {
     // q qubitak 1 irakurtzeko probabilitatea
     pub fn prob_one(&self, q: usize) -> f64 {
         let bit = 1usize << q;
-        let f = |(i, a): (usize, &C)| if i & bit != 0 { a.norm_sqr() } else { 0.0 };
         if self.amps.len() >= PARALLEL_MIN {
-            self.amps.par_iter().enumerate().map(f).sum()
+            self.amps
+                .par_chunks(PIECE)
+                .enumerate()
+                .map(|(k, x)| dd::norm_sum_bit(x, k * PIECE, bit))
+                .reduce(|| Dd::ZERO, Dd::plus)
+                .value()
         } else {
-            self.amps.iter().enumerate().map(f).sum()
+            dd::norm_sum_bit(&self.amps, 0, bit).value()
         }
     }
 
@@ -233,30 +255,31 @@ impl State {
     pub fn photon_distribution(&self, o: usize) -> Vec<f64> {
         let (stride, d) = (self.mode_stride(o), self.cutoff);
         let slab = |(k, x): (usize, &[C])| {
-            let mut dist = vec![0.0; d];
-            dist[k % d] = x.iter().map(|a| a.norm_sqr()).sum();
+            let mut dist = vec![Dd::ZERO; d];
+            dist[k % d] = dd::norm_sum(x);
             dist
         };
-        let add = |mut a: Vec<f64>, b: Vec<f64>| {
-            a.iter_mut().zip(b).for_each(|(x, y)| *x += y);
+        let add = |mut a: Vec<Dd>, b: Vec<Dd>| {
+            a.iter_mut().zip(b).for_each(|(x, y)| *x = x.plus(y));
             a
         };
         // xafla bakoitzak (o moduaren n jakin bat) bere batura; xafla luzeak zatitan hari askotarako
         let piece = stride.min(PIECE);
         let per_slab = stride / piece;
-        if self.amps.len() >= PARALLEL_MIN {
+        let dist = if self.amps.len() >= PARALLEL_MIN {
             self.amps
                 .par_chunks(piece)
                 .enumerate()
                 .map(|(k, x)| slab((k / per_slab, x)))
-                .reduce(|| vec![0.0; d], add)
+                .reduce(|| vec![Dd::ZERO; d], add)
         } else {
             self.amps
                 .chunks(stride)
                 .enumerate()
                 .map(slab)
-                .fold(vec![0.0; d], add)
-        }
+                .fold(vec![Dd::ZERO; d], add)
+        };
+        dist.into_iter().map(Dd::value).collect()
     }
 
     // o moduko fotoi-kopuruak `keep` betetzen duen oinarri-egoerak bakarrik gorde, gordetako `p`
@@ -293,7 +316,7 @@ impl State {
     // fotoi-kopuruaren paritatearen neurketa: 0 bikoitia, 1 bakoitia
     pub fn measure_parity(&mut self, o: usize, r: f64) -> u8 {
         let dist = self.photon_distribution(o);
-        let p_even: f64 = dist.iter().step_by(2).sum();
+        let p_even = dd::sum(dist.iter().step_by(2).copied());
         if r < p_even {
             self.collapse_mode(o, p_even, |k| k % 2 == 0);
             0
@@ -317,38 +340,43 @@ impl State {
     // q qubitaren <X>, <Y>, <Z> zehatzak (bloch bektorea). simulagailuan bakarrik.
     pub fn bloch(&self, q: usize) -> [f64; 3] {
         let bit = 1usize << q;
-        let mut cross = C::new(0.0, 0.0); // conj(a0) * a1 batura
-        let mut z = 0.0;
+        // conj(a0)·a1-en batura (zati erreala eta irudikaria) eta |a0|² - |a1|²-rena
+        let (mut re, mut im, mut z) = (Dd::ZERO, Dd::ZERO, Dd::ZERO);
         for (i, a) in self.amps.iter().enumerate() {
             if i & bit == 0 {
                 let b = self.amps[i | bit];
-                cross += a.conj() * b;
-                z += a.norm_sqr() - b.norm_sqr();
+                re.add_prod::<false>(a.re, b.re);
+                re.add_prod::<false>(a.im, b.im);
+                im.add_prod::<false>(a.re, b.im);
+                im.add_prod::<false>(-a.im, b.re);
+                z.add_norm::<false>(*a);
+                z.add_prod::<false>(-b.re, b.re);
+                z.add_prod::<false>(-b.im, b.im);
             }
         }
-        [2.0 * cross.re, 2.0 * cross.im, z]
+        [2.0 * re.value(), 2.0 * im.value(), z.value()]
     }
 
     // (a, b) qubiten fideltasuna (|00> + |11>)/√2 bell egoerarekin. simulagailuan bakarrik.
     pub fn bell_fidelity(&self, a: usize, b: usize) -> f64 {
         let (ba, bb) = (1usize << a, 1usize << b);
-        let mut f = 0.0;
+        // |a00 + a11|² / 2 gai bakoitzeko; batuketa bakarra biribiltzen da, batura zehatza da
+        let mut f = Dd::ZERO;
         for i in 0..self.amps.len() {
             if i & ba == 0 && i & bb == 0 {
-                let s = (self.amps[i] + self.amps[i | ba | bb]) * std::f64::consts::FRAC_1_SQRT_2;
-                f += s.norm_sqr();
+                f.add_norm::<false>(self.amps[i] + self.amps[i | ba | bb]);
             }
         }
-        f
+        f.value() / 2.0
     }
 
     // o moduaren batez besteko fotoi-kopurua <n>. simulagailuan bakarrik.
     pub fn mean_photons(&self, o: usize) -> f64 {
-        self.photon_distribution(o)
-            .iter()
-            .enumerate()
-            .map(|(n, p)| n as f64 * p)
-            .sum()
+        let mut acc = Dd::ZERO;
+        for (n, p) in self.photon_distribution(o).iter().enumerate() {
+            acc.add_prod::<false>(n as f64, *p);
+        }
+        acc.value()
     }
 
     // ------------------------------------------------------------------ modu optikoak
@@ -563,16 +591,16 @@ impl State {
 
 // indize bat aukeratu `weights[i]`-ren proportzioan, `r` erabiliz ([0, 1))
 pub fn sample_index(weights: &[f64], r: f64) -> usize {
-    let total: f64 = weights.iter().sum();
+    let total = dd::sum(weights.iter().copied());
     let target = r * total;
-    let mut acc = 0.0;
+    let mut acc = Dd::ZERO;
     let mut last_nonzero = 0;
     for (i, w) in weights.iter().enumerate() {
         if *w > 0.0 {
             last_nonzero = i;
         }
-        acc += w;
-        if target < acc {
+        acc.add(*w);
+        if target < acc.value() {
             return i;
         }
     }

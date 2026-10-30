@@ -2,6 +2,7 @@
 // rust egonkorrean konpilatzen da, nightly ezaugarririk gabe.
 
 pub mod asm; // .qoa testua -> programa
+pub mod dd; // batura zehatzak double-double aritmetikarekin (~106 bit): araua, probabilitateak
 pub mod disasm; // desmihiztatzea eta analisirako esportazioak (qoa, listing, json, dot, glyph)
 pub mod expr; // zenbakizko adierazpenak (pi/2, ...)
 pub mod fock; // eragile optikoak fotoi-kopuruaren oinarrian

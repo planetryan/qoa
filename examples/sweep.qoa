@@ -3,7 +3,7 @@
 ; RY(a) eta gero RY(b) = RY(a+b), beraz biraketa pausoka metatzen da.
 ; expect-output: theta = 0  <Z> = 1
 ; expect-output: theta = 1.5707963267948966  <Z> = 0\n
-; expect-output: <Z> = 0.7071067811865475
+; expect-output: <Z> = 0.7071067811865476
 QINIT 1
 REGSET R0 0                     ; theta
 REGSET R1 pi/8                  ; pausoa

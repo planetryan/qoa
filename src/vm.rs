@@ -247,13 +247,14 @@ pub fn run(
                 let probs = captured.expect("probabilitateak lehen irakurketan gorde dira");
                 let split = split.unwrap();
                 // banaketa metatua, bilaketa bitarrerako
+                // banaketa metatua double-double-n: azken gaiak ere f64 baten zehaztasunarekin
                 let mut cumulative = probs;
-                let mut acc = 0.0;
+                let mut acc = crate::dd::Dd::ZERO;
                 for p in cumulative.iter_mut() {
-                    acc += *p;
-                    *p = acc;
+                    acc.add(*p);
+                    *p = acc.value();
                 }
-                let total = acc;
+                let total = acc.value();
                 let tail = &prog.ops[split..];
                 let sampled: HashMap<Record, u64> = (1..shots)
                     .into_par_iter()
@@ -893,7 +894,7 @@ impl<'a> Machine<'a> {
                 let o = *o as usize;
                 let dist = self.st().photon_distribution(o);
                 let d = dist.len();
-                let expected: f64 = dist.iter().enumerate().map(|(n, p)| (n + 1) as f64 * p).sum();
+                let expected = crate::dd::sum(dist.iter().enumerate().map(|(n, p)| (n + 1) as f64 * p));
                 let dropped = d as f64 * dist[d - 1];
                 self.st().ladder(o, true);
                 self.st().normalize();
