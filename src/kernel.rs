@@ -275,6 +275,13 @@ fn halves(lo: &mut [C], hi: &mut [C], lo_base: usize, m: &[C; 4], controls: usiz
 }
 
 // ate bat egoera osoan, paraleloan
+// x baino txikiagoa edo berdina den 2ren berredura handiena (gutxienez 1). zatien tamainak 2ren berredurak
+// izan behar dira: lasterketak 4ren multiploak dira (simd), eta trukaketen a=0|a=1 egiturak zatien barruan
+// geratu behar du. hari-kopurua (eta beraz `tasks`) ez da beti 2ren berredura (3, 6, 12 nukleo...)
+fn pow2_floor(x: usize) -> usize {
+    if x == 0 { 1 } else { 1 << x.ilog2() }
+}
+
 pub fn sweep_mat(amps: &mut [C], q: usize, m: &[C; 4], controls: usize) {
     let n = amps.len();
     let block = 2usize << q;
@@ -292,7 +299,7 @@ pub fn sweep_mat(amps: &mut [C], q: usize, m: &[C; 4], controls: usize) {
     } else {
         // bloke handi gutxi (qubit altua): bloke bakoitzaren erdiak zatitan banatu harien artean
         let half = block / 2;
-        let sub = (half / tasks).max(TASK_MIN).min(half);
+        let sub = pow2_floor(half / tasks).max(TASK_MIN).min(half);
         for (k, b) in amps.chunks_mut(block).enumerate() {
             let (lo, hi) = b.split_at_mut(half);
             lo.par_chunks_mut(sub)
@@ -365,7 +372,10 @@ pub fn sweep_swap(amps: &mut [C], a: usize, b: usize, controls: usize) {
     } else {
         // zatiak 2^(lo+1)-en multiploak, a=0|a=1 egitura zatien barruan gera dadin
         let half = block / 2;
-        let sub = (half / tasks).max(TASK_MIN).max(2 << lo).min(half);
+        let sub = pow2_floor(half / tasks)
+            .max(TASK_MIN)
+            .max(2 << lo)
+            .min(half);
         for (k, blk) in amps.chunks_mut(block).enumerate() {
             let (l, h) = blk.split_at_mut(half);
             l.par_chunks_mut(sub)

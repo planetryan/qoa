@@ -48,6 +48,61 @@ fn batches_match_the_reference_for_every_block_size() {
 
 #[test]
 fn whole_state_sweeps_match_the_reference_on_large_states() {
+    sweeps_on_large_states();
+}
+
+// hari-kopurua ez da beti 2ren berredura (3, 6, 12 nukleo): zatien tamainak horren arabera ez dira aldatu
+// behar (macos-eko 3 nukleoko makina batek aurkitu zuen akatsa)
+#[test]
+fn sweeps_are_right_with_any_thread_count() {
+    // 19 qubit eta ate altuak: bloke handi gutxiko bidea, non zatiak (erdia / zereginak) TASK_MIN baino
+    // handiagoak diren eta beraz hari-kopuruaren araberakoak
+    let nq = 19;
+    let mut rng = StdRng::seed_from_u64(13);
+    let start = random_state(&mut rng, 1 << nq);
+    let m = random_state(&mut rng, 4);
+    let gates = [
+        QGate::Mat {
+            q: 18,
+            m: [m[0], m[1], m[2], m[3]],
+            controls: 1 << 3,
+        },
+        QGate::Mat {
+            q: 17,
+            m: [m[0], m[1], m[2], m[3]],
+            controls: 0,
+        },
+        QGate::Swap {
+            a: 2,
+            b: 18,
+            controls: 1 << 9,
+        },
+        QGate::Swap {
+            a: 17,
+            b: 5,
+            controls: 0,
+        },
+    ];
+    for threads in [3, 6, 12] {
+        let pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(threads)
+            .build()
+            .unwrap();
+        for g in &gates {
+            let mut want = start.clone();
+            reference(&mut want, g);
+            let mut got = start.clone();
+            pool.install(|| match *g {
+                QGate::Mat { q, m, controls } => kernel::sweep_mat(&mut got, q, &m, controls),
+                QGate::Swap { a, b, controls } => kernel::sweep_swap(&mut got, a, b, controls),
+            });
+            assert!(max_diff(&got, &want) < 1e-12, "{} hari {:?}", threads, g);
+        }
+        pool.install(sweeps_on_large_states);
+    }
+}
+
+fn sweeps_on_large_states() {
     // 15-17 qubit: paraleloko bideak (bloke txiki asko eta bloke handi gutxi)
     let mut rng = StdRng::seed_from_u64(12);
     for nq in [15usize, 16, 17] {
