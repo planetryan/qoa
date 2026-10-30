@@ -4,7 +4,8 @@
 #   - iturburu-kopia batean (Cargo.toml eta cargo badaude): `cargo build --release` (eguneratuta badago,
 #     berehala) eta target/release/qoa
 #   - argitalpen-pakete batean: bin/<helburua>/qoa, makina honen sistema eta arkitekturaren arabera
-#     (x86_64, aarch64, riscv64gc; linux edo macos), edo script-aren ondoko qoa
+#     (x86_64, aarch64, riscv64gc, powerpc64le; linux edo macos), edo script-aren ondoko qoa. android-en
+#     (termux) eta glibc gabeko linux-etan, aarch64 estatikoa (musl)
 # argumentu guztiak qoa-ri pasatzen zaizkio bere horretan.
 set -eu
 here=$(cd "$(dirname "$0")" && pwd)
@@ -30,11 +31,16 @@ case "$arch" in
     x86_64 | amd64) cpu=x86_64 ;;
     aarch64 | arm64) cpu=aarch64 ;;
     riscv64) cpu=riscv64gc ;;
+    ppc64le) cpu=powerpc64le ;;
     *) cpu=$arch ;;
 esac
 target="$cpu-$sys"
+# android-ek ez du glibc-rik: bitar estatikoa bakarrik
+if [ -n "${ANDROID_ROOT:-}" ]; then
+    target="$cpu-unknown-linux-musl"
+fi
 
-for exe in "$here/bin/$target/qoa" "$here/qoa"; do
+for exe in "$here/bin/$target/qoa" "$here/bin/$cpu-unknown-linux-musl/qoa" "$here/qoa"; do
     if [ -x "$exe" ]; then
         exec "$exe" "$@"
     fi

@@ -19,7 +19,7 @@ inguruan gelditzen da (edo anplitude-kopuru baliokidean), egoera-bektoreko simul
 
 ## Non den baliagarria
 
-**1. Optika kuantikoa eta informazio kuantikoa batera irakastea.** Ikastaro gehienek biak bereizten dituzte:
+**1. Optika kuantikoa eta informazio kuantikoa batera irakastea.**[^basque] Ikastaro gehienek biak bereizten dituzte:
 zirkuitu-tresnek (qiskit, cirq) ez dute fotoirik, optika-tresnek (QuTiP, Strawberry Fields, Perceval) ez
 dute kontrol-fluxudun qubit-programarik. QOA-ren adibideek bi fotoiren interferentzia, mach-zehnder
 interferometro bat, argi koherentea eta estutua, qubit batekin egindako schrödinger-en katu bat,
@@ -28,45 +28,42 @@ teleportazio, grover eta shor-en (15) ondoan, lengoaia bakarrean, bakoitzaren em
 proba-multzoak egiaztatuta. Txostenak esaten du zer kalkulatu den eta nola (laginduta, shot-ez shot
 simulatuta, edo zehatza), ikasle batek emaitzak ondo irakurtzeko behar duena.
 
-**2. Euskaraz irakastea.** Mezu, errore eta laguntza-testu guztiak euskaraz daude, baita kodeko iruzkinak
-ere. Guk dakigunez, beste programazio-tresna kuantiko batek ere ez du hori egiten. Garrantzitsua da
-euskarazko unibertsitate-ikastaroetarako eta bigarren hezkuntzako dibulgaziorako, eta bat dator Euskal
-Herriak teknologia kuantikoan egiten duen inbertsio publikoarekin (BasQ programa eta Donostiako IBM
-ordenagailu kuantikoa), non euskaraz ikasten duten ikasleak bestela lehen egunean ingelesezko tresnetara
-pasatzen diren.
-
-**3. Sare kuantikoen protokoloak eskala txikian prototipatzea.** Entrelazamendu iragarriak, entrelazamendu-
+**2. Sare kuantikoen protokoloak eskala txikian prototipatzea.** Entrelazamendu iragarriak, entrelazamendu-
 trukaketak, arrakasta lortu arteko errepikapenak eta aurrera-elikadurako zuzenketek qubitak, fotoiak,
 neurketak eta logika klasikoa behar dituzte programa berean. QOA-k hauek zehazki exekutatzen ditu igorle
 eta modu gutxi batzuekin, nahikoa protokolo baten logika eta arrakasta-probabilitateak zuzenak direla
 egiaztatzeko, denbora eta memoriaren degradazioa eskalan modelatzen dituen sare-simulagailu batera
 (NetSquid, SeQUeNCe) pasatu aurretik.
 
-**4. Esperimentu fotoniko txikiak planifikatzea.** Muntaketa bat eraiki aurretik, laborategi batek
+**3. Esperimentu fotoniko txikiak planifikatzea.** Muntaketa bat eraiki aurretik, laborategi batek
 espero diren kontaketak jakin nahi ditu: hong-ou-mandel ikusgarritasuna galera batekin, argi estutuaren
 fotoi-estatistikak, katu-egoera batek zenbat fotoi behar dituen, fotoi-muga finitu batek erantzuna nola
 desitxuratzen duen. QOA-k erantzun zehatzak ematen ditu modu eta fotoi gutxi batzuetarako, trunkatzea
 ezkutatu beharrean jakinarazten du, eta bere optika linealeko emaitzak Perceval-ekin bat datoz 1e-15-raino.
 
-**5. Agindu-multzo hibridoen espezifikazio exekutagarri bat.** Qubit-moduluak fotoiekin lotzen dituzten
+**4. Agindu-multzo hibridoen espezifikazio exekutagarri bat.** Qubit-moduluak fotoiekin lotzen dituzten
 arkitekturek (ioi edo atomo prozesadoreen arteko lotura fotonikoak, igorleetan oinarritutako makina
 fotonikoak) biei buruz hitz egiten duen agindu-geruza bat behar dute. QOA geruza horren adibide zehatz eta
 probatu bat da, formatu bitar batekin, testu-forma irakurgarri batekin, glifo-forma trinko batekin eta
 OpenQASM zubi batekin. Konpiladore- eta arkitektura-ikerketak erreferentzia gisa erabil dezake, harantz
 konpilatzeko edo haren aurka egiaztatzeko.
 
-**6. Beste tresnak probatzeko erreferentzia.** Bere emaitzak zehatzak eta gurutzatuta egiaztatuak direnez,
+**5. Beste tresnak probatzeko erreferentzia.** Bere emaitzak zehatzak eta gurutzatuta egiaztatuak direnez,
 QOA beste proiektu baten probetako erantzun "ona" izan daiteke: zirkuitu bat esportatu, biak exekutatu,
 konparatu (`tools/hardware_check.py`-k hori bera egiten du qiskit eta Perceval-ekin).
 
-**7. Errendimendu-ingeniaritza irakastea.** `src/simd.rs`-ek hiru kernel berak ditu AVX-512, AVX2, NEON eta
+**6. Errendimendu-ingeniaritza irakastea.** `src/simd.rs`-ek hiru kernel berak ditu AVX-512, AVX2, NEON eta
 RVV mihiztaduran, bakoitza bertsio eskalar baten aurka probatua, eta `cargo bench --bench bandwidth`-ek
 makinaren memoria-mugaren ondoan erakusten ditu. Memoriak mugatutako kodearen, cache-blokeen eta ISA
 bakoitzeko SIMD-aren adibide trinko eta erreal bat da.
 
-**8. Dibulgazioa eta artea.** `qoa visual` (audiotik bideora) eta kerr zulo beltzaren adibidea (lenteo-efektua
+**7. Dibulgazioa eta artea.** `qoa visual` (audiotik bideora) eta kerr zulo beltzaren adibidea (lenteo-efektua
 gehi QOA-k estatistikak kalkulatzen dituen hawking bikoteak) fisika kuantikoari buruzko elkarrizketa bat
 hasteko bideak dira, inoiz zirkuitu-diagrama bat irekiko ez lukeen jendearekin.
+
+[^basque]: QOA osorik dago euskaraz ere (mezuak, erroreak, laguntza eta kodeko iruzkinak), eta guk dakigunez
+beste programazio-tresna kuantiko batek ere ez du hori egiten. Euskarazko ikastaroei eta dibulgazioari
+lagun diezaieke, adibidez BasQ programaren eta Donostiako IBM ordenagailu kuantikoaren inguruan.
 
 ## Non ez den tresna egokia
 

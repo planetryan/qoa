@@ -96,6 +96,12 @@ jobs:
             target: riscv64gc-unknown-linux-gnu
             packages: qemu-user gcc-riscv64-linux-gnu libc6-dev-riscv64-cross
             vlen: 512
+          - name: ppc64le power10
+            target: powerpc64le-unknown-linux-gnu
+            packages: qemu-user gcc-powerpc64le-linux-gnu libc6-dev-ppc64el-cross
+          - name: aarch64 static musl
+            target: aarch64-unknown-linux-musl
+            packages: qemu-user gcc-aarch64-linux-gnu
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -108,9 +114,13 @@ jobs:
       - name: test
         run: >
           cargo test --release --locked --target ${{ matrix.target }}
-          --test simd --test kernel --test reference --test optics --test gpu
+          --test simd --test kernel --test reference --test optics --test gpu --test dd --test noise
         env:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUNNER: qemu-aarch64 -cpu max -L /usr/aarch64-linux-gnu
           CARGO_TARGET_RISCV64GC_UNKNOWN_LINUX_GNU_LINKER: riscv64-linux-gnu-gcc
           CARGO_TARGET_RISCV64GC_UNKNOWN_LINUX_GNU_RUNNER: qemu-riscv64 -cpu rv64,v=true,vlen=${{ matrix.vlen || 128 }} -L /usr/riscv64-linux-gnu
+          CARGO_TARGET_POWERPC64LE_UNKNOWN_LINUX_GNU_LINKER: powerpc64le-linux-gnu-gcc
+          CARGO_TARGET_POWERPC64LE_UNKNOWN_LINUX_GNU_RUNNER: qemu-ppc64le -cpu power10 -L /usr/powerpc64le-linux-gnu
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER: aarch64-linux-gnu-gcc
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_RUNNER: qemu-aarch64 -cpu max

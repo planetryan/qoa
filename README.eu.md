@@ -51,7 +51,8 @@ Artxibo bat dago sistema bakoitzeko, eta `qoa-<bertsioa>-all.zip`-ek sistema guz
 | sistema | prozesadoreak | exekutatu |
 |---|---|---|
 | Windows 10 / 11 | x64, ARM64 | `qoa.exe run examples\bell.qoa`, edo `run.cmd ...` / `.\run.ps1 ...` |
-| Linux (glibc 2.35 edo berriagoa) | x86-64, ARM64, RISC-V 64 | `./qoa run examples/bell.qoa`, edo `./run.sh ...` |
+| Linux (glibc 2.35 edo berriagoa) | x86-64, ARM64, RISC-V 64, IBM POWER8 edo berriagoa (ppc64le) | `./qoa run examples/bell.qoa`, edo `./run.sh ...` |
+| Edozein ARM64 linux, Android (Termux) | ARM64, estatikoa (`aarch64-unknown-linux-musl`) | `./qoa run examples/bell.qoa`, edo `./run.sh ...` |
 | macOS | Intel, Apple Silicon | `./qoa run examples/bell.qoa`, edo `./run.sh ...` |
 
 `run` script-ek exekutatzen diren makinarako bitar egokia aukeratzen dute. Iturburu-kopia batean QOA

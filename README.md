@@ -49,7 +49,8 @@ Where it is useful, where other tools are better, and what stands in the way of 
 | system | processors | run |
 |---|---|---|
 | Windows 10 / 11 | x64, ARM64 | `qoa.exe run examples\bell.qoa`, or `run.cmd ...` / `.\run.ps1 ...` |
-| Linux (glibc 2.35 or newer) | x86-64, ARM64, RISC-V 64 | `./qoa run examples/bell.qoa`, or `./run.sh ...` |
+| Linux (glibc 2.35 or newer) | x86-64, ARM64, RISC-V 64, IBM POWER8 or newer (ppc64le) | `./qoa run examples/bell.qoa`, or `./run.sh ...` |
+| Any ARM64 Linux, Android (Termux) | ARM64, static (`aarch64-unknown-linux-musl`) | `./qoa run examples/bell.qoa`, or `./run.sh ...` |
 | macOS | Intel, Apple Silicon | `./qoa run examples/bell.qoa`, or `./run.sh ...` |
 
 The `run` scripts pick the right binary for the machine they run on. In a source checkout they build QOA

@@ -19,6 +19,12 @@
   * `--save-model` keeps the model and the transpiled circuit.
   * `examples/bell-torino.qasm` with `examples/bell-torino.json` is a ready example.
 
+* **More systems**:
+  * IBM POWER8 and newer (`powerpc64le-unknown-linux-gnu`), including POWER10 and POWER11.
+  * A static ARM64 build (`aarch64-unknown-linux-musl`) that runs on any ARM64 Linux, Android (Termux)
+    included.
+  * Both are tested under emulation in CI and give bit-identical results to x86 for the same seed.
+
 ## Changed
 
 * **Exact sums over the state**:
@@ -54,6 +60,13 @@
   du eta "QOA + eredua" zutabe bat gehitzen du gailuaren kopuruen ondoan.
   * `--save-model`-ek eredua eta zirkuitu transpilatua gordetzen ditu.
   * `examples/bell-torino.qasm` `examples/bell-torino.json`-ekin adibide prest bat da.
+
+* **Sistema gehiago**:
+  * IBM POWER8 eta berriagoak (`powerpc64le-unknown-linux-gnu`), POWER10 eta POWER11 barne.
+  * ARM64 bitar estatiko bat (`aarch64-unknown-linux-musl`), edozein ARM64 linux-en ibiltzen dena,
+    Android (Termux) barne.
+  * Biak emulazioan probatzen dira CI-n, eta x86-ren emaitza berberak ematen dituzte bitez bit hazi
+    berarekin.
 
 ## Aldatua
 

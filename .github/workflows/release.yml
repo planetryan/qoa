@@ -5,7 +5,8 @@
 #   qoa-<bertsioa>-all.zip                    guztiak batera: bin/<helburua>/, run.sh, run.ps1, run.cmd
 #   SHA256SUMS                                fitxategi guztien laburpenak
 #
-# helburuak: linux (x86_64, aarch64, riscv64gc), windows (x86_64, aarch64), macos (x86_64, aarch64).
+# helburuak: linux (x86_64, aarch64, riscv64gc, powerpc64le: IBM POWER8 eta berriagoak), windows (x86_64,
+# aarch64), macos (x86_64, aarch64), eta aarch64 estatikoa (musl): edozein arm linux-en, android barne (termux).
 # linux-ekoak ubuntu 22.04-n konpilatzen dira (glibc 2.35), banaketa zaharragoetan ere ibil daitezen.
 # pull request batean (fitxategi hau, abiarazleak edo Cargo aldatzen badira) eta eskuz ere exekutatzen da,
 # argitaratu gabe: konpilazioa eta paketeak egiaztatzeko.
@@ -52,6 +53,8 @@ jobs:
           - { target: x86_64-unknown-linux-gnu, os: ubuntu-22.04, run: "" }
           - { target: aarch64-unknown-linux-gnu, os: ubuntu-22.04, packages: gcc-aarch64-linux-gnu qemu-user, run: "qemu-aarch64 -L /usr/aarch64-linux-gnu" }
           - { target: riscv64gc-unknown-linux-gnu, os: ubuntu-22.04, packages: gcc-riscv64-linux-gnu qemu-user, run: "qemu-riscv64 -L /usr/riscv64-linux-gnu" }
+          - { target: powerpc64le-unknown-linux-gnu, os: ubuntu-22.04, packages: gcc-powerpc64le-linux-gnu qemu-user, run: "qemu-ppc64le -cpu power8 -L /usr/powerpc64le-linux-gnu" }
+          - { target: aarch64-unknown-linux-musl, os: ubuntu-22.04, packages: gcc-aarch64-linux-gnu qemu-user, run: "qemu-aarch64" }
           - { target: x86_64-pc-windows-msvc, os: windows-latest, run: "" }
           - { target: aarch64-pc-windows-msvc, os: windows-latest }
           - { target: x86_64-apple-darwin, os: macos-latest }
@@ -70,6 +73,8 @@ jobs:
         env:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
           CARGO_TARGET_RISCV64GC_UNKNOWN_LINUX_GNU_LINKER: riscv64-linux-gnu-gcc
+          CARGO_TARGET_POWERPC64LE_UNKNOWN_LINUX_GNU_LINKER: powerpc64le-linux-gnu-gcc
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER: aarch64-linux-gnu-gcc
       - name: package
         id: package
         shell: bash

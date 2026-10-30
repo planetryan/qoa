@@ -51,10 +51,18 @@ fn split(a: f64) -> (f64, f64) {
     (h, a - h)
 }
 
-// FMA hardware-an: aarch64 eta riscv64gc-n beti; x86_64-n exekuzioan begiratzen da
-#[cfg(any(target_arch = "aarch64", target_arch = "riscv64"))]
+// FMA hardware-an: aarch64, riscv64gc eta powerpc64-n (POWER8+) beti; x86_64-n exekuzioan begiratzen da
+#[cfg(any(
+    target_arch = "aarch64",
+    target_arch = "riscv64",
+    target_arch = "powerpc64"
+))]
 const FMA_ALWAYS: bool = true;
-#[cfg(not(any(target_arch = "aarch64", target_arch = "riscv64")))]
+#[cfg(not(any(
+    target_arch = "aarch64",
+    target_arch = "riscv64",
+    target_arch = "powerpc64"
+)))]
 const FMA_ALWAYS: bool = false;
 
 impl Dd {

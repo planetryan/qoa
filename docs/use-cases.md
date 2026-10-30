@@ -18,7 +18,7 @@ around 28-30 qubits (or the equivalent number of amplitudes), like every exact s
 
 ## Where it is useful
 
-**1. Teaching quantum optics and quantum information together.** Most courses split the two: circuit tools
+**1. Teaching quantum optics and quantum information together.**[^basque] Most courses split the two: circuit tools
 (Qiskit, Cirq) have no photons, optics tools (QuTiP, Strawberry Fields, Perceval) have no qubit programs
 with control flow. QOA's examples cover two-photon interference, a Mach-Zehnder interferometer, coherent
 and squeezed light, a Schrödinger cat made with a qubit, emitter-photon entanglement and heralded
@@ -27,42 +27,40 @@ all in one language, each with its expected results checked by the test suite. T
 computed and how (sampled, simulated shot by shot, or exact), which is what a student needs to read results
 correctly.
 
-**2. Teaching in Basque.** Every message, error and help text exists in Basque, and so do the comments in the
-code. As far as we know no other quantum programming tool does this. That matters for Basque-medium
-university courses and secondary-school outreach, and it fits the Basque Country's public investment in
-quantum technology (the BasQ programme and its IBM quantum computer in Donostia), where students who learn
-in Basque would otherwise switch to English tools on day one.
-
-**3. Prototyping quantum-network protocols at small scale.** Heralded entanglement, entanglement swapping,
+**2. Prototyping quantum-network protocols at small scale.** Heralded entanglement, entanglement swapping,
 repeat-until-success and feed-forward corrections need qubits, photons, measurements and classical logic in
 the same program. QOA runs these exactly with a handful of emitters and modes, which is enough to check that
 a protocol's logic and its success probabilities are right before moving to a network simulator (NetSquid,
 SeQUeNCe) that models timing and memory decay at scale.
 
-**4. Planning small photonic experiments.** Before building a setup, a lab wants to know the expected
+**3. Planning small photonic experiments.** Before building a setup, a lab wants to know the expected
 counts: Hong-Ou-Mandel visibility with some loss, the photon statistics of squeezed light, how many photons
 a cat state needs, how a finite photon cutoff distorts the answer. QOA gives exact answers for a few modes
 and a few photons, reports truncation instead of hiding it, and its linear-optics results agree with
 Perceval to 1e-15.
 
-**5. An executable specification for hybrid instruction sets.** Architectures that link qubit modules with
+**4. An executable specification for hybrid instruction sets.** Architectures that link qubit modules with
 photons (photonic interconnects between ion or atom processors, emitter-based photonic machines) need an
 instruction layer that talks about both. QOA is a concrete, tested example of such a layer, with a
 binary format, a readable text form, a dense glyph form and an OpenQASM bridge. Compiler and architecture
 research can use it as a reference to compile to or to check against.
 
-**6. A reference to test other tools against.** Because its results are exact and cross-checked, QOA can be
+**5. A reference to test other tools against.** Because its results are exact and cross-checked, QOA can be
 the "known good" answer in another project's tests: export a circuit, run both, compare
 (`tools/hardware_check.py` does exactly this with Qiskit and Perceval).
 
-**7. Performance-engineering teaching.** `src/simd.rs` has the same three kernels in AVX-512, AVX2, NEON and
+**6. Performance-engineering teaching.** `src/simd.rs` has the same three kernels in AVX-512, AVX2, NEON and
 RVV assembly, each tested against a scalar version, and `cargo bench --bench bandwidth` shows them next to
 the machine's memory ceiling. It is a compact, real example of memory-bound code, cache blocking and
 per-ISA SIMD.
 
-**8. Outreach and art.** `qoa visual` (audio to video) and the Kerr black-hole example (lensing plus Hawking
+**7. Outreach and art.** `qoa visual` (audio to video) and the Kerr black-hole example (lensing plus Hawking
 pairs whose statistics QOA computes) are ways to start a conversation about quantum physics with people who
 would never open a circuit diagram.
+
+[^basque]: QOA also works entirely in Basque (messages, errors, help and code comments), which as far as we
+know no other quantum programming tool does. That can help Basque-medium courses and outreach, for example
+around the BasQ programme and its IBM quantum computer in Donostia.
 
 ## Where it is not the right tool
 
