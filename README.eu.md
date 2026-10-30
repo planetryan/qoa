@@ -198,7 +198,9 @@ Programa baten qubit-zatia OpenQASM 2.0 edo IonQ-ren JSON gisa esportatzen da, k
 eta neurtutako biten araberako aurrera-elikadura barne, eta qiskit-en berdin exekutatzen da. IBM-ren Heron
 eta Eagle gailuetarako transpilatuta eta haien zarata neurtuarekin, zirkuitu txikiek erantzun zuzenen % 75-98
 gordetzen dute eta 8 qubiteko grover gako-bilaketa bat % 30era jaisten da. Optika linealeko zatia
-Quandela-ren Perceval-ekin bat dator 1e-15-raino. Neurketak, mugak eta lan bat nola bidali:
+Quandela-ren Perceval-ekin bat dator 1e-15-raino. IBM Quantum-en doako kontu batekin (gailu errealeko 10 minutu
+28 egunean), `tools/run_on_ibm.py examples/bell.qoa`-k programa bat ordenagailu kuantiko erreal batean
+exekutatzen du eta emaitza QOA-renarekin konparatzen du. Neurketak, mugak eta xehetasunak:
 [docs/hardware.eu.md](docs/hardware.eu.md).
 
 ## Probak

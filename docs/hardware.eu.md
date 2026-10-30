@@ -5,8 +5,8 @@
 **Erantzun laburra: qubit-zatia, bai, OpenQASM 2.0 edo IonQ-ren JSON bidez; optika linealeko zatia, bai
 printzipioz, prozesadore fotonikoetan (Quandela-renak, adibidez); qubit-fotoi akoplamendua eta optika
 ez-lineala, ez gaur alokatu daitekeen inolako makinatan.** Orrialde honetarako ez da programarik hardware
-errealera bidali, hornitzaile batean kontu bat behar delako (ikus amaiera). Hori baino lehenagoko guztia
-egin eta neurtu da.
+errealera bidali, hornitzaile batean kontu bat behar delako. Hori baino lehenagoko guztia egin eta neurtu da,
+eta `tools/run_on_ibm.py`-k azken urratsa egiten du IBM-ren doako planean, kontu bat duzunean (ikus amaiera).
 
 ## Qubit-programak
 
@@ -71,29 +71,43 @@ bidal liteke. Oraindik hardware-helbururik ez duena:
   dago bat ere hodeiko gailu gisa irekian eskuragarri (Xanadu-ren Borealis izan zen denbora batez);
   egiaztatu hornitzaileekin horretan oinarritu aurretik.
 
-## Programa bat hardware errealera bidaltzea
+## Hardware errealean doan exekutatzea
 
-Hauek kontu bat eta gako bat behar dituzte; hemen ez da bat ere erabili.
+**IBM Quantum-en Open Plan** da qubit errealetara iristeko bide doakoa: doako kontu batek QPU exekuzio-denboraren
+10 minutu arte ditu 28 eguneko leiho mugikor bakoitzean, IBM-ren gaurko gailuetan (IBM-ren dokumentazioa, 2026ko
+urrian egiaztatua; baldintzak aldatzen dira, beraz egiaztatu [quantum.cloud.ibm.com](https://quantum.cloud.ibm.com)
+horretan oinarritu aurretik). Zirkuitu txiki batek, milaka shot-ekin, segundo gutxi batzuk erabiltzen ditu.
 
-**IBM Quantum** (doako maila badago), OpenQASM 2.0 qiskit bidez:
+`tools/run_on_ibm.py`-k QOA programa baten qubit-zatiaren bidaia osoa egiten du:
 
-```python
-from qiskit import qasm2, transpile
-from qiskit_ibm_runtime import QiskitRuntimeService, SamplerV2
-
-text = open("bell.qasm").read()                       # qoa export --to qasm examples/bell.qoa -o bell.qasm
-qc = qasm2.loads(text, custom_instructions=qasm2.LEGACY_CUSTOM_INSTRUCTIONS)
-service = QiskitRuntimeService(channel="ibm_quantum_platform", token="ZURE_GAKOA")
-backend = service.least_busy(operational=True, simulator=False)
-job = SamplerV2(backend).run([transpile(qc, backend)], shots=4000)
-print(job.result()[0].data)
+```sh
+pip install qiskit qiskit-ibm-runtime qiskit-aer
+cargo build --release
+python3 tools/run_on_ibm.py examples/bell.qoa --dry-run     # lehenik: IBM gailu baten modelo lokala, konturik gabe
+export QISKIT_IBM_TOKEN=...                                  # zure API gakoa, quantum.cloud.ibm.com-etik
+python3 tools/run_on_ibm.py examples/bell.qoa               # gero gailu erreala (galdetu egiten du QPU denbora erabili aurretik)
+python3 tools/run_on_ibm.py examples/grover.qoa --no-wait   # edo bidali eta itzuli geroago:
+python3 tools/run_on_ibm.py --job <id>
 ```
 
-**IonQ** (haien APIaren edo hodeiko merkatu baten bidez), `qoa export --to ionq`-ekin: JSON gorputza
-IonQ-ren lanen amaiera-puntura doa API gako batekin, `qpu.aria-1` edo `simulator` helburuarekin.
+Programa OpenQASM-era esportatzen du, sartzen den gailu lanpetuena ez denerako konpilatzen du, zenbat bi
+qubiteko ate behar dituen esaten du, galdetu egiten du QPU denbora gastatu aurretik, lana
+`target/ibm-jobs.json`-en gordetzen du, eta gailuak erantzutean bere kopuruak QOA-ren simulazio zehatzaren
+ondoan inprimatzen ditu, QOA-k aurreikusten dituen emaitzetako shot-en zatiarekin, bi banaketen arteko
+distantziarekin eta lanak erabilitako QPU segundoekin. `--dry-run`-ekin bide bera IBM gailu baten modelo
+lokalean exekutatzen da, bere zarata neurtuarekin, eta horrela egin dira goiko zenbakiak: bell % 97.8,
+teleportazioa % 97.4, grover % 81.8 shot-ak erantzun zuzenetan, Torino modeloan. Esportatzaileak baztertzen
+dituen programak (erregistro-aritmetika, erregistro batek zenbatutako begiztak, atzerako jauziak) ezin dira
+oraindik bidali; script-ak zein lerro eta zergatik esaten du.
 
-**Quandela** (fotonikoa), perceval-en `RemoteProcessor`-ekin eta haien hodeiko token batekin,
-transferentzia-matrizea `tools/hardware_check.py`-n bezala erabiliz.
+**Fotoiak:** Quandela Cloud-ek doako kontuak eskaintzen ditu eta Perceval programak prozesadore fotonikoetan
+exekutatzen ditu (Ascella, Belenos), baina doako kontu batek QPU denbora duen, eta zenbat, ezin izan da hemendik
+egiaztatu; egiaztatu [cloud.quandela.com](https://cloud.quandela.com). QOA-ren aldea prest dago:
+`tools/hardware_check.py`-k dagoeneko QOA sare optiko lineal bat Perceval-ek exekutatzen duen
+transferentzia-matrize bihurtzen du.
+
+**IonQ eta Amazon Braket**-ek simulagailu doakoak dituzte, baina haien gailu errealak ordainpekoak dira,
+ikerketa-kredituen programetatik kanpo.
 
 ## Errepikatzea
 

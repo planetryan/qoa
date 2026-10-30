@@ -5,7 +5,8 @@
 **Short answer: the qubit part, yes, through OpenQASM 2.0 or IonQ's JSON; the linear-optics part, yes in
 principle, on photonic processors such as Quandela's; the qubit-photon coupling and the nonlinear optics,
 not on any machine you can rent today.** No program was sent to real hardware for this page, because that
-needs an account with a provider (see the end). Everything short of that was done and measured.
+needs an account with a provider. Everything short of that was done and measured, and
+`tools/run_on_ibm.py` takes the last step on IBM's free plan once you have an account (see the end).
 
 ## Qubit programs
 
@@ -65,29 +66,41 @@ What has no hardware target yet:
   none is openly available as a cloud device (Xanadu's Borealis was for a time); check the providers before
   relying on this.
 
-## Sending a program to real hardware
+## Running on real hardware for free
 
-These need an account and a key; none was used here.
+**IBM Quantum's Open Plan** is the free way onto real qubits: a free account gets up to 10 minutes of QPU
+runtime per rolling 28-day window, on IBM's current devices (IBM's documentation, checked October 2026;
+the terms change, so check [quantum.cloud.ibm.com](https://quantum.cloud.ibm.com) before relying on them).
+A small circuit with a few thousand shots uses only seconds of that.
 
-**IBM Quantum** (free tier available), OpenQASM 2.0 through Qiskit:
+`tools/run_on_ibm.py` does the whole trip for the qubit part of a QOA program:
 
-```python
-from qiskit import qasm2, transpile
-from qiskit_ibm_runtime import QiskitRuntimeService, SamplerV2
-
-text = open("bell.qasm").read()                       # qoa export --to qasm examples/bell.qoa -o bell.qasm
-qc = qasm2.loads(text, custom_instructions=qasm2.LEGACY_CUSTOM_INSTRUCTIONS)
-service = QiskitRuntimeService(channel="ibm_quantum_platform", token="YOUR_TOKEN")
-backend = service.least_busy(operational=True, simulator=False)
-job = SamplerV2(backend).run([transpile(qc, backend)], shots=4000)
-print(job.result()[0].data)
+```sh
+pip install qiskit qiskit-ibm-runtime qiskit-aer
+cargo build --release
+python3 tools/run_on_ibm.py examples/bell.qoa --dry-run     # first: a local model of an IBM device, no account
+export QISKIT_IBM_TOKEN=...                                  # your API key from quantum.cloud.ibm.com
+python3 tools/run_on_ibm.py examples/bell.qoa               # then the real device (asks before using QPU time)
+python3 tools/run_on_ibm.py examples/grover.qoa --no-wait   # or submit and come back later:
+python3 tools/run_on_ibm.py --job <id>
 ```
 
-**IonQ** (through their API or a cloud marketplace), with `qoa export --to ionq`: the JSON body goes
-to IonQ's jobs endpoint with an API key, target `qpu.aria-1` or `simulator`.
+It exports the program to OpenQASM, compiles it for the least busy device that fits, says how many two-qubit
+gates that takes, asks before spending QPU time, records the job in `target/ibm-jobs.json`, and when the
+device answers prints its counts next to QOA's exact simulation, with the share of shots on the outcomes QOA
+predicts, the distance between the two distributions, and the QPU seconds the job used. With `--dry-run`
+the same path runs on a local model of an IBM device with its measured noise, which is how the numbers
+above were made: Bell 97.8%, teleportation 97.4%, Grover 81.8% of shots on the right answers on the Torino
+model. Programs the exporter refuses (register arithmetic, loops counted by a register, backward jumps)
+cannot go yet; the script says which lines and why.
 
-**Quandela** (photonic), with Perceval's `RemoteProcessor` and a token from their cloud, using the transfer
-matrix as in `tools/hardware_check.py`.
+**Photons:** Quandela Cloud offers free accounts and runs Perceval programs on photonic processors
+(Ascella, Belenos), but whether a free account includes QPU time, and how much, could not be checked from
+here; check [cloud.quandela.com](https://cloud.quandela.com). The QOA side is ready: `tools/hardware_check.py`
+already turns a QOA linear-optics network into the transfer matrix Perceval runs.
+
+**IonQ and Amazon Braket** have free simulators, but their real devices are paid, outside research credit
+programmes.
 
 ## Reproducing
 

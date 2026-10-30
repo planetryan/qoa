@@ -192,8 +192,10 @@ suite against what its comments claim:
 The qubit part of a program exports to OpenQASM 2.0 or IonQ's JSON, including counted loops and
 feed-forward on measured bits, and runs the same in Qiskit. Transpiled for IBM's Heron and Eagle devices
 with their measured noise, small circuits keep 75-98% of the right answers and an 8-qubit Grover key search
-drops to 30%. The linear-optics part matches Quandela's Perceval to 1e-15. Measurements, limits and how to
-submit a job: [docs/hardware.md](docs/hardware.md).
+drops to 30%. The linear-optics part matches Quandela's Perceval to 1e-15. With a free IBM Quantum account
+(10 minutes of real-device time per 28 days), `tools/run_on_ibm.py examples/bell.qoa` runs a program on a
+real quantum computer and compares the result with QOA's. Measurements, limits and details:
+[docs/hardware.md](docs/hardware.md).
 
 ## Testing
 

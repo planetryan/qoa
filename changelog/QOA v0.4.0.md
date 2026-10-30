@@ -32,6 +32,9 @@ distributed and assembly code was never called. 0.4 fixes all of these.
   OpenQASM `if`, so teleportation and Grover search export. `tools/hardware_check.py` checks the exported
   programs against Qiskit, transpiles them for IBM device models with their real noise, and checks the
   linear optics against Quandela's Perceval. See [docs/hardware.md](../docs/hardware.md).
+* **Real hardware for free**: `tools/run_on_ibm.py` sends a program's qubit part to an IBM quantum computer on
+  the free Open Plan (asking before it spends QPU time) and compares the device's counts with QOA's exact
+  simulation; `--dry-run` uses a local model of the device with its measured noise.
 * **What it is for**: where QOA is useful today, where other tools are better, and what stands in the way of
   adopting it, with the next steps that would help most. See [docs/use-cases.md](../docs/use-cases.md).
 * **Looking inside programs**: `qoa export --to qoa|listing|json|dot|glyph` writes canonical plain QOA (also
@@ -142,6 +145,10 @@ konpontzen ditu.
   esportatzen dira. `tools/hardware_check.py`-k esportatutako programak qiskit-en aurka egiaztatzen ditu, IBM
   gailu-modeloetarako transpilatzen ditu haien benetako zaratarekin, eta optika lineala Quandela-ren
   Perceval-en aurka egiaztatzen du. Ikus [docs/hardware.eu.md](../docs/hardware.eu.md).
+* **Hardware erreala doan**: `tools/run_on_ibm.py`-k programa baten qubit-zatia IBM-ren ordenagailu kuantiko
+  batera bidaltzen du doako Open Plan-ean (QPU denbora gastatu aurretik galdetuz) eta gailuaren kopuruak
+  QOA-ren simulazio zehatzarekin konparatzen ditu; `--dry-run`-ek gailuaren modelo lokal bat erabiltzen du,
+  bere zarata neurtuarekin.
 * **Zertarako den**: non den QOA baliagarria gaur, non diren beste tresnak hobeak, eta zerk eragozten duen
   hartzea, gehien lagunduko luketen hurrengo urratsekin. Ikus [docs/use-cases.eu.md](../docs/use-cases.eu.md).
 * **Programen barrura begiratzea**: `qoa export --to qoa|listing|json|dot|glyph`-k QOA arrunt kanonikoa
