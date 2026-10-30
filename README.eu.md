@@ -12,7 +12,7 @@ tresna bat da, ez ordenagailu kuantiko bat.
 
 [![ci](https://github.com/planetryan/qoa/actions/workflows/ci.yml/badge.svg)](https://github.com/planetryan/qoa/actions/workflows/ci.yml)
 
-[In English: README.md](README.md) · [Aginduen erreferentzia](docs/ISA.eu.md) · [Bertsio-oharrak](<changelog/QOA v0.4.0.md>)
+[In English: README.md](README.md) · [Aginduen erreferentzia](docs/ISA.eu.md) · [Bertsio-oharrak](<changelog/QOA v0.4.1.md>)
 
 ---
 
@@ -250,7 +250,8 @@ zer irabazi beharko lukeen, eta nola neurtu: [docs/gpu.eu.md](docs/gpu.eu.md).
 
 QOA 0.4 nukleoaren berridazketa da. 0.3.5 bertsioa
 [`archive/v0.3.5-experimental`](https://github.com/planetryan/qoa/tree/archive/v0.3.5-experimental) adarrean
-gordeta dago. Ikus [0.4.0 bertsio-oharrak](<changelog/QOA v0.4.0.md>) zer aldatu den eta zergatik jakiteko.
+gordeta dago. Ikus [0.4.0 bertsio-oharrak](<changelog/QOA v0.4.0.md>) zer aldatu den eta zergatik jakiteko, eta
+[0.4.1 bertsio-oharrak](<changelog/QOA v0.4.1.md>) ondoren etorri dena jakiteko.
 
 ## Lizentzia
 

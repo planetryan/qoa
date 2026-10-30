@@ -1,6 +1,8 @@
-# QOA v0.5.0 Release Notes
+# QOA v0.4.1 Release Notes
 
-**Status:** in progress, not released yet (euskaraz behean)
+**Status:** released 2026-10-30 (euskaraz behean)
+
+Builds on [0.4.0](<QOA v0.4.0.md>): real-device noise, exact sums, and two more systems.
 
 ## New
 
@@ -40,9 +42,11 @@
 
 ---
 
-# QOA v0.5.0 bertsio-oharrak
+# QOA v0.4.1 bertsio-oharrak
 
-**Egoera:** lanean, oraindik argitaratu gabe
+**Egoera:** 2026-10-30ean argitaratua
+
+[0.4.0](<QOA v0.4.0.md>)-ren gainean: gailu errealen zarata, batura zehatzak eta bi sistema gehiago.
 
 ## Berria
 

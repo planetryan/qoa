@@ -11,7 +11,7 @@ not a quantum computer.
 
 [![ci](https://github.com/planetryan/qoa/actions/workflows/ci.yml/badge.svg)](https://github.com/planetryan/qoa/actions/workflows/ci.yml)
 
-[Euskaraz: README.eu.md](README.eu.md) · [Instruction reference](docs/ISA.md) · [Release notes](<changelog/QOA v0.4.0.md>)
+[Euskaraz: README.eu.md](README.eu.md) · [Instruction reference](docs/ISA.md) · [Release notes](<changelog/QOA v0.4.1.md>)
 
 ---
 
@@ -242,7 +242,8 @@ Vulkan driver, but has not been timed on a real GPU yet; what it should gain, an
 
 QOA 0.4 is a rewrite of the core. Version 0.3.5 is preserved on the
 [`archive/v0.3.5-experimental`](https://github.com/planetryan/qoa/tree/archive/v0.3.5-experimental) branch.
-See the [0.4.0 release notes](<changelog/QOA v0.4.0.md>) for what changed and why.
+See the [0.4.0 release notes](<changelog/QOA v0.4.0.md>) for what changed and why, and the
+[0.4.1 release notes](<changelog/QOA v0.4.1.md>) for what came after.
 
 ## License
 
