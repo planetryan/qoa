@@ -172,6 +172,14 @@ A mode stores photon numbers 0 to cutoff-1 (`QMODE modes cutoff`, default 8). Op
 can push probability past the cutoff. QOA measures that loss and reports it instead of hiding it; when it is
 not negligible, the run warns and suggests a larger cutoff.
 
+### Music through light
+
+`qoa visual song.mp3 out.mp4` sends audio through a simulated quantum optical circuit: every sample becomes a
+mode of light carrying a coherent state, the light passes through loss, squeezing, a Kerr medium or a
+beamsplitter mesh, and is detected with its real quantum noise. The result comes out as audio, video or both
+(`--audio-only`, `--video-only`, `--keep-audio`); the input is anything ffmpeg reads, or raw samples from
+standard input. The light is computed exactly: [docs/visual.md](docs/visual.md).
+
 ## Examples
 
 All in [examples/](examples), each with comments explaining the physics, and each checked by the test

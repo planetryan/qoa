@@ -21,7 +21,7 @@ Builds on [0.4.0](<QOA v0.4.0.md>): real-device noise, exact sums, and two more 
   * `--save-model` keeps the model and the transpiled circuit.
   * `examples/bell-torino.qasm` with `examples/bell-torino.json` is a ready example.
 
-* **More systems** (all 64-bit), from 9 builds to 15:
+* **More systems** (all 64-bit), from 7 builds to 13 (15 downloads with the all-platform bundle and checksums):
   * IBM POWER8 and newer (`powerpc64le-unknown-linux-gnu`), including POWER10 and POWER11.
   * IBM Z (`s390x-unknown-linux-gnu`), the first big-endian build.
   * LoongArch 64 (`loongarch64-unknown-linux-gnu`).
@@ -71,7 +71,7 @@ Builds on [0.4.0](<QOA v0.4.0.md>): real-device noise, exact sums, and two more 
   * `--save-model`-ek eredua eta zirkuitu transpilatua gordetzen ditu.
   * `examples/bell-torino.qasm` `examples/bell-torino.json`-ekin adibide prest bat da.
 
-* **Sistema gehiago** (denak 64 bitekoak), 9 bitarretik 15era:
+* **Sistema gehiago** (denak 64 bitekoak), 7 bitarretik 13ra (15 deskarga, plataforma guztien paketea eta laburpenak barne):
   * IBM POWER8 eta berriagoak (`powerpc64le-unknown-linux-gnu`), POWER10 eta POWER11 barne.
   * IBM Z (`s390x-unknown-linux-gnu`), lehen big-endian bitarra.
   * LoongArch 64 (`loongarch64-unknown-linux-gnu`).

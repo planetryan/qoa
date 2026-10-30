@@ -162,10 +162,69 @@ enum Command {
         "Audio-fitxategi bat (.wav) espektro-bideo bihurtu ffmpeg-ekin. Arte-tresna bat da: ez du egoera kuantikorik bistaratzen"
     ))]
     Visual {
-        #[arg(help = ts!("input audio file", "sarrerako audio-fitxategia"))]
+        #[arg(help = ts!(
+            "input: any audio or video file ffmpeg can read (mp3, flac, wav, ...), or - for stdin",
+            "sarrera: ffmpeg-ek irakur dezakeen edozein audio edo bideo fitxategi (mp3, flac, wav, ...), edo - stdin-erako"
+        ))]
         input: PathBuf,
-        #[arg(help = ts!("output video file", "irteerako bideo-fitxategia"))]
+        #[arg(help = ts!(
+            "output file; its extension picks the container (.mp4, .mkv, .flac, .wav, ...)",
+            "irteera-fitxategia; luzapenak edukiontzia aukeratzen du (.mp4, .mkv, .flac, .wav, ...)"
+        ))]
         output: PathBuf,
+        #[arg(long, value_name = "FORMAT", help = ts!(
+            "the input is raw samples in this ffmpeg sample format (u8, s16le, s24le, s32le, f32le, f64le, ...); use with --rate and --channels",
+            "sarrera lagin gordinak dira ffmpeg-en lagin-formatu honetan (u8, s16le, s24le, s32le, f32le, f64le, ...); --rate eta --channels-ekin"
+        ))]
+        raw: Option<String>,
+        #[arg(long, requires = "raw", default_value_t = 48000, help = ts!("sample rate of raw input, in Hz", "sarrera gordinaren lagin-maiztasuna, Hz-tan"))]
+        rate: u32,
+        #[arg(long, requires = "raw", default_value_t = 1, help = ts!("channels of raw input", "sarrera gordinaren kanalak"))]
+        channels: u32,
+        #[arg(long, conflicts_with_all = ["video_only", "keep_audio"], help = ts!(
+            "write only the processed audio, no video",
+            "audio prozesatua bakarrik idatzi, bideorik gabe"
+        ))]
+        audio_only: bool,
+        #[arg(long, conflicts_with = "keep_audio", help = ts!("write only the video, no audio track", "bideoa bakarrik idatzi, audio-pistarik gabe"))]
+        video_only: bool,
+        #[arg(long, help = ts!(
+            "keep the original audio unmodified; the video still follows the processed light",
+            "jatorrizko audioa aldatu gabe gorde; bideoak argi prozesatuari jarraitzen dio"
+        ))]
+        keep_audio: bool,
+        #[arg(long, default_value_t = 1e5, help = ts!(
+            "photons per sample of a full-scale tone: fewer photons, more quantum noise",
+            "eskala osoko tonu baten fotoiak lagin bakoitzeko: fotoi gutxiago, zarata kuantiko gehiago"
+        ))]
+        photons: f64,
+        #[arg(long, default_value_t = 0.0, help = ts!("fraction of the light lost on the way (0 to <1)", "bidean galtzen den argiaren zatia (0tik <1era)"))]
+        loss: f64,
+        #[arg(long, default_value_t = 0.0, value_name = "DB", help = ts!(
+            "squeeze the light's measured quadrature by this many dB (below shot noise, like LIGO)",
+            "argiaren koadratura neurtua dB hauetan estutu (tiro-zarataren azpitik, LIGO bezala)"
+        ))]
+        squeeze: f64,
+        #[arg(long, default_value_t = 0.0, value_name = "RAD", allow_negative_numbers = true, help = ts!(
+            "Kerr self-phase: the brightest mode picks up this many radians (needs --detect mean or count)",
+            "kerr fase propioa: modu distiratsuenak hainbeste radian hartzen ditu (--detect mean edo count behar du)"
+        ))]
+        kerr: f64,
+        #[arg(long, default_value_t = 0.0, value_name = "RAD", allow_negative_numbers = true, help = ts!(
+            "beamsplitter mesh between neighbouring bands, at this angle",
+            "ondoko banden arteko habe-zatitzaile sarea, angelu honetan"
+        ))]
+        mix: f64,
+        #[arg(long, value_enum, default_value = "homodyne", help = ts!(
+            "how the light is detected: mean (exact average), homodyne (one shot, real quantum noise) or count (photon counting)",
+            "argia nola detektatzen den: mean (batez besteko zehatza), homodyne (shot bat, benetako zarata kuantikoa) edo count (fotoi-zenbaketa)"
+        ))]
+        detect: DetectArg,
+        #[arg(long, default_value_t = 1024, help = ts!(
+            "modes per block and channel (MDCT size, even, 16 or more)",
+            "modu-kopurua bloke eta kanal bakoitzeko (MDCT tamaina, bikoitia, 16 edo gehiago)"
+        ))]
+        block: usize,
         #[arg(long, default_value = "1920x1080", help = ts!("resolution, e.g. 1920x1080", "bereizmena, adib. 1920x1080"))]
         resolution: String,
         #[arg(long, default_value_t = 60, help = ts!("frames per second", "irudi segundoko"))]
@@ -184,6 +243,13 @@ enum Command {
         #[arg(last = true, allow_hyphen_values = true, help = ts!("arguments passed to ffmpeg after --", "-- ondoren ffmpeg-i pasatzen zaizkion argumentuak"))]
         ffmpeg_args: Vec<String>,
     },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, ValueEnum)]
+enum DetectArg {
+    Mean,
+    Homodyne,
+    Count,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, ValueEnum)]
@@ -342,6 +408,19 @@ fn main() -> ExitCode {
         Command::Visual {
             input,
             output,
+            raw,
+            rate,
+            channels,
+            audio_only,
+            video_only,
+            keep_audio,
+            photons,
+            loss,
+            squeeze,
+            kerr,
+            mix,
+            detect,
+            block,
             resolution,
             fps,
             ltr,
@@ -349,17 +428,49 @@ fn main() -> ExitCode {
             seed,
             ffmpeg_flags,
             ffmpeg_args,
-        } => cmd_visual(
-            &input,
-            &output,
-            &resolution,
-            fps,
-            ltr,
-            rtl,
-            seed,
-            &ffmpeg_flags,
-            &ffmpeg_args,
-        ),
+        } => {
+            let mode = if audio_only {
+                visualizer::Mode::AudioOnly
+            } else if video_only {
+                visualizer::Mode::VideoOnly
+            } else if keep_audio {
+                visualizer::Mode::KeepAudio
+            } else {
+                visualizer::Mode::Both
+            };
+            let light = qoa::light::Light {
+                photons,
+                loss,
+                squeeze_db: squeeze,
+                kerr,
+                mix,
+                detect: match detect {
+                    DetectArg::Mean => qoa::light::Detect::Mean,
+                    DetectArg::Homodyne => qoa::light::Detect::Homodyne,
+                    DetectArg::Count => qoa::light::Detect::Count,
+                },
+            };
+            let raw = raw.map(|format| visualizer::Raw {
+                format,
+                rate,
+                channels,
+            });
+            cmd_visual(
+                &input,
+                &output,
+                raw,
+                mode,
+                light,
+                block,
+                &resolution,
+                fps,
+                ltr,
+                rtl,
+                seed,
+                &ffmpeg_flags,
+                &ffmpeg_args,
+            )
+        }
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,
@@ -885,6 +996,10 @@ fn cmd_isa(name: Option<String>, markdown: bool) -> Result<(), String> {
 fn cmd_visual(
     input: &Path,
     output: &Path,
+    raw: Option<visualizer::Raw>,
+    mode: visualizer::Mode,
+    light: qoa::light::Light,
+    block: usize,
     resolution: &str,
     fps: u32,
     ltr: bool,
@@ -910,9 +1025,13 @@ fn cmd_visual(
     } else {
         SpectrumDirection::None
     };
-    visualizer::render_video(&visualizer::Options {
+    visualizer::run(&visualizer::Options {
         input,
         output,
+        raw,
+        mode,
+        light,
+        block,
         width,
         height,
         fps,

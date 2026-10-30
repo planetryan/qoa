@@ -279,9 +279,15 @@ fn have_ffmpeg() -> bool {
 
 #[test]
 fn visual_explains_bad_input() {
-    let o = qoa("en", &["visual", "examples/bell.qoa", "out.mp4"]);
-    assert!(!o.status.success());
-    assert!(stderr(&o).contains("is not a .wav file"), "{}", stderr(&o));
+    if have_ffmpeg() {
+        let o = qoa("en", &["visual", "examples/bell.qoa", "out.mp4"]);
+        assert!(!o.status.success());
+        assert!(
+            stderr(&o).contains("has no audio that ffmpeg can read"),
+            "{}",
+            stderr(&o)
+        );
+    }
     let o = qoa("eu", &["visual", "ez-dago.wav", "out.mp4"]);
     assert!(!o.status.success());
     assert!(
@@ -338,11 +344,14 @@ fn render_raw(wav: &Path, out: &Path, seed: &str) -> Vec<u8> {
     let report = stdout(&o);
     for want in [
         "input",
-        "0.50 s, 8000 Hz, 2 channel(s) mixed to mono",
-        "video",
-        "96x54, 20 frames/s, 10 frames",
+        "0.50 s, 8000 Hz, 2 channel(s), decoded to 64-bit floats",
+        "light",
+        "circuit",
+        "detection",
+        "homodyne",
+        "output",
+        "96x54 video with the processed audio, 20 frames/s, 10 frames",
         "seed",
-        "note",
         "time",
     ] {
         assert!(
@@ -401,7 +410,10 @@ fn visual_renders_the_same_video_for_the_same_seed() {
         ],
     );
     assert!(o.status.success(), "{}{}", stdout(&o), stderr(&o));
-    assert!(stdout(&o).contains("monora nahastuta") && stdout(&o).contains("arte-tresna"));
+    assert!(
+        stdout(&o).contains("64 biteko koma higikorrera deskodetua")
+            && stdout(&o).contains("detekzioa")
+    );
     assert!(std::fs::metadata(&mp4).unwrap().len() > 1000);
 }
 
@@ -613,4 +625,121 @@ fn device_noise_models_run_and_are_reported() {
         ],
     );
     assert!(stderr(&o).contains("transpilatu"), "{}", stderr(&o));
+}
+
+// audio bakarrik: --detect mean-ek sarrera bera itzultzen du (24 biteko wav-aren kuantizazioa bakarrik), eta
+// homodinoak zarata kuantikoa gehitzen du; lagin gordinak ere irakurtzen dira
+#[test]
+fn visual_carries_audio_through_light() {
+    if !have_ffmpeg() {
+        eprintln!("ffmpeg ez dago; proba hau saltatzen da");
+        return;
+    }
+    let decode = |p: &Path| -> Vec<f64> {
+        let o = Command::new("ffmpeg")
+            .args(["-v", "error", "-i"])
+            .arg(p)
+            .args(["-f", "f64le", "-c:a", "pcm_f64le", "-"])
+            .output()
+            .unwrap();
+        o.stdout
+            .chunks_exact(8)
+            .map(|b| f64::from_le_bytes(b.try_into().unwrap()))
+            .collect()
+    };
+    let wav = scratch("light-in.wav");
+    write_wav(&wav);
+    let input = decode(&wav);
+    let run = |out: &Path, extra: &[&str]| {
+        let mut args = vec![
+            "visual",
+            wav.to_str().unwrap(),
+            out.to_str().unwrap(),
+            "--audio-only",
+            "--seed",
+            "3",
+        ];
+        args.extend_from_slice(extra);
+        let o = qoa("en", &args);
+        assert!(o.status.success(), "{}{}", stdout(&o), stderr(&o));
+        decode(out)
+    };
+    let mean = run(&scratch("light-mean.wav"), &["--detect", "mean"]);
+    assert_eq!(mean.len(), input.len());
+    let worst = input
+        .iter()
+        .zip(&mean)
+        .map(|(a, b)| (a - b).abs())
+        .fold(0.0, f64::max);
+    assert!(worst <= 2f64.powi(-23), "{}", worst);
+    let noisy = run(&scratch("light-noisy.wav"), &["--photons", "100"]);
+    let noise = input
+        .iter()
+        .zip(&noisy)
+        .map(|(a, b)| (a - b) * (a - b))
+        .sum::<f64>()
+        / input.len() as f64;
+    // homodinoaren zarata lagin bakoitzeko: 1/(8P)
+    assert!((noise - 1.0 / 800.0).abs() < 0.2 / 800.0, "{}", noise);
+    // lagin gordinak fitxategi batetik
+    let raw = scratch("light-in.raw");
+    let bytes: Vec<u8> = input
+        .iter()
+        .flat_map(|v| ((v * 32767.0) as i16).to_le_bytes())
+        .collect();
+    std::fs::write(&raw, bytes).unwrap();
+    let o = qoa(
+        "en",
+        &[
+            "visual",
+            raw.to_str().unwrap(),
+            scratch("light-raw.wav").to_str().unwrap(),
+            "--audio-only",
+            "--raw",
+            "s16le",
+            "--rate",
+            "8000",
+            "--channels",
+            "2",
+            "--detect",
+            "count",
+            "--kerr",
+            "1",
+        ],
+    );
+    assert!(o.status.success(), "{}{}", stdout(&o), stderr(&o));
+    assert!(
+        stdout(&o).contains("0.50 s, 8000 Hz, 2 channel(s)"),
+        "{}",
+        stdout(&o)
+    );
+    // zehazki kalkula ezin dena errore bat da
+    let o = qoa(
+        "en",
+        &[
+            "visual",
+            wav.to_str().unwrap(),
+            "x.wav",
+            "--audio-only",
+            "--kerr",
+            "1",
+        ],
+    );
+    assert!(!o.status.success());
+    assert!(
+        stderr(&o).contains("no exact computation"),
+        "{}",
+        stderr(&o)
+    );
+    let o = qoa(
+        "en",
+        &[
+            "visual",
+            wav.to_str().unwrap(),
+            "x.wav",
+            "--audio-only",
+            "--video-only",
+        ],
+    );
+    assert!(!o.status.success());
 }

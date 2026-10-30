@@ -81,7 +81,7 @@ where QOA stands on each:
 | force | how hard it hits QOA | what QOA has | what would help most |
 |---|---|---|---|
 | **Python habit**: courses, notebooks and jobs assume `pip install` and Python | hard | a JSON report any language can read; OpenQASM in and out | a Python package (built with pyo3 and maturin) with `run(source)` returning the report as a dict, and conversions to and from Qiskit circuits |
-| **Install friction** | medium | prebuilt binaries for 15 systems: Windows, macOS and Linux on x86-64 and ARM64, Linux on RISC-V, IBM POWER, IBM Z and LoongArch, and static builds that also run on Android | `cargo install qoa` from crates.io |
+| **Install friction** | medium | prebuilt binaries for 13 systems: Windows, macOS and Linux on x86-64 and ARM64, Linux on RISC-V, IBM POWER, IBM Z and LoongArch, and static builds that also run on Android | `cargo install qoa` from crates.io |
 | **Ecosystem and backing**: IBM, Google, Xanadu, Quandela stand behind the big tools | hard, and not fixable | interoperability: QOA does not ask anyone to leave Qiskit or Perceval | QOA as a companion, not a replacement |
 | **"Assembly" sounds hard** | medium | readable mnemonics, errors that point at the line with a suggestion, the glyph syntax for density | a five-minute tutorial that starts from OpenQASM people already know |
 | **Trust**: is a small project correct? | medium | a strict test suite (reference simulator, permanents, Qiskit, Aer and Perceval cross-checks, every example's claims checked) run in public CI on every supported processor | independent users reporting what they found |

@@ -1,16 +1,20 @@
-// fitxategi honek `qoa visual` egiten du: audio-fitxategi bat (.wav) bideo bihurtzen du ffmpeg-ekin.
-// arte-tresna bat da, ez du egoera kuantikorik bistaratzen. qoa-ren simulagailua ausazko bit-iturri gisa
-// bakarrik erabiltzen da (ikus `BitSource`).
+// fitxategi honek `qoa visual` egiten du: audio bat (ffmpeg-ek irakur dezakeen edozein fitxategi, edo lagin
+// gordinak fitxategi edo stdin batetik) argi gisa garraiatzen du zirkuitu optiko kuantiko simulatu batetik
+// (src/light.rs) eta emaitza audio, bideo edo biak gisa idazten du ffmpeg-ekin:
 //
-// irudi bakoitzeko:
-//   1. audio-zatiaren ezaugarriak (fft): ozentasuna, zentroidea, banden energia, transienteak...
-//   2. ezaugarriak parametro bisual bihurtu (`Look`)
-//   3. errendatu: perlin zarata + interferentzia + keinuak + desplazamendua, eta espektroa barra gisa
-//   4. pixel gordinak zuzenean ffmpeg-en sarrerara (stdin), tarteko png fitxategirik gabe
+//   1. deskodetu: ffmpeg-ek laginak 64 biteko koma higikorrean ematen ditu (pcm_f64le), kanal guztiak
+//   2. argia: kanal bakoitza mdct moduetan, zirkuitua eta detekzioa zehazki, eta berriz seinale (src/light.rs)
+//   3. bideoa: irudi bakoitzeko audio prozesatuaren ezaugarriak (fft): ozentasuna, zentroidea, banden
+//      energia, transienteak...; parametro bisual bihurtu (`Look`) eta errendatu: perlin zarata +
+//      interferentzia + keinuak + desplazamendua, eta espektroa barra gisa. pixel gordinak zuzenean ffmpeg-en
+//      sarrerara. irudiak arte dira, ez fisika: 32 biteko kalkulua nahikoa da haietarako
+//   4. irteera: bideoa eta audio prozesatua, audioa bakarrik, bideoa bakarrik, edo bideoa jatorrizko audioarekin
+//
 // ezaugarriak ordenan kalkulatzen dira (aurreko irudiaren araberakoak dira) eta errendatzea paraleloa da
-// banda horizontaletan, ordena finko batean; beraz hazi berak bideo bera ematen du edozein hari-kopururekin.
+// banda horizontaletan, ordena finko batean; beraz hazi berak emaitza bera ematen du edozein hari-kopururekin.
 
 use indicatif::{ProgressBar, ProgressStyle};
+use qoa::light::{self, Light, Mdct};
 use qoa::program::Gate;
 use qoa::report::Style;
 use qoa::state::State;
@@ -34,9 +38,36 @@ pub enum SpectrumDirection {
     Rtl,
 }
 
+// zer idazten den
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Mode {
+    // bideoa eta audio prozesatua
+    Both,
+    // audio prozesatua bakarrik
+    AudioOnly,
+    // bideoa bakarrik, audiorik gabe
+    VideoOnly,
+    // bideo prozesatua jatorrizko audioarekin
+    KeepAudio,
+}
+
+// lagin gordinak: ffmpeg-en lagin-formatua (u8, s16le, f32le, ...), maiztasuna eta kanalak
+#[derive(Debug, Clone)]
+pub struct Raw {
+    pub format: String,
+    pub rate: u32,
+    pub channels: u32,
+}
+
 pub struct Options<'a> {
+    // fitxategia, edo `-` stdin-erako
     pub input: &'a Path,
     pub output: &'a Path,
+    pub raw: Option<Raw>,
+    pub mode: Mode,
+    pub light: Light,
+    // mdct-ren tamaina: modu-kopurua irudi eta kanal bakoitzeko
+    pub block: usize,
     pub width: u32,
     pub height: u32,
     pub fps: u32,
@@ -48,58 +79,211 @@ pub struct Options<'a> {
 
 // --- audioa ---
 
-// wav-a irakurri eta mono bihurtu, [-1, 1] tartean. itzultzen du: laginak, lagin-maiztasuna, kanal-kopurua
-pub fn decode_wav(path: &Path) -> Result<(Vec<f32>, u32, u16), String> {
-    let is_wav = path
-        .extension()
-        .and_then(|e| e.to_str())
-        .is_some_and(|e| e.eq_ignore_ascii_case("wav"));
-    if !is_wav {
-        return Err(t!(
-            "'{}' is not a .wav file; convert it first, e.g. ffmpeg -i song.mp3 song.wav",
-            "'{}' ez da .wav fitxategi bat; bihurtu lehenago, adib. ffmpeg -i abestia.mp3 abestia.wav",
-            path.display()
-        ));
-    }
-    let unreadable = |e: hound::Error| {
-        t!(
-            "cannot read '{}': {}",
-            "ezin da '{}' irakurri: {}",
-            path.display(),
-            e
-        )
-    };
-    let mut reader = hound::WavReader::open(path).map_err(unreadable)?;
-    let spec = reader.spec();
-    // osoko laginak bit-sakoneraren arabera eskalatu (8, 16, 24 edo 32 bit)
-    let samples: Vec<f32> = match spec.sample_format {
-        hound::SampleFormat::Float => reader.samples::<f32>().collect::<Result<_, _>>(),
-        hound::SampleFormat::Int => {
-            let scale = 1.0 / (1u64 << (spec.bits_per_sample - 1)) as f32;
-            reader
-                .samples::<i32>()
-                .map(|s| s.map(|v| v as f32 * scale))
-                .collect()
-        }
-    }
-    .map_err(unreadable)?;
-    Ok((
-        mix_to_mono(&samples, spec.channels as usize),
-        spec.sample_rate,
-        spec.channels,
-    ))
+pub struct Audio {
+    // kanal bakoitzaren laginak, [-1, 1] eskalan
+    pub channels: Vec<Vec<f64>>,
+    pub rate: u32,
 }
 
-// kanal guztien batez bestekoa, lagin-multzo bakoitzeko
-pub fn mix_to_mono(interleaved: &[f32], channels: usize) -> Vec<f32> {
-    if channels <= 1 {
-        return interleaved.to_vec();
+fn ffmpeg_missing(tool: &str, e: std::io::Error) -> String {
+    if e.kind() == std::io::ErrorKind::NotFound {
+        t!(
+            "{} was not found; install ffmpeg (https://ffmpeg.org) and try again",
+            "ez da {} aurkitu; instalatu ffmpeg (https://ffmpeg.org) eta saiatu berriz",
+            tool
+        )
+    } else {
+        t!("cannot start {}: {}", "ezin da {} abiarazi: {}", tool, e)
     }
-    let inv = 1.0 / channels as f32;
-    interleaved
-        .chunks_exact(channels)
-        .map(|f| f.iter().sum::<f32>() * inv)
+}
+
+// aldi baterako fitxategi bat, erabili ondoren ezabatzen dena
+struct TempFile(std::path::PathBuf);
+
+impl TempFile {
+    fn new(tag: &str) -> TempFile {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        TempFile(std::env::temp_dir().join(format!("qoa-{}-{}-{}", std::process::id(), nanos, tag)))
+    }
+}
+
+impl Drop for TempFile {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+    }
+}
+
+// ffprobe: lehen audio-korrontearen lagin-maiztasuna eta kanal-kopurua
+fn probe(path: &Path) -> Result<(u32, u32), String> {
+    let out = Command::new("ffprobe")
+        .args([
+            "-v",
+            "error",
+            "-select_streams",
+            "a:0",
+            "-show_entries",
+            "stream=sample_rate,channels",
+            "-of",
+            "csv=p=0",
+        ])
+        .arg(path)
+        .output()
+        .map_err(|e| ffmpeg_missing("ffprobe", e))?;
+    let text = String::from_utf8_lossy(&out.stdout);
+    let mut parts = text.trim().split(',');
+    let rate = parts.next().and_then(|v| v.trim().parse::<u32>().ok());
+    let channels = parts.next().and_then(|v| v.trim().parse::<u32>().ok());
+    match (out.status.success(), rate, channels) {
+        (true, Some(r), Some(c)) if r > 0 && c > 0 => Ok((r, c)),
+        _ => Err(t!(
+            "'{}' has no audio that ffmpeg can read{}",
+            "'{}'-k ez du ffmpeg-ek irakur dezakeen audiorik{}",
+            path.display(),
+            {
+                let e = String::from_utf8_lossy(&out.stderr);
+                if e.trim().is_empty() {
+                    String::new()
+                } else {
+                    format!(" ({})", e.trim())
+                }
+            }
+        )),
+    }
+}
+
+// audioa deskodetu 64 biteko laginetara. fitxategi batetik edo stdin-etik (`-`); gordina bada, `raw`-ek dio
+// nola irakurri
+pub fn decode_audio(input: &Path, raw: Option<&Raw>) -> Result<Audio, String> {
+    let stdin = input.as_os_str() == "-";
+    // edukiontzi bat stdin-etik: lehenik fitxategi batera, ffprobe-k aztertu ahal izateko
+    let mut kept: Option<TempFile> = None;
+    let source: std::path::PathBuf = if stdin && raw.is_none() {
+        let tmp = TempFile::new("input");
+        let mut f = std::fs::File::create(&tmp.0)
+            .map_err(|e| t!("cannot buffer stdin: {}", "ezin da stdin gorde: {}", e))?;
+        std::io::copy(&mut std::io::stdin().lock(), &mut f)
+            .map_err(|e| t!("cannot read stdin: {}", "ezin da stdin irakurri: {}", e))?;
+        let p = tmp.0.clone();
+        kept = Some(tmp);
+        p
+    } else {
+        if !stdin && !input.exists() {
+            return Err(t!(
+                "cannot read '{}': no such file",
+                "ezin da '{}' irakurri: ez dago fitxategi hori",
+                input.display()
+            ));
+        }
+        input.to_path_buf()
+    };
+    let (rate, channels) = match raw {
+        Some(r) => (r.rate, r.channels),
+        None => probe(&source)?,
+    };
+    let mut args: Vec<String> = ["-hide_banner", "-loglevel", "error", "-nostdin"]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    if let Some(r) = raw {
+        // stdin gordina zuzenean ffmpeg-era
+        if stdin {
+            args.retain(|a| a != "-nostdin");
+        }
+        args.extend([
+            "-f".into(),
+            r.format.clone(),
+            "-ar".into(),
+            r.rate.to_string(),
+            "-ac".into(),
+            r.channels.to_string(),
+        ]);
+    }
+    args.extend(["-i".into(), source.to_string_lossy().into_owned()]);
+    args.extend(
+        ["-map", "0:a:0", "-f", "f64le", "-c:a", "pcm_f64le", "-"]
+            .iter()
+            .map(|s| s.to_string()),
+    );
+    let out = Command::new("ffmpeg")
+        .args(&args)
+        .stdin(if stdin && raw.is_some() {
+            Stdio::inherit()
+        } else {
+            Stdio::null()
+        })
+        .output()
+        .map_err(|e| ffmpeg_missing("ffmpeg", e))?;
+    drop(kept);
+    if !out.status.success() {
+        return Err(t!(
+            "ffmpeg could not decode '{}': {}",
+            "ffmpeg-ek ezin izan du '{}' deskodetu: {}",
+            input.display(),
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
+    }
+    let samples: Vec<f64> = out
+        .stdout
+        .chunks_exact(8)
+        .map(|b| f64::from_le_bytes(b.try_into().expect("8 byte")))
+        .collect();
+    let c = channels as usize;
+    let mut chans = vec![Vec::with_capacity(samples.len() / c); c];
+    for frame in samples.chunks_exact(c) {
+        for (k, v) in frame.iter().enumerate() {
+            chans[k].push(*v);
+        }
+    }
+    Ok(Audio {
+        channels: chans,
+        rate,
+    })
+}
+
+// kanal guztien batez bestekoa (bideoaren ezaugarrietarako, 32 bitean)
+pub fn mono(channels: &[Vec<f64>]) -> Vec<f32> {
+    let n = channels.first().map_or(0, |c| c.len());
+    let inv = 1.0 / channels.len().max(1) as f64;
+    (0..n)
+        .map(|i| (channels.iter().map(|c| c[i]).sum::<f64>() * inv) as f32)
         .collect()
+}
+
+// kanalak tartekatuta, f64 little-endian byteetan (ffmpeg-en f64le)
+fn interleaved_bytes(channels: &[Vec<f64>]) -> Vec<u8> {
+    let n = channels.first().map_or(0, |c| c.len());
+    let mut out = Vec::with_capacity(n * channels.len() * 8);
+    for i in 0..n {
+        for c in channels {
+            out.extend_from_slice(&c[i].to_le_bytes());
+        }
+    }
+    out
+}
+
+// argia kanal guztietan: mdct, zirkuitua, alderantzizkoa
+pub fn apply_light(
+    audio: &Audio,
+    light: &Light,
+    block: usize,
+    seed: u64,
+) -> (Vec<Vec<f64>>, light::Summary) {
+    let mdct = Mdct::new(block);
+    let mut frames: Vec<Vec<Vec<f64>>> = audio
+        .channels
+        .iter()
+        .map(|c| light::analyze(&mdct, c))
+        .collect();
+    let summary = light.process(&mut frames, seed);
+    let out = frames
+        .iter()
+        .zip(&audio.channels)
+        .map(|(f, c)| light::synthesize(&mdct, f, c.len()))
+        .collect();
+    (out, summary)
 }
 
 // irudi bateko audio-ezaugarriak
@@ -629,98 +813,242 @@ fn render(
 
 // --- bideoa ---
 
-// irudiak sortu eta ffmpeg-i pasatu. irudien kalkulua eta ffmpeg-en idazketa paraleloan doaz
-pub fn render_video(o: &Options) -> Result<(), String> {
+fn label_detect(d: light::Detect) -> String {
+    match d {
+        light::Detect::Mean => t!(
+            "exact mean field (no quantum noise: the average of infinitely many shots)",
+            "batez besteko eremu zehatza (zarata kuantikorik gabe: shot infinituren batez bestekoa)"
+        ),
+        light::Detect::Homodyne => t!(
+            "homodyne, one shot per mode (real vacuum noise)",
+            "homodinoa, shot bat modu bakoitzeko (hutsaren benetako zarata)"
+        ),
+        light::Detect::Count => t!(
+            "photon counting, one shot per mode (exact Poisson statistics; the sign comes from the mean field)",
+            "fotoi-zenbaketa, shot bat modu bakoitzeko (poisson estatistika zehatza; ikurra batez besteko eremutik)"
+        ),
+    }
+}
+
+// audio-kodeketa lehenetsia irteerako luzapenaren arabera (erabiltzailearen aukerek gainidazten dute)
+fn audio_codec(output: &Path, video: bool) -> Vec<&'static str> {
+    let ext = output
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_ascii_lowercase())
+        .unwrap_or_default();
+    match (ext.as_str(), video) {
+        ("wav", _) => vec!["-c:a", "pcm_s24le"],
+        ("flac", _) | ("mkv", true) => vec!["-c:a", "flac", "-sample_fmt", "s32"],
+        ("webm", true) => vec!["-c:a", "libopus", "-b:a", "256k"],
+        (_, true) => vec!["-c:a", "aac", "-b:a", "320k"],
+        _ => vec![],
+    }
+}
+
+// sarrera irakurri, argitik pasatu eta irteera idatzi (audioa, bideoa edo biak)
+pub fn run(o: &Options) -> Result<(), String> {
     let started = Instant::now();
     let (width, height) = (o.width as usize, o.height as usize);
-    if width == 0 || height == 0 || o.fps == 0 {
+    let video = o.mode != Mode::AudioOnly;
+    if video && (width == 0 || height == 0 || o.fps == 0) {
         return Err(ts!(
             "width, height and fps must be above zero",
             "zabalerak, altuerak eta fps-k zero baino handiagoak izan behar dute"
         )
         .into());
     }
-    let (audio, rate, channels) = decode_wav(o.input)?;
-    let per_frame = (rate / o.fps) as usize;
-    if per_frame == 0 || audio.is_empty() {
+    if o.block < 16 || !o.block.is_multiple_of(2) {
         return Err(t!(
-            "'{}' has no audio to render (or fps is above the sample rate)",
-            "'{}'-k ez du errendatzeko audiorik (edo fps lagin-maiztasuna baino handiagoa da)",
+            "--block must be an even number of 16 or more, not {}",
+            "--block 16 edo gehiagoko zenbaki bikoitia izan behar da, ez {}",
+            o.block
+        ));
+    }
+    o.light.check()?;
+    let audio = decode_audio(o.input, o.raw.as_ref())?;
+    let len = audio.channels.first().map_or(0, |c| c.len());
+    if len == 0 {
+        return Err(t!(
+            "'{}' has no audio samples",
+            "'{}'-k ez du audio-laginik",
             o.input.display()
         ));
     }
-    let frames = audio.len().div_ceil(per_frame);
+    let rate = audio.rate;
 
     let style = Style::detect();
     let line = |label: &str, text: String| println!("{}  {}", style.label(label), text);
     line(
         ts!("input", "sarrera"),
         t!(
-            "{}: {:.2} s, {} Hz, {} channel(s) mixed to mono",
-            "{}: {:.2} s, {} Hz, {} kanal monora nahastuta",
+            "{}: {:.2} s, {} Hz, {} channel(s), decoded to 64-bit floats",
+            "{}: {:.2} s, {} Hz, {} kanal, 64 biteko koma higikorrera deskodetua",
             o.input.display(),
-            audio.len() as f64 / rate as f64,
+            len as f64 / rate as f64,
             rate,
-            channels
+            audio.channels.len()
+        ),
+    );
+
+    // argia: bideoak beti audio prozesatua jarraitzen du; audioa prozesatua da --keep-audio gabe
+    let (processed, summary) = apply_light(&audio, &o.light, o.block, o.seed);
+    let mut effects = Vec::new();
+    if o.light.mix != 0.0 {
+        effects.push(t!(
+            "beamsplitter mesh {} rad",
+            "habe-zatitzaile sarea {} rad",
+            o.light.mix
+        ));
+    }
+    if o.light.loss > 0.0 {
+        effects.push(t!("loss {}", "galera {}", o.light.loss));
+    }
+    if o.light.squeeze_db > 0.0 {
+        effects.push(t!("squeezed {} dB", "estutua {} dB", o.light.squeeze_db));
+    }
+    if o.light.kerr != 0.0 {
+        effects.push(t!(
+            "Kerr {} rad at the brightest mode (κ = {:.3e})",
+            "kerr {} rad modu distiratsuenean (κ = {:.3e})",
+            o.light.kerr,
+            summary.kappa
+        ));
+    }
+    line(
+        ts!("light", "argia"),
+        t!(
+            "{} modes ({} per block and channel), {:.3e} photons in all, {:.3e} in the brightest mode; {} photons per sample at full scale",
+            "{} modu ({} bloke eta kanal bakoitzeko), {:.3e} fotoi guztira, {:.3e} modu distiratsuenean; {} fotoi lagin bakoitzeko eskala osoan",
+            summary.modes,
+            o.block,
+            summary.photons,
+            summary.brightest,
+            o.light.photons
         ),
     );
     line(
-        ts!("video", "bideoa"),
-        t!(
-            "{}: {}x{}, {} frames/s, {} frames, H.264 (libx264 crf 18) with AAC audio",
-            "{}: {}x{}, {} irudi/s, {} irudi, H.264 (libx264 crf 18) AAC audioarekin",
-            o.output.display(),
+        ts!("circuit", "zirkuitua"),
+        if effects.is_empty() {
+            ts!("no optical effects", "efektu optikorik gabe").to_string()
+        } else {
+            effects.join(", ")
+        },
+    );
+    line(ts!("detection", "detekzioa"), label_detect(o.light.detect));
+
+    let audio_out: &[Vec<f64>] = match o.mode {
+        Mode::KeepAudio => &audio.channels,
+        _ => &processed,
+    };
+    let frames = len.div_ceil((rate / o.fps.max(1)).max(1) as usize);
+    let what = match o.mode {
+        Mode::Both => t!(
+            "{}x{} video with the processed audio",
+            "{}x{} bideoa audio prozesatuarekin",
             width,
-            height,
-            o.fps,
-            frames
+            height
         ),
+        Mode::AudioOnly => ts!("processed audio only", "audio prozesatua bakarrik").to_string(),
+        Mode::VideoOnly => t!(
+            "{}x{} video, no audio",
+            "{}x{} bideoa, audiorik gabe",
+            width,
+            height
+        ),
+        Mode::KeepAudio => t!(
+            "{}x{} video with the original audio",
+            "{}x{} bideoa jatorrizko audioarekin",
+            width,
+            height
+        ),
+    };
+    line(
+        ts!("output", "irteera"),
+        if video {
+            t!(
+                "{}: {}, {} frames/s, {} frames",
+                "{}: {}, {} irudi/s, {} irudi",
+                o.output.display(),
+                what,
+                o.fps,
+                frames
+            )
+        } else {
+            format!("{}: {}", o.output.display(), what)
+        },
     );
     line(
         ts!("seed", "hazia"),
         t!(
-            "{} (same seed and audio, same video)",
-            "{} (hazi eta audio berak, bideo bera)",
+            "{} (same seed and input, same output)",
+            "{} (hazi eta sarrera berak, irteera bera)",
             o.seed
         ),
     );
-    line(
-        ts!("note", "oharra"),
-        ts!(
-            "an art tool: the picture follows the audio, and 16 simulated qubits supply random bits. It does not show a quantum state",
-            "arte-tresna bat: irudiak audioari jarraitzen dio, eta simulatutako 16 qubitek ausazko bitak ematen dituzte. Ez du egoera kuantikorik erakusten"
-        )
-        .to_string(),
-    );
 
-    let mut args: Vec<String> = [
-        "-hide_banner",
-        "-loglevel",
-        "error",
-        "-y",
-        "-f",
-        "rawvideo",
-        "-pix_fmt",
-        "rgb24",
-        "-s",
-    ]
-    .iter()
-    .map(|s| s.to_string())
-    .collect();
-    args.push(format!("{}x{}", width, height));
-    args.extend([
-        "-framerate".into(),
-        o.fps.to_string(),
-        "-i".into(),
-        "-".into(),
-        "-i".into(),
-    ]);
-    args.push(o.input.to_string_lossy().into_owned());
-    for a in [
-        "-map", "0:v:0", "-map", "1:a:0", "-c:a", "aac", "-b:a", "192k", "-c:v", "libx264",
-        "-preset", "fast", "-crf", "18", "-pix_fmt", "yuv420p",
-    ] {
-        args.push(a.into());
+    // ffmpeg-en argumentuak
+    let mut args: Vec<String> = ["-hide_banner", "-loglevel", "error", "-y"]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    let pcm_input = |args: &mut Vec<String>, src: &str| {
+        args.extend([
+            "-f".into(),
+            "f64le".into(),
+            "-ar".into(),
+            rate.to_string(),
+            "-ac".into(),
+            audio.channels.len().to_string(),
+            "-i".into(),
+            src.into(),
+        ]);
+    };
+    // bideoarekin, audioa aldi baterako fitxategi batetik (stdin irudientzat da)
+    let audio_file = TempFile::new("audio.f64");
+    if video {
+        args.extend([
+            "-f".into(),
+            "rawvideo".into(),
+            "-pix_fmt".into(),
+            "rgb24".into(),
+            "-s".into(),
+        ]);
+        args.push(format!("{}x{}", width, height));
+        args.extend([
+            "-framerate".into(),
+            o.fps.to_string(),
+            "-i".into(),
+            "-".into(),
+        ]);
+        if o.mode != Mode::VideoOnly {
+            std::fs::write(&audio_file.0, interleaved_bytes(audio_out)).map_err(|e| {
+                t!(
+                    "cannot write a temporary file: {}",
+                    "ezin da aldi baterako fitxategi bat idatzi: {}",
+                    e
+                )
+            })?;
+            pcm_input(&mut args, &audio_file.0.to_string_lossy());
+            args.extend(
+                ["-map", "0:v:0", "-map", "1:a:0"]
+                    .iter()
+                    .map(|s| s.to_string()),
+            );
+            args.extend(audio_codec(o.output, true).iter().map(|s| s.to_string()));
+        } else {
+            args.push("-an".into());
+        }
+        args.extend(
+            [
+                "-c:v", "libx264", "-preset", "fast", "-crf", "18", "-pix_fmt", "yuv420p",
+            ]
+            .iter()
+            .map(|s| s.to_string()),
+        );
+    } else {
+        pcm_input(&mut args, "-");
+        args.extend(audio_codec(o.output, false).iter().map(|s| s.to_string()));
     }
     // erabiltzailearen aukerak azkenean, lehenetsiak gainidazteko
     args.extend(o.ffmpeg_flags.iter().cloned());
@@ -732,86 +1060,84 @@ pub fn render_video(o: &Options) -> Result<(), String> {
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
         .spawn()
-        .map_err(|e| {
-            if e.kind() == std::io::ErrorKind::NotFound {
-                ts!(
-                    "ffmpeg was not found; install it (https://ffmpeg.org) and try again",
-                    "ez da ffmpeg aurkitu; instalatu (https://ffmpeg.org) eta saiatu berriz"
-                )
-                .to_string()
-            } else {
-                t!("cannot start ffmpeg: {}", "ezin da ffmpeg abiarazi: {}", e)
-            }
-        })?;
-
-    // idazle-haria: irudiak ffmpeg-i pasatzen dizkio eta bufferrak itzultzen ditu berriz erabiltzeko
+        .map_err(|e| ffmpeg_missing("ffmpeg", e))?;
     let mut stdin = child.stdin.take().expect("ffmpeg-en sarrera");
-    let (to_writer, from_main) = mpsc::sync_channel::<Vec<u8>>(2);
-    let (to_main, recycled) = mpsc::channel::<Vec<u8>>();
-    let writer = std::thread::spawn(move || -> std::io::Result<()> {
-        for buf in from_main {
-            stdin.write_all(&buf)?;
-            let _ = to_main.send(buf);
-        }
-        Ok(())
-    });
 
-    let progress = ProgressBar::new(frames as u64);
-    progress.set_style(
-        ProgressStyle::with_template(ts!(
-            "{elapsed_precise} {bar:40} {pos}/{len} frames, {per_sec}, {eta} left",
-            "{elapsed_precise} {bar:40} {pos}/{len} irudi, {per_sec}, {eta} falta"
-        ))
-        .expect("aurrerapen-barraren txantiloia")
-        .progress_chars("█▉▊▋▌▍▎▏ "),
-    );
-
-    let fft = RealFftPlanner::<f32>::new().plan_fft_forward(per_frame);
-    let mut fft_in = fft.make_input_vec();
-    let mut fft_out = fft.make_output_vec();
-    let bin_hz = rate as f64 / per_frame as f64;
-    let perlin = Perlin::new(o.seed);
-    let mut bits = BitSource::new(o.seed);
-    let (mut prev_rms, mut hue) = (0.0, 0.0);
-    let mut sent = 0;
-    for i in 0..frames {
-        let chunk = &audio[i * per_frame..((i + 1) * per_frame).min(audio.len())];
-        fft_in.fill(0.0);
-        fft_in[..chunk.len()].copy_from_slice(chunk);
-        fft.process(&mut fft_in, &mut fft_out)
-            .expect("fft-aren tamainak");
-        let mags: Vec<f64> = fft_out.iter().map(|c| c.norm() as f64).collect();
-        let feats = features(chunk, &mags, bin_hz, prev_rms);
-        prev_rms = feats.rms;
-        let look = Look::new(&feats, &mags, bits.next(), i, frames, &mut hue);
-
-        let mut buf = recycled
-            .try_recv()
-            .unwrap_or_else(|_| vec![0u8; width * height * 3]);
-        render(
-            &mut buf,
-            &look,
-            &perlin,
-            &mags,
-            o.direction,
-            width,
-            height,
-            i as u64,
-            o.seed,
+    let mut sent = 0usize;
+    let written: std::io::Result<()> = if !video {
+        // sarrera itxi: ffmpeg-ek amaiera ikusi arte itxaroten du
+        let r = stdin.write_all(&interleaved_bytes(audio_out));
+        drop(stdin);
+        r
+    } else {
+        // idazle-haria: irudiak ffmpeg-i pasatzen dizkio eta bufferrak itzultzen ditu berriz erabiltzeko
+        let (to_writer, from_main) = mpsc::sync_channel::<Vec<u8>>(2);
+        let (to_main, recycled) = mpsc::channel::<Vec<u8>>();
+        let writer = std::thread::spawn(move || -> std::io::Result<()> {
+            for buf in from_main {
+                stdin.write_all(&buf)?;
+                let _ = to_main.send(buf);
+            }
+            Ok(())
+        });
+        let progress = ProgressBar::new(frames as u64);
+        progress.set_style(
+            ProgressStyle::with_template(ts!(
+                "{elapsed_precise} {bar:40} {pos}/{len} frames, {per_sec}, {eta} left",
+                "{elapsed_precise} {bar:40} {pos}/{len} irudi, {per_sec}, {eta} falta"
+            ))
+            .expect("aurrerapen-barraren txantiloia")
+            .progress_chars("█▉▊▋▌▍▎▏ "),
         );
-        // ffmpeg amaitu bada (adib. aukera oker bat), idazle-haria gelditu da: ondoren jakinaraziko da
-        if to_writer.send(buf).is_err() {
-            break;
+        // bideoak argiak prozesatutako seinalea jarraitzen du
+        let signal = mono(&processed);
+        let per_frame = (rate / o.fps) as usize;
+        let fft = RealFftPlanner::<f32>::new().plan_fft_forward(per_frame.max(1));
+        let mut fft_in = fft.make_input_vec();
+        let mut fft_out = fft.make_output_vec();
+        let bin_hz = rate as f64 / per_frame.max(1) as f64;
+        let perlin = Perlin::new(o.seed);
+        let mut bits = BitSource::new(o.seed);
+        let (mut prev_rms, mut hue) = (0.0, 0.0);
+        for i in 0..frames {
+            let chunk = &signal[(i * per_frame).min(len)..((i + 1) * per_frame).min(len)];
+            fft_in.fill(0.0);
+            fft_in[..chunk.len()].copy_from_slice(chunk);
+            fft.process(&mut fft_in, &mut fft_out)
+                .expect("fft-aren tamainak");
+            let mags: Vec<f64> = fft_out.iter().map(|c| c.norm() as f64).collect();
+            let feats = features(chunk, &mags, bin_hz, prev_rms);
+            prev_rms = feats.rms;
+            let look = Look::new(&feats, &mags, bits.next(), i, frames, &mut hue);
+            let mut buf = recycled
+                .try_recv()
+                .unwrap_or_else(|_| vec![0u8; width * height * 3]);
+            render(
+                &mut buf,
+                &look,
+                &perlin,
+                &mags,
+                o.direction,
+                width,
+                height,
+                i as u64,
+                o.seed,
+            );
+            // ffmpeg amaitu bada (adib. aukera oker bat), idazle-haria gelditu da: ondoren jakinaraziko da
+            if to_writer.send(buf).is_err() {
+                break;
+            }
+            sent += 1;
+            progress.inc(1);
         }
-        sent += 1;
-        progress.inc(1);
-    }
-    drop(to_writer);
-    progress.finish_and_clear();
-    let written = writer.join().expect("idazle-haria");
+        drop(to_writer);
+        progress.finish_and_clear();
+        writer.join().expect("idazle-haria")
+    };
     let status = child
         .wait()
         .map_err(|e| t!("ffmpeg: {}", "ffmpeg: {}", e))?;
+    drop(audio_file);
     if !status.success() {
         return Err(t!(
             "ffmpeg failed ({}); its message is above",
@@ -821,20 +1147,24 @@ pub fn render_video(o: &Options) -> Result<(), String> {
     }
     if let Err(e) = written {
         return Err(t!(
-            "could not send frames to ffmpeg: {}",
-            "ezin izan dira irudiak ffmpeg-i bidali: {}",
+            "could not send data to ffmpeg: {}",
+            "ezin izan dira datuak ffmpeg-i bidali: {}",
             e
         ));
     }
     let secs = started.elapsed().as_secs_f64();
     line(
         ts!("time", "denbora"),
-        t!(
-            "{:.1} s ({:.1} frames/s)",
-            "{:.1} s ({:.1} irudi/s)",
-            secs,
-            sent as f64 / secs
-        ),
+        if video {
+            t!(
+                "{:.1} s ({:.1} frames/s)",
+                "{:.1} s ({:.1} irudi/s)",
+                secs,
+                sent as f64 / secs
+            )
+        } else {
+            t!("{:.1} s", "{:.1} s", secs)
+        },
     );
     Ok(())
 }
@@ -914,10 +1244,17 @@ mod tests {
 
     #[test]
     fn stereo_and_multichannel_mix_to_the_mean() {
-        assert_eq!(mix_to_mono(&[1.0, 0.0, 0.5, 0.5], 2), vec![0.5, 0.5]);
-        let three = mix_to_mono(&[0.3, 0.3, 0.6, 1.0, 0.0, -1.0], 3);
+        assert_eq!(mono(&[vec![1.0, 0.5], vec![0.0, 0.5]]), vec![0.5, 0.5]);
+        let three = mono(&[vec![0.3, 1.0], vec![0.3, 0.0], vec![0.6, -1.0]]);
         assert!(three.len() == 2 && (three[0] - 0.4).abs() < 1e-6 && three[1].abs() < 1e-6);
-        assert_eq!(mix_to_mono(&[0.1, 0.2], 1), vec![0.1, 0.2]);
+        assert_eq!(mono(&[vec![0.1, 0.2]]), vec![0.1, 0.2]);
+        // tartekatuta: l0 r0 l1 r1
+        let bytes = interleaved_bytes(&[vec![1.0, 2.0], vec![3.0, 4.0]]);
+        let back: Vec<f64> = bytes
+            .chunks_exact(8)
+            .map(|b| f64::from_le_bytes(b.try_into().unwrap()))
+            .collect();
+        assert_eq!(back, vec![1.0, 3.0, 2.0, 4.0]);
     }
 
     #[test]

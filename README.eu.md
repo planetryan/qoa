@@ -178,6 +178,15 @@ Modu batek 0tik muga-1era arteko fotoi-kopuruak gordetzen ditu (`QMODE moduak mu
 sortzen dituzten eragiketek probabilitatea mugaz kanpora bultza dezakete. QOA-k galera hori neurtu eta
 jakinarazten du, ezkutatu ordez; arbuiagarria ez denean, abisu bat ematen du eta muga handiago bat iradokitzen du.
 
+### Musika argitik
+
+`qoa visual abestia.mp3 irteera.mp4`-k audioa zirkuitu optiko kuantiko simulatu batetik pasatzen du: lagin
+bakoitza egoera koherente bat daraman argi-modu bat bihurtzen da, argiak galera, estutzea, kerr ingurune bat
+edo habe-zatitzaile sare bat zeharkatzen ditu, eta bere benetako zarata kuantikoarekin detektatzen da.
+Emaitza audio, bideo edo biak gisa ateratzen da (`--audio-only`, `--video-only`, `--keep-audio`); sarrera
+ffmpeg-ek irakurtzen duen edozer da, edo sarrera estandarreko lagin gordinak. Argia zehazki kalkulatzen da:
+[docs/visual.eu.md](docs/visual.eu.md).
+
 ## Adibideak
 
 Guztiak [examples/](examples)-en, bakoitza fisika azaltzen duten iruzkinekin, eta bakoitza proba-multzoak

@@ -12,6 +12,7 @@ pub mod ionq; // ionq json esportazioa
 pub mod isa; // agindu-multzoaren taula
 pub mod kernel; // qubit-ateak: lasterketak, fusioa, cache-blokeak
 pub mod lang; // irteeraren hizkuntza (euskara/ingelesa)
+pub mod light; // audioa argi gisa zirkuitu optiko kuantiko batetik (`qoa visual`): mdct, kanalak, detekzioa
 pub mod noise; // gailuen zarata-ereduak (kalibrazioak): ate-erroreak, T1/T2, irakurketa
 pub mod program; // programa mihiztatua eta .qx formatua
 pub mod qasm; // openqasm inportazioa eta esportazioa
