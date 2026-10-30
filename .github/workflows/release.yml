@@ -9,6 +9,10 @@
 # linux-ekoak ubuntu 22.04-n konpilatzen dira (glibc 2.35), banaketa zaharragoetan ere ibil daitezen.
 # pull request batean (fitxategi hau, abiarazleak edo Cargo aldatzen badira) eta eskuz ere exekutatzen da,
 # argitaratu gabe: konpilazioa eta paketeak egiaztatzeko.
+#
+# eskuz argitaratzea (Actions fitxa, edo GitHub-en aplikazioa telefonoan): "Run workflow" main adarrean,
+# `release` eremuan bertsioa (adib. v0.4.1). konpilatu eta probatu ondoren, workflow-ak berak sortzen ditu
+# etiketa eta argitalpena commit horretan; ez da git-ik behar.
 name: release
 
 on:
@@ -23,12 +27,19 @@ on:
       - Cargo.toml
       - Cargo.lock
   workflow_dispatch:
+    inputs:
+      release:
+        description: "publish a release with this version tag, e.g. v0.4.1 (main only; empty = build only)"
+        required: false
+        default: ""
 
 permissions:
   contents: write
 
 env:
   CARGO_TERM_COLOR: always
+  # eskuz eskatutako bertsioa (hutsik gainerako kasuetan)
+  RELEASE_TAG: ${{ github.event.inputs.release || '' }}
 
 jobs:
   build:
@@ -64,7 +75,7 @@ jobs:
         shell: bash
         run: |
           case "${{ matrix.target }}" in *windows*) exe=qoa.exe ;; *) exe=qoa ;; esac
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then version="$GITHUB_REF_NAME"; else version="dev-${GITHUB_SHA::7}"; fi
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then version="$GITHUB_REF_NAME"; elif [ -n "$RELEASE_TAG" ]; then version="$RELEASE_TAG"; else version="dev-${GITHUB_SHA::7}"; fi
           name="qoa-$version-${{ matrix.target }}"
           mkdir -p "dist/$name" "bin/${{ matrix.target }}"
           cp "target/${{ matrix.target }}/release/$exe" "dist/$name/"
@@ -102,7 +113,7 @@ jobs:
           merge-multiple: true
       - name: bundle and checksums
         run: |
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then version="$GITHUB_REF_NAME"; else version="dev-${GITHUB_SHA::7}"; fi
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then version="$GITHUB_REF_NAME"; elif [ -n "$RELEASE_TAG" ]; then version="$RELEASE_TAG"; else version="dev-${GITHUB_SHA::7}"; fi
           name="qoa-$version-all"
           mkdir -p "$name"
           cp -r bin "$name/"
@@ -148,7 +159,9 @@ jobs:
   publish:
     name: publish the release
     needs: [bundle, try]
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: >-
+      startsWith(github.ref, 'refs/tags/v') ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.release != '' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -158,14 +171,20 @@ jobs:
           path: dist
       - name: the tag must match Cargo.toml
         run: |
-          want="v$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)"
-          if [ "$GITHUB_REF_NAME" != "$want" ]; then
-            echo "tag $GITHUB_REF_NAME, but Cargo.toml says $want"; exit 1
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then tag="$GITHUB_REF_NAME"; else tag="$RELEASE_TAG"; fi
+          if ! [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "'$tag' is not a version tag like v0.4.0"; exit 1
           fi
+          want="v$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)"
+          if [ "$tag" != "$want" ]; then
+            echo "tag $tag, but Cargo.toml says $want"; exit 1
+          fi
+          echo "TAG=$tag" >> "$GITHUB_ENV"
       - name: create the release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          notes="changelog/QOA $GITHUB_REF_NAME.md"
+          notes="changelog/QOA $TAG.md"
           if [ -f "$notes" ]; then flag=(--notes-file "$notes"); else flag=(--generate-notes); fi
-          gh release create "$GITHUB_REF_NAME" dist/* --title "QOA $GITHUB_REF_NAME" "${flag[@]}"
+          # etiketa ez badago, gh-k sortzen du commit honetan
+          gh release create "$TAG" dist/* --target "$GITHUB_SHA" --title "QOA $TAG" "${flag[@]}"
