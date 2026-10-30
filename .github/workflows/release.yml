@@ -180,11 +180,36 @@ jobs:
             echo "tag $tag, but Cargo.toml says $want"; exit 1
           fi
           echo "TAG=$tag" >> "$GITHUB_ENV"
-      - name: create the release
+      # etiketa git bidez sortzen da (ez github-ek alferki argitaratzean), eta argitalpen bat lehendik badago
+      # (zirriborro gisa, adibidez etiketa ezabatu zelako), osatu eta argitaratu egiten da
+      - name: tag the commit
+        run: |
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" > /dev/null; then
+            echo "tag $TAG already exists"
+          else
+            git tag "$TAG" "$GITHUB_SHA"
+            git push origin "refs/tags/$TAG"
+          fi
+      - name: create or finish the release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           notes="changelog/QOA $TAG.md"
-          if [ -f "$notes" ]; then flag=(--notes-file "$notes"); else flag=(--generate-notes); fi
-          # etiketa ez badago, gh-k sortzen du commit honetan
-          gh release create "$TAG" dist/* --target "$GITHUB_SHA" --title "QOA $TAG" "${flag[@]}"
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --clobber
+            if [ -f "$notes" ]; then
+              gh release edit "$TAG" --draft=false --title "QOA $TAG" --notes-file "$notes"
+            else
+              gh release edit "$TAG" --draft=false --title "QOA $TAG"
+            fi
+          else
+            if [ -f "$notes" ]; then flag=(--notes-file "$notes"); else flag=(--generate-notes); fi
+            gh release create "$TAG" dist/* --verify-tag --title "QOA $TAG" "${flag[@]}"
+          fi
+      - name: the release must be published, with its tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "$TAG" --json tagName,isDraft,url,assets --jq '"\(.url) draft=\(.isDraft) assets=\(.assets | length)"'
+          test "$(gh release view "$TAG" --json isDraft --jq .isDraft)" = "false"
+          git ls-remote --exit-code --tags origin "refs/tags/$TAG"

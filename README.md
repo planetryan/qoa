@@ -11,7 +11,7 @@ not a quantum computer.
 
 [![ci](https://github.com/planetryan/qoa/actions/workflows/ci.yml/badge.svg)](https://github.com/planetryan/qoa/actions/workflows/ci.yml)
 
-[Euskaraz: README.eu.md](README.eu.md) · [Instruction reference](docs/ISA.md) · [Release notes](<changelog/QOA v0.4.0.md>) · [Discord](https://discord.gg/W8HQdxmMG8)
+[Euskaraz: README.eu.md](README.eu.md) · [Instruction reference](docs/ISA.md) · [Release notes](<changelog/QOA v0.4.0.md>)
 
 ---
 

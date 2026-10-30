@@ -12,7 +12,7 @@ tresna bat da, ez ordenagailu kuantiko bat.
 
 [![ci](https://github.com/planetryan/qoa/actions/workflows/ci.yml/badge.svg)](https://github.com/planetryan/qoa/actions/workflows/ci.yml)
 
-[In English: README.md](README.md) · [Aginduen erreferentzia](docs/ISA.eu.md) · [Bertsio-oharrak](<changelog/QOA v0.4.0.md>) · [Discord](https://discord.gg/W8HQdxmMG8)
+[In English: README.md](README.md) · [Aginduen erreferentzia](docs/ISA.eu.md) · [Bertsio-oharrak](<changelog/QOA v0.4.0.md>)
 
 ---
 
