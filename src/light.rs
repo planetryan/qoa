@@ -224,21 +224,7 @@ impl Light {
         if !self.kerr.is_finite() || !self.mix.is_finite() {
             return Err(ts_err());
         }
-        match self.detect {
-            Detect::Mean if self.squeeze_db > 0.0 => Err(t!(
-                "--squeeze changes only the quantum noise, and --detect mean has none: use --detect homodyne to hear it",
-                "--squeeze-k zarata kuantikoa bakarrik aldatzen du, eta --detect mean-ek ez du zaratarik: erabili --detect homodyne entzuteko"
-            )),
-            Detect::Homodyne if self.kerr != 0.0 && self.squeeze_db > 0.0 => Err(t!(
-                "squeezed light through a Kerr medium (--squeeze with --kerr) is not implemented yet",
-                "argi estutua kerr ingurune batetik (--squeeze eta --kerr) ez dago oraindik"
-            )),
-            Detect::Count if self.squeeze_db > 0.0 => Err(t!(
-                "photon counting of squeezed light (--squeeze with --detect count) is not implemented yet",
-                "argi estutuaren fotoi-zenbaketa (--squeeze eta --detect count) ez dago oraindik"
-            )),
-            _ => Ok(()),
-        }
+        Ok(())
     }
 
     // kanal bakoitzaren irudiak (mdct koefizienteak) tokian prozesatu. `seed`-ek zarata erabakitzen du: hazi
@@ -279,6 +265,12 @@ impl Light {
         // homodinoaren bariantza X-n (hutsa = 1/2): estutzea galeraren aurretik
         let squeezed = 10f64.powf(-self.squeeze_db / 10.0);
         let variance = t * squeezed / 2.0 + (1.0 - t) / 2.0;
+        // galeraren ondoko argi estutua gaussiar nahasia da: X-n `variance` duen egoera estutu purua, P-n zarata
+        // klasiko gaussiar batekin desplazatuta (vp - 1/(4 vx)), zehazki. u = Im α-ren zarataren desbideratzea
+        let squeezing = self.squeeze_db > 0.0;
+        let r_pure = -0.5 * (2.0 * variance).ln();
+        let vp = t / squeezed / 2.0 + (1.0 - t) / 2.0;
+        let s_u = ((vp - 1.0 / (4.0 * variance)).max(0.0) / 2.0).sqrt();
         let gain = 1.0 / (t.sqrt() * s);
         // kerr-en ondoko homodinoa: taulak behin, modu guztientzat
         let sampler =
@@ -294,14 +286,32 @@ impl Light {
                 let mut spare: Option<f64> = None;
                 for c in frame.iter_mut() {
                     let alpha = t.sqrt() * s * *c;
-                    let field = if kappa != 0.0 {
-                        kerr_mean(alpha, kappa)
-                    } else {
+                    // batez besteko eremua: kerr-ik gabe α; kerr-ekin forma itxian (estutuarekin, galeraren
+                    // zarataren gaineko batez bestekoa barne)
+                    let field = if kappa == 0.0 {
                         alpha
+                    } else if squeezing {
+                        kerr_mean_mixed(alpha, r_pure, s_u, kappa).re
+                    } else {
+                        kerr_mean(alpha, kappa)
+                    };
+                    // nahastearen osagai puru bat: α + iu, u ~ N(0, s_u²)
+                    let pure = |rng: &mut StdRng| {
+                        let u = if s_u > 0.0 {
+                            s_u * normal_pair(rng).0
+                        } else {
+                            0.0
+                        };
+                        C::new(alpha, u)
                     };
                     *c = gain
                         * match self.detect {
                             Detect::Mean => field,
+                            Detect::Homodyne if sampler.is_some() && squeezing => {
+                                let state = Pure::lab(pure(&mut rng), r_pure);
+                                sampler.as_ref().unwrap().sample_pure(&state, &mut rng)
+                                    / 2f64.sqrt()
+                            }
                             Detect::Homodyne if sampler.is_some() => {
                                 let x = sampler.as_ref().unwrap().sample(alpha, &mut rng);
                                 x / 2f64.sqrt()
@@ -319,7 +329,11 @@ impl Light {
                                 alpha + (variance / 2.0).sqrt() * g
                             }
                             Detect::Count => {
-                                let n = poisson(&mut rng, alpha * alpha) as f64;
+                                let n = if squeezing {
+                                    count_pure(pure(&mut rng), r_pure, &mut rng) as f64
+                                } else {
+                                    poisson(&mut rng, alpha * alpha) as f64
+                                };
                                 n.sqrt() * if field < 0.0 { -1.0 } else { 1.0 }
                             }
                         };
@@ -541,7 +555,11 @@ impl KerrSampler {
     // leihoaren tamaina: euskarria (n̄ ± 12σ ± 31) itzalaren zati lauaren barruan ([0.21M, 0.79M] inguru),
     // oktaba bakoitzeko 16 tamainatara biribilduta, taulak berrerabiltzeko
     fn size(n_bar: f64) -> usize {
-        let w = 12.0 * n_bar.sqrt() + 31.0;
+        Self::size_w(12.0 * n_bar.sqrt() + 31.0)
+    }
+
+    // `w`: euskarriaren erdi-zabalera fotoi-kopuruan
+    fn size_w(w: f64) -> usize {
         let need = (2.0 * w / 0.56).ceil().max(64.0) as usize;
         let step = (need.next_power_of_two() / 32).max(2);
         need.div_ceil(step) * step
@@ -735,33 +753,297 @@ impl KerrSampler {
             return normal_pair(rng).0 / 2f64.sqrt();
         }
         let (x0, d) = self.displaced(a);
-        let total: f64 = crate::dd::sum(d.iter().map(|c| c.norm_sqr()));
-        let target = rng.random::<f64>() * total;
-        // hermite funtzioak √(2K+1)-tik aurrera erortzen dira; +12 tarte
-        let reach = (2.0 * d.len() as f64 + 3.0).sqrt() + 12.0;
-        let (mut lo, mut hi) = (-reach, reach);
-        let mut y = 0.0;
-        for _ in 0..200 {
-            let (f, p) = cdf_density(&d, y);
-            let err = f - target;
-            if err > 0.0 {
-                hi = y;
-            } else {
-                lo = y;
+        sign * invert(&d, x0, rng)
+    }
+
+    // X-ren lagin bat kerr-en ondoren egoera estutu puru batean: R(ψ) D(a) S(r e^{iθ}) |0>
+    pub fn sample_pure(&self, p: &Pure, rng: &mut StdRng) -> f64 {
+        if p.r == 0.0 && p.psi == 0.0 {
+            return self.sample(p.a, rng);
+        }
+        let (beta, d) = self.displaced_pure(p);
+        invert(&d, 2f64.sqrt() * beta.re, rng)
+    }
+
+    // X-ren dentsitatea egoera estutu puru baterako (probetarako)
+    pub fn density_pure(&self, p: &Pure, x: f64) -> f64 {
+        let (beta, d) = self.displaced_pure(p);
+        cdf_density(&d, x - 2f64.sqrt() * beta.re).1
+    }
+
+    // `displaced`-en bertsio orokorra egoera estutu baterako: osagaiak R(φ_j) D(a) S(r e^{iθ}) |0> dira, eta
+    // D(-β)-ren ondoren <k|γ_j, ζ_j> hiru gaiko errepikapenez (eskala bereizita, azpigainezkarik gabe):
+    // c_0 = e^{-|γ|²/2 - γ̄² e^{iθ'} tanh r / 2} / √cosh r, c_{k+1} = (Γ c_k - e^{iθ'} tanh r √k c_{k-1}) / √(k+1),
+    // Γ = (γ cosh r + γ̄ e^{iθ'} sinh r)/cosh r. itzultzen du (β, d_k)
+    fn displaced_pure(&self, p: &Pure) -> (C, Vec<C>) {
+        let (a, r) = (p.a, p.r);
+        let (n_bar, std, tail) = number_stats(a, r, p.theta);
+        let m = Self::size_w(12.0 * std + 31.0 + tail) as i64;
+        let table = self.table_for(m as usize);
+        let c0 = n_bar.round() as i64;
+        let n_lo = c0 - m / 2;
+        let theta0 = phase_mod(self.kappa, (2 * c0 - 1) as f64);
+        let phi_r = -theta0;
+        let (a2, a2e) = crate::dd::two_prod::<false>(a, a);
+        let (ch, tr) = (r.cosh(), r.tanh());
+        let half_ln_ch = 0.5 * ch.ln();
+        // osagai bakoitza: koefizientea, Γ, B = e^{iθ'} tanh r, eskala, eta errepikapenaren bi balioak
+        struct Comp {
+            c: C,
+            big: C,
+            b: C,
+            scale: f64,
+            factor: f64,
+            prev: C,
+            cur: C,
+        }
+        let mut comps: Vec<Comp> = table
+            .iter()
+            .map(|&(j, f)| {
+                let rr = ((j as i128 * n_lo as i128).rem_euclid(m as i128)) as f64;
+                let (sn, cs) = (TWO_PI_HI * rr / m as f64).sin_cos();
+                let d = TWO_PI_HI * j as f64 / m as f64;
+                let (sh2, ch2) = (d / 2.0).sin_cos();
+                let g = C::new(-2.0 * a * sh2 * sh2, 2.0 * a * sh2 * ch2);
+                let ph = phase_mod2(a2, a2e, d.sin());
+                let c = f * C::new(cs, -sn) * C::from_polar(1.0, ph);
+                let e = C::from_polar(1.0, p.theta + 2.0 * d);
+                let big = g + g.conj() * e * tr;
+                let ln0 = -half_ln_ch - g.norm_sqr() / 2.0 - g.conj() * g.conj() * e * tr / 2.0;
+                Comp {
+                    c,
+                    big,
+                    b: e * tr,
+                    scale: ln0.re,
+                    factor: if ln0.re > -740.0 { ln0.re.exp() } else { 0.0 },
+                    prev: C::new(0.0, 0.0),
+                    cur: C::from_polar(1.0, ln0.im),
+                }
+            })
+            .collect();
+        let rot_angle = phi_r + p.psi;
+        let mut d = Vec::new();
+        let mut quiet = 0;
+        for k in 0..200_000usize {
+            let mut sum = C::new(0.0, 0.0);
+            let mut sc = 0.0;
+            for x in &comps {
+                if x.factor != 0.0 {
+                    let term = x.c * x.cur * x.factor;
+                    sum += term;
+                    sc += term.re.abs() + term.im.abs();
+                }
             }
-            if hi - lo < 1e-13 * (1.0 + y.abs()) || err.abs() < 1e-16 {
+            let dk = sum * C::from_polar(1.0, (k as f64 * rot_angle) % std::f64::consts::TAU);
+            let floor = 1e-17f64.max(1e-11 * sc);
+            quiet = if dk.norm() < floor { quiet + 1 } else { 0 };
+            d.push(dk);
+            if k > 40 && quiet >= 40 {
                 break;
             }
-            // newton, tartetik irtetzen bada erdibitu
-            let step = if p > 0.0 { y - err / p } else { f64::NAN };
-            y = if step > lo && step < hi {
-                step
-            } else {
-                (lo + hi) / 2.0
-            };
+            let (sk, inv) = ((k as f64).sqrt(), 1.0 / ((k + 1) as f64).sqrt());
+            for x in comps.iter_mut() {
+                let next = (x.big * x.cur - x.b * sk * x.prev) * inv;
+                x.prev = x.cur;
+                x.cur = next;
+                let mag = next.norm();
+                if mag > 1e100 || (mag < 1e-100 && mag > 0.0) {
+                    x.cur /= mag;
+                    x.prev /= mag;
+                    x.scale += mag.ln();
+                    x.factor = if x.scale > -740.0 { x.scale.exp() } else { 0.0 };
+                }
+            }
         }
-        sign * (x0 + y)
+        (C::from_polar(a, rot_angle), d)
     }
+}
+
+// banaketa metatu zehatzaren alderantzizkoa: x0 + y, F(y) = u·Σ|d_k|²
+fn invert(d: &[C], x0: f64, rng: &mut StdRng) -> f64 {
+    let total: f64 = crate::dd::sum(d.iter().map(|c| c.norm_sqr()));
+    let target = rng.random::<f64>() * total;
+    // hermite funtzioak √(2K+1)-tik aurrera erortzen dira; +12 tarte
+    let reach = (2.0 * d.len() as f64 + 3.0).sqrt() + 12.0;
+    let (mut lo, mut hi) = (-reach, reach);
+    let mut y = 0.0;
+    for _ in 0..200 {
+        let (f, p) = cdf_density(d, y);
+        let err = f - target;
+        if err > 0.0 {
+            hi = y;
+        } else {
+            lo = y;
+        }
+        if hi - lo < 1e-13 * (1.0 + y.abs()) || err.abs() < 1e-16 {
+            break;
+        }
+        // newton, tartetik irtetzen bada erdibitu
+        let step = if p > 0.0 { y - err / p } else { f64::NAN };
+        y = if step > lo && step < hi {
+            step
+        } else {
+            (lo + hi) / 2.0
+        };
+    }
+    x0 + y
+}
+
+// egoera estutu puru bat: R(ψ) D(a) S(r e^{iθ}) |0>, a >= 0
+#[derive(Clone, Copy, Debug)]
+pub struct Pure {
+    pub a: f64,
+    pub r: f64,
+    pub theta: f64,
+    pub psi: f64,
+}
+
+impl Pure {
+    // laborategiko egoera D(α) S(r) |0> (X estutua), α konplexua
+    pub fn lab(alpha: C, r: f64) -> Pure {
+        let psi = alpha.arg();
+        Pure {
+            a: alpha.norm(),
+            r,
+            theta: -2.0 * psi,
+            psi,
+        }
+    }
+}
+
+// D(a) S(r e^{iθ}) |0>-ren fotoi-kopurua: batez bestekoa, desbideratzea eta isats estutuaren luzera
+// (anplitudea tanh(r)^{n/2} < 1e-17)
+fn number_stats(a: f64, r: f64, theta: f64) -> (f64, f64, f64) {
+    let (sh, ch) = (r.sinh(), r.cosh());
+    let (s2, c2) = (theta / 2.0).sin_cos();
+    let var =
+        a * a * ((-2.0 * r).exp() * c2 * c2 + (2.0 * r).exp() * s2 * s2) + 2.0 * sh * sh * ch * ch;
+    let tail = if r > 0.0 {
+        2.0 * 39.2 / -(r.tanh().ln())
+    } else {
+        0.0
+    };
+    (a * a + sh * sh, var.sqrt(), tail)
+}
+
+// ln <ψ|e^{iφn}|ψ>, ψ = D(α) S(r e^{iθ}) |0> (bargmann-en integral gaussiarretik), |α|² sin φ fasea gabe
+// (itzulitako bigarren balioa, bere zehaztasunean murrizteko):
+// -ln cosh r - ½ ln(1 - t₂t̄₁) - |δ|²/2 - t₂δ̄²/2 - t̄₁(δ + t₂δ̄)²/(2(1 - t₂t̄₁)), t₁ = e^{iθ} tanh r,
+// t₂ = e^{i(θ+2φ)} tanh r, δ = α(e^{iφ} - 1)
+fn ln_chi(alpha: C, r: f64, theta: f64, phi: f64) -> (C, f64) {
+    let tr = r.tanh();
+    let t1 = C::from_polar(tr, theta);
+    let t2 = C::from_polar(tr, theta + 2.0 * phi);
+    // e^{iφ} - 1 = 2i sin(φ/2) e^{iφ/2}, ezeztapenik gabe
+    let (sh, ch) = (phi / 2.0).sin_cos();
+    let em1 = C::new(-2.0 * sh * sh, 2.0 * sh * ch);
+    let delta = alpha * em1;
+    let den = 1.0 - t2 * t1.conj();
+    let dc = delta.conj();
+    let q = -r.cosh().ln()
+        - 0.5 * den.ln()
+        - delta.norm_sqr() / 2.0
+        - t2 * dc * dc / 2.0
+        - t1.conj() * (delta + t2 * dc) * (delta + t2 * dc) / (2.0 * den);
+    (q, alpha.norm_sqr() * phi.sin())
+}
+
+// <ψ|e^{iφn} a|ψ> = χ(φ)·(Γ - e^{i(θ+φ)} tanh r Γ̄)/(cosh r - sinh r tanh r e^{2iφ}), Γ = α cosh r + ᾱ e^{iθ} sinh r
+// (a ψ = (Γ - e^{iθ} sinh r a†)ψ/cosh r eta <e^{iφn}a†> = e^{iφ} conj <e^{-iφn}a>-tik). kerr-en batez besteko
+// eremua φ = -2κ-n da: <U†aU> = <e^{-2iκn} a>
+fn mean_factor(alpha: C, r: f64, theta: f64, phi: f64) -> C {
+    let (sh, ch) = (r.sinh(), r.cosh());
+    let e = C::from_polar(1.0, theta);
+    let big = alpha * ch + alpha.conj() * e * sh;
+    (big - C::from_polar(r.tanh(), theta + phi) * big.conj())
+        / (ch - C::from_polar(sh * r.tanh(), 2.0 * phi))
+}
+
+// kerr-en batez besteko eremua <U†aU> egoera puru batean: D(α) S(r) |0>
+pub fn kerr_mean_pure(alpha: C, r: f64, kappa: f64) -> C {
+    let phi = -2.0 * kappa;
+    let (q, big) = ln_chi(alpha, r, 0.0, phi);
+    (q + C::new(0.0, big)).exp() * mean_factor(alpha, r, 0.0, phi)
+}
+
+// kerr-en batez besteko eremua (α unitateetan) argi estutu eta galdu baterako: egoera nahastea D(a + iu) S(r)|0>
+// u ~ N(0, s²) gainean. ln χ zehazki koadratikoa da u-n eta faktorea lineala, beraz batez bestekoa integral
+// gaussiar itxia da: e^{q0 + q1²/(4A)} √(π/A)/(√(2π) s) (g0 + g1 q1/(2A)), A = 1/(2s²) - q2
+pub fn kerr_mean_mixed(a: f64, r: f64, s: f64, kappa: f64) -> C {
+    let phi = -2.0 * kappa;
+    let at = |u: f64| {
+        let alpha = C::new(a, u);
+        let (q, big) = ln_chi(alpha, r, 0.0, phi);
+        // |α|² sin φ = a² sin φ + u² sin φ: a²-ren zatia konstantea da
+        (
+            q + C::new(0.0, big - a * a * phi.sin()),
+            mean_factor(alpha, r, 0.0, phi),
+        )
+    };
+    let big0 = a * a * phi.sin();
+    let (r0, g0) = at(0.0);
+    if s == 0.0 {
+        return C::from_polar(1.0, big0) * r0.exp() * g0;
+    }
+    let ((rp, gp), (rm, gm)) = (at(s), at(-s));
+    let q1 = (rp - rm) / (2.0 * s);
+    let q2 = ((rp + rm) / 2.0 - r0) / (s * s);
+    let g1 = (gp - gm) / (2.0 * s);
+    let big_a = C::new(1.0 / (2.0 * s * s), 0.0) - q2;
+    let pref = (C::new(PI, 0.0) / big_a).sqrt() / ((2.0 * PI).sqrt() * s);
+    C::from_polar(1.0, big0)
+        * (r0 + q1 * q1 / (4.0 * big_a)).exp()
+        * pref
+        * (g0 + g1 * q1 / (2.0 * big_a))
+}
+
+// D(α) S(r) |0>-ren fotoi-kopuruaren banaketa zehatza: P(n) = (1/M) Σ_k χ(2πk/M) e^{-i2πkn/M} leiho batean
+// (euskarria ± 12σ + isatsa); leihotik kanpoko probabilitatea < 1e-34 denez, aliasing-a arbuiagarria da.
+// itzultzen du (lehen n, probabilitateak)
+pub fn number_distribution(alpha: C, r: f64) -> (i64, Vec<f64>) {
+    let theta_rel = -2.0 * alpha.arg();
+    let (n_bar, std, tail) = number_stats(alpha.norm(), r, theta_rel);
+    let w = 12.0 * std + 31.0 + tail;
+    let m = ((2.0 * w).ceil() as usize).max(64).next_power_of_two();
+    let n_lo = n_bar.round() as i64 - (m / 2) as i64;
+    let (a2, a2e) = crate::dd::two_prod::<false>(alpha.norm(), alpha.norm());
+    let mut buf: Vec<C> = (0..m)
+        .map(|k| {
+            let phi = TWO_PI_HI * k as f64 / m as f64;
+            let (q, _) = ln_chi(alpha, r, 0.0, phi);
+            let big = phase_mod2(a2, a2e, phi.sin());
+            // e^{-iφ n_lo}, osoko aritmetikaz
+            let shift = ((k as i128 * n_lo as i128).rem_euclid(m as i128)) as f64;
+            let ph = big - TWO_PI_HI * shift / m as f64;
+            q.exp() * C::from_polar(1.0, ph)
+        })
+        .collect();
+    FftPlanner::new().plan_fft_forward(m).process(&mut buf);
+    let inv = 1.0 / m as f64;
+    let probs = (0..m)
+        .map(|j| {
+            if n_lo + (j as i64) < 0 {
+                0.0
+            } else {
+                (buf[j].re * inv).max(0.0)
+            }
+        })
+        .collect();
+    (n_lo, probs)
+}
+
+// fotoi-zenbaketa bat D(α) S(r) |0>-n: banaketa zehatzaren alderantzizkoa
+pub fn count_pure(alpha: C, r: f64, rng: &mut StdRng) -> u64 {
+    let (n_lo, probs) = number_distribution(alpha, r);
+    let mut cum = Vec::with_capacity(probs.len());
+    let mut acc = crate::dd::Dd::ZERO;
+    for &p in &probs {
+        acc.add(p);
+        cum.push(acc.value());
+    }
+    let u = rng.random::<f64>() * acc.value();
+    let j = cum.partition_point(|&c| c <= u).min(probs.len() - 1);
+    (n_lo + j as i64).max(0) as u64
 }
 
 // κ·q mod 2π, q = hi + lo (double-double) bider s

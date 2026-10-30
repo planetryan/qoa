@@ -938,6 +938,16 @@ pub fn run(o: &Options) -> Result<(), String> {
         },
     );
     line(ts!("detection", "detekzioa"), label_detect(o.light.detect));
+    if o.light.detect == light::Detect::Mean && o.light.squeeze_db > 0.0 && o.light.kerr == 0.0 {
+        line(
+            ts!("note", "oharra"),
+            ts!(
+                "squeezing changes only the quantum noise, which --detect mean averages away: here it has no effect",
+                "estutzeak zarata kuantikoa bakarrik aldatzen du, eta --detect mean-ek hori batez bestekoan ezabatzen du: hemen ez du eraginik"
+            )
+            .to_string(),
+        );
+    }
 
     let audio_out: &[Vec<f64>] = match o.mode {
         Mode::KeepAudio => &audio.channels,

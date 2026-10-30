@@ -72,8 +72,21 @@ Nothing in the light is approximated:
 - The noise comes from a seeded generator per channel and block, so the same seed gives the same output on
   any number of threads.
 
-Two combinations are not implemented yet, and are errors that say so: squeezed light through a Kerr medium
-(`--squeeze` with `--kerr`), and counting squeezed light (`--squeeze` with `--detect count`).
+Squeezed light is exact in every combination:
+
+- **Loss.** Squeezed light that has gone through loss is a mixed Gaussian state. It is written exactly as a
+  pure squeezed state displaced by classical Gaussian noise in the P quadrature, so each shot draws that
+  noise and then works with a pure state.
+- **Counting.** The photon numbers of a displaced squeezed state come from the FFT of its characteristic
+  function ⟨e^{iφn̂}⟩, which has a closed form (a Gaussian integral). They are checked against Poisson to
+  1e-14 and against a direct photon-number recurrence to 1e-13.
+- **Through a Kerr medium.** The same expansion is used with rotated squeezed coherent states, whose
+  amplitudes follow a three-term recurrence kept on a separate scale so nothing underflows. The density
+  agrees with a direct photon-number-basis sum to 1e-12.
+- **Mean field.** ⟨e^{iφn̂}a⟩ has a closed form for a squeezed coherent state, and averaging it over the
+  loss noise is a closed-form Gaussian integral. It agrees with direct computation to 1e-12.
+- **With `--detect mean` and no Kerr,** squeezing has no effect: it changes only the noise, which the mean
+  removes. The report says so.
 
 ## The video
 

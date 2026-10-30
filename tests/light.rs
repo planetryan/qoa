@@ -8,7 +8,8 @@
 
 use num_complex::Complex64 as Cx;
 use qoa::light::{
-    self, Detect, KerrSampler, Light, Mdct, kerr_mean, normal_pair, poisson, poisson_log_pmf,
+    self, Detect, KerrSampler, Light, Mdct, Pure, count_pure, kerr_mean, kerr_mean_mixed,
+    kerr_mean_pure, normal_pair, number_distribution, poisson, poisson_log_pmf,
 };
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
@@ -194,23 +195,8 @@ fn normals_have_unit_variance() {
 }
 
 #[test]
-fn combinations_without_an_exact_computation_are_errors() {
-    let bad = [
-        Light {
-            kerr: 1.0,
-            squeeze_db: 3.0,
-            ..Light::default()
-        },
-        Light {
-            squeeze_db: 3.0,
-            detect: Detect::Mean,
-            ..Light::default()
-        },
-        Light {
-            squeeze_db: 3.0,
-            detect: Detect::Count,
-            ..Light::default()
-        },
+fn every_combination_has_an_exact_computation() {
+    for l in [
         Light {
             loss: 1.0,
             ..Light::default()
@@ -219,20 +205,24 @@ fn combinations_without_an_exact_computation_are_errors() {
             photons: 0.0,
             ..Light::default()
         },
-    ];
-    for l in bad {
+        Light {
+            squeeze_db: 40.0,
+            ..Light::default()
+        },
+    ] {
         assert!(l.check().is_err(), "{:?}", l);
     }
     for detect in [Detect::Mean, Detect::Count, Detect::Homodyne] {
-        assert!(
-            Light {
-                kerr: 2.0,
+        for (kerr, squeeze_db) in [(0.0, 0.0), (2.0, 0.0), (0.0, 6.0), (2.0, 6.0)] {
+            let l = Light {
+                kerr,
+                squeeze_db,
+                loss: 0.2,
                 detect,
                 ..Light::default()
-            }
-            .check()
-            .is_ok()
-        );
+            };
+            assert!(l.check().is_ok(), "{:?}", l);
+        }
     }
 }
 
@@ -372,5 +362,161 @@ fn kerr_homodyne_cdf_is_the_integral_of_the_density() {
                 );
             }
         }
+    }
+}
+
+// D(α) S(r) |0> fock oinarrian, n = 0-tik: c_0 = e^{-|α|²/2 - ᾱ² tanh r/2}/√cosh r,
+// c_{n+1} = ((α + ᾱ tanh r) c_n - tanh r √n c_{n-1})/√(n+1)
+fn squeezed_fock(alpha: Cx, r: f64, n_max: usize) -> Vec<Cx> {
+    let tr = r.tanh();
+    let mut c = vec![Cx::new(0.0, 0.0); n_max];
+    c[0] =
+        (-alpha.norm_sqr() / 2.0 - alpha.conj() * alpha.conj() * tr / 2.0).exp() / r.cosh().sqrt();
+    let big = alpha + alpha.conj() * tr;
+    for n in 0..n_max - 1 {
+        let prev = if n > 0 { c[n - 1] } else { Cx::new(0.0, 0.0) };
+        c[n + 1] = (big * c[n] - prev * tr * (n as f64).sqrt()) / ((n + 1) as f64).sqrt();
+    }
+    c
+}
+
+#[test]
+fn photon_numbers_of_squeezed_light_are_exact() {
+    // estutzerik gabe: poisson zehazki
+    let (lo, p) = number_distribution(Cx::new(30.0, 0.0), 0.0);
+    for (j, &pj) in p.iter().enumerate() {
+        let n = lo + j as i64;
+        let want = if n < 0 {
+            0.0
+        } else {
+            poisson_log_pmf(n as u64, 900.0).exp()
+        };
+        assert!((pj - want).abs() < 1e-14, "n {}: {} {}", n, pj, want);
+    }
+    // estutuarekin: fock-eko errepikapen zuzenarekin, eta batez bestekoa eta bariantza formulekin
+    for (alpha, r) in [
+        (Cx::new(3.0, 0.0), 0.5),
+        (Cx::new(2.0, 1.5), 0.8),
+        (Cx::new(0.0, 0.0), 1.0),
+        (Cx::new(-4.0, 0.5), 0.3),
+    ] {
+        let (lo, p) = number_distribution(alpha, r);
+        let c = squeezed_fock(alpha, r, 400);
+        for (j, &pj) in p.iter().enumerate() {
+            let n = lo + j as i64;
+            if (0..400).contains(&n) {
+                let want = c[n as usize].norm_sqr();
+                assert!(
+                    (pj - want).abs() < 1e-13,
+                    "α {} r {} n {}: {} {}",
+                    alpha,
+                    r,
+                    n,
+                    pj,
+                    want
+                );
+            }
+        }
+        let total: f64 = p.iter().sum();
+        assert!((total - 1.0).abs() < 1e-12, "{}", total);
+    }
+    // laginak: batez bestekoa |α|² + sinh² r
+    let mut rng = StdRng::seed_from_u64(4);
+    let (alpha, r) = (Cx::new(20.0, 0.0), 0.6);
+    let m = 20_000;
+    let mean = (0..m)
+        .map(|_| count_pure(alpha, r, &mut rng) as f64)
+        .sum::<f64>()
+        / m as f64;
+    let want = 400.0 + r.sinh().powi(2);
+    let var = 400.0 * (-2.0 * r).exp() + 2.0 * (r.sinh() * r.cosh()).powi(2);
+    assert!(
+        (mean - want).abs() < 5.0 * (var / m as f64).sqrt(),
+        "{} {}",
+        mean,
+        want
+    );
+}
+
+#[test]
+fn kerr_mean_field_of_squeezed_light_is_exact() {
+    for (alpha, r, kappa) in [
+        (Cx::new(3.0, 0.0), 0.4, 0.05),
+        (Cx::new(2.0, -1.0), 0.7, 0.02),
+        (Cx::new(0.0, 0.0), 0.9, 0.1),
+    ] {
+        let c = squeezed_fock(alpha, r, 400);
+        let mut want = Cx::new(0.0, 0.0);
+        for n in 0..399 {
+            let a = c[n] * Cx::from_polar(1.0, -kappa * (n * n.saturating_sub(1)) as f64);
+            let b = c[n + 1] * Cx::from_polar(1.0, -kappa * ((n + 1) * n) as f64);
+            want += a.conj() * b * ((n + 1) as f64).sqrt();
+        }
+        let got = kerr_mean_pure(alpha, r, kappa);
+        assert!(
+            (got - want).norm() < 1e-12,
+            "{} {} {}: {} {}",
+            alpha,
+            r,
+            kappa,
+            got,
+            want
+        );
+    }
+    // galeraren zarataren gaineko batez bestekoa, trapezioekin u-ren gainean
+    let (a, r, s, kappa) = (5.0, 0.5, 0.7, 0.01);
+    let n = 8000;
+    let h = 24.0 * s / n as f64;
+    let mut num = Cx::new(0.0, 0.0);
+    for i in 0..=n {
+        let u = -12.0 * s + i as f64 * h;
+        let w = (-u * u / (2.0 * s * s)).exp() / ((2.0 * std::f64::consts::PI).sqrt() * s);
+        let f = kerr_mean_pure(Cx::new(a, u), r, kappa) * w * h;
+        num += if i == 0 || i == n { f / 2.0 } else { f };
+    }
+    let closed = kerr_mean_mixed(a, r, s, kappa);
+    assert!((closed - num).norm() < 1e-12, "{} {}", closed, num);
+}
+
+#[test]
+fn kerr_homodyne_of_squeezed_light_matches_the_fock_sum() {
+    for (alpha, r, kappa) in [
+        (Cx::new(3.0, 0.0), 0.4, 0.05),
+        (Cx::new(2.0, 1.0), 0.6, 0.03),
+        (Cx::new(0.0, 0.0), 0.7, 0.1),
+    ] {
+        let c = squeezed_fock(alpha, r, 300);
+        let sampler = KerrSampler::new(kappa);
+        let state = Pure::lab(alpha, r);
+        let mut worst: f64 = 0.0;
+        for i in -300..=300 {
+            let x = i as f64 * 0.04;
+            let mut psi_prev = 0.0;
+            let mut psi = std::f64::consts::PI.powf(-0.25) * (-x * x / 2.0).exp();
+            let mut amp = Cx::new(0.0, 0.0);
+            for (n, cn) in c.iter().enumerate() {
+                amp += cn * Cx::from_polar(1.0, -kappa * (n * n.saturating_sub(1)) as f64) * psi;
+                let next = (2.0 / (n + 1) as f64).sqrt() * x * psi
+                    - (n as f64 / (n + 1) as f64).sqrt() * psi_prev;
+                psi_prev = psi;
+                psi = next;
+            }
+            worst = worst.max((sampler.density_pure(&state, x) - amp.norm_sqr()).abs());
+        }
+        assert!(worst < 1e-12, "{} {} {}: {}", alpha, r, kappa, worst);
+    }
+    // distiratsua eta kerr ia gabe: X ~ N(√2 a, e^{-2r}/2)
+    let (a, r) = (300.0, 0.5);
+    let sampler = KerrSampler::new(1e-16);
+    let state = Pure::lab(Cx::new(a, 0.0), r);
+    let v = (-2.0 * r).exp() / 2.0;
+    for dx in [-1.0, -0.3, 0.0, 0.2, 0.8] {
+        let x = 2f64.sqrt() * a + dx;
+        let want = (-dx * dx / (2.0 * v)).exp() / (2.0 * std::f64::consts::PI * v).sqrt();
+        assert!(
+            (sampler.density_pure(&state, x) - want).abs() < 1e-9,
+            "{}",
+            dx
+        );
     }
 }

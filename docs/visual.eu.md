@@ -75,8 +75,21 @@ Argian ez da ezer hurbiltzen:
 - Zarata kanal eta bloke bakoitzeko hazi bidezko sorgailu batetik dator, beraz hazi berak irteera bera
   ematen du edozein hari-kopururekin.
 
-Bi konbinazio ez daude oraindik inplementatuta, eta hala dioten erroreak dira: argi estutua kerr ingurune
-batetik (`--squeeze` eta `--kerr`), eta argi estutuaren zenbaketa (`--squeeze` eta `--detect count`).
+Argi estutua zehatza da konbinazio guztietan:
+
+- **Galera.** Galeratik pasatu den argi estutua egoera gaussiar nahasia da. Zehazki idazten da P
+  koadraturan zarata gaussiar klasikoz desplazatutako egoera estutu puru gisa, beraz shot bakoitzak zarata
+  hori ateratzen du eta gero egoera puru batekin lan egiten du.
+- **Zenbaketa.** Egoera estutu desplazatu baten fotoi-kopuruak haren funtzio karakteristikoaren,
+  ⟨e^{iφn̂}⟩-ren, fft-tik datoz, eta funtzio horrek forma itxia du (integral gaussiar bat). Poisson-ekin
+  egiaztatzen dira 1e-14-raino, eta fotoi-kopuruaren errepikapen zuzen batekin 1e-13-raino.
+- **Kerr ingurune batetik.** Garapen bera erabiltzen da egoera koherente estutu biratuekin. Haien anplitudeek
+  hiru gaiko errepikapen bati jarraitzen diote, eskala bereizian gordeta, ezer azpigainezka ez dadin.
+  Dentsitatea fotoi-kopuruaren oinarriko batura zuzen batekin bat dator 1e-12-raino.
+- **Batez besteko eremua.** ⟨e^{iφn̂}a⟩-k forma itxia du egoera koherente estutu baterako, eta galeraren
+  zarataren gaineko batez bestekoa integral gaussiar itxia da. Kalkulu zuzenarekin bat dator 1e-12-raino.
+- **`--detect mean`-ekin eta kerr-ik gabe,** estutzeak ez du eraginik: zarata bakarrik aldatzen du, eta
+  batez bestekoak hori kentzen du. Txostenak hala dio.
 
 ## Bideoa
 

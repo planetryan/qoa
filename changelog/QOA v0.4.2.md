@@ -12,8 +12,12 @@
   * Each sample is a mode of light (orthonormal MDCT) carrying a coherent state; the circuit has a
     beamsplitter mesh, loss, squeezing and Kerr self-phase modulation. Detection is the exact mean, one
     homodyne shot per mode with real vacuum noise, or photon counting.
-  * All of it is exact, including homodyne shots of the non-Gaussian state a Kerr medium leaves, sampled
-    from their exact distribution (within 1e-12). See [docs/visual.md](../docs/visual.md).
+  * All of it is exact in every combination. That includes:
+    * homodyne shots of the non-Gaussian state a Kerr medium leaves, sampled from their exact
+      distribution (within 1e-12);
+    * squeezed light through loss and a Kerr medium;
+    * photon counting of squeezed light.
+  * See [docs/visual.md](../docs/visual.md).
   * Decoding is in 64-bit floating point; `.wav` and `.flac` outputs are 24-bit by default.
 
 ## Changed
@@ -37,8 +41,12 @@
   * Lagin bakoitza egoera koherente bat daraman argi-modu bat da (MDCT ortonormala); zirkuituak
     habe-zatitzaile sare bat, galera, estutzea eta kerr fase-modulazio propioa ditu. Detekzioa batez besteko
     zehatza da, shot homodino bat modu bakoitzeko hutsaren benetako zaratarekin, edo fotoi-zenbaketa.
-  * Dena zehatza da, kerr ingurune batek uzten duen egoera ez-gaussiarraren shot homodinoak barne, haien
-    banaketa zehatzetik laginduta (1e-12-ren barruan). Ikus [docs/visual.eu.md](../docs/visual.eu.md).
+  * Dena zehatza da konbinazio guztietan. Barne daude:
+    * kerr ingurune batek uzten duen egoera ez-gaussiarraren shot homodinoak, haien banaketa zehatzetik
+      laginduta (1e-12-ren barruan);
+    * argi estutua galeratik eta kerr ingurune batetik;
+    * argi estutuaren fotoi-zenbaketa.
+  * Ikus [docs/visual.eu.md](../docs/visual.eu.md).
   * Deskodetzea 64 biteko koma higikorrean egiten da; `.wav` eta `.flac` irteerak 24 bitekoak dira lehenetsiz.
 
 ## Aldatua

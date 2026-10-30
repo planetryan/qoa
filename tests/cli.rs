@@ -732,22 +732,31 @@ fn visual_carries_audio_through_light() {
     );
     assert!(o.status.success(), "{}{}", stdout(&o), stderr(&o));
     assert_eq!(decode(&kerr).len(), input.len());
-    // inplementatu gabea errore bat da
-    let o = qoa(
-        "en",
-        &[
-            "visual",
-            wav.to_str().unwrap(),
-            "x.wav",
-            "--audio-only",
-            "--kerr",
-            "1",
-            "--squeeze",
-            "3",
-        ],
-    );
-    assert!(!o.status.success());
-    assert!(stderr(&o).contains("not implemented"), "{}", stderr(&o));
+    // argi estutua eta galdua kerr ingurune batetik, eta estutuaren zenbaketa
+    for detect in ["homodyne", "count", "mean"] {
+        let out = scratch(&format!("light-squeezed-{}.wav", detect));
+        let o = qoa(
+            "en",
+            &[
+                "visual",
+                wav.to_str().unwrap(),
+                out.to_str().unwrap(),
+                "--audio-only",
+                "--kerr",
+                "1",
+                "--squeeze",
+                "3",
+                "--loss",
+                "0.2",
+                "--photons",
+                "100",
+                "--detect",
+                detect,
+            ],
+        );
+        assert!(o.status.success(), "{}{}", stdout(&o), stderr(&o));
+        assert_eq!(decode(&out).len(), input.len());
+    }
     let o = qoa(
         "en",
         &[
