@@ -1,14 +1,14 @@
-# QOA glyph syntax (draft 0)
+# QOA glyph syntax
 
 [Euskaraz: glyph.eu.md](glyph.eu.md)
 
-**Status: a draft for review.** It is implemented and tested, so it can be tried, but every choice below is
-a proposal. The open questions at the end are the decisions that are yours to make.
+**Status: experimental.** The syntax is implemented and tested, but it may still change in a later version;
+any change will be listed in the release notes. The points that are not settled yet are at the end.
 
 ## Why
 
-The plain QOA syntax is one instruction per line, spelled out: `CNOT q0 q1`. The concept sketch this draft
-starts from packs a whole idea into one line:
+The plain QOA syntax is one instruction per line, spelled out: `CNOT q0 q1`. The glyph syntax started from a
+one-line sketch that packs a whole idea into a single line:
 
 ```
 H/R{3}[0xMEMORY_LOCATION?]; CC"V"%3$>#2PF"Measuring:" PR"R"%O$>#OPF"Result:" PF"O"%O$<<>>; END;
@@ -41,9 +41,9 @@ MEASURE q0 -> c0
 MEASURE q1 -> c1
 ```
 
-## Reading the concept
+## Reading the original sketch
 
-| concept | draft 0 reading |
+| sketch | meaning |
 |---|---|
 | `H/R{3}` | `R{3}` declares a register of 3 qubits; `H/R` applies H to each of them |
 | `[0xMEMORY_LOCATION?]` | right after a declaration, a location: `R{3}[0x4]` places R at q4..q6. After a name, an element: `R[0x2]` |
@@ -54,16 +54,16 @@ MEASURE q1 -> c1
 | `;` | ends a statement, so a line can hold many |
 | `END;` | stop (already QOA's alias for HALT) |
 | `CC"V"%3$>#2` | call classical: call routine V with the argument 3 and put its result in R2 (see [Classical calls](#classical-calls-cc)) |
-| `PR"R"%O` | not mapped yet: see the open questions |
+| `PR"R"%O` | not defined yet: see [Not settled yet](#not-settled-yet) |
 
-[examples/concept.qg](../examples/concept.qg) is the concept written out as a working draft-0 program.
+[examples/concept.qg](../examples/concept.qg) is that sketch written out as a working program.
 
 ## Reference
 
 ### Statements and comments
 
 - Every statement ends with `;`. Any number of statements fit on a line; newlines mean nothing.
-- A line whose first character is `;` is a comment (as in the concept). `//` starts a comment anywhere.
+- A line whose first character is `;` is a comment (as in the original sketch). `//` starts a comment anywhere.
 
 ### Registers
 
@@ -182,9 +182,7 @@ M/Q[0..1]$>#C[0..1];                            MEASURE q0 -> c0 / MEASURE q1 ->
 U(-1.0, 0.3, -0.5)/Q[2]; M/Q[2]$>#C[2];         U q2 -1.0 0.3 -0.5 / MEASURE q2 -> c2
 ```
 
-## Decided, and still open
-
-Decided (October 2026):
+## Design choices
 
 - **`CC`** is "call classical", a call to a memory location: `CC[0x10]` with the stack convention above.
 - **`%`** is a logical starter and separator for values.
@@ -193,10 +191,12 @@ Decided (October 2026):
   `data[1]` or `data`; `q0`, `c0` and `o0` keep working.
 - **The other direction** exists: `qoa export --to glyph` (or `--to-glyph`) with the options above.
 
-Still open:
+## Not settled yet
 
-1. **Separators.** The concept chains statements without `;` (`$>#2PF"Measuring:"`). Draft 0 requires `;`
-   so that an error can always say exactly where a statement ended. Should a new instruction name end the
-   previous statement on its own?
-2. **`PR`.** What does `PR"R"%O$>#O` stand for? (A guess: print a register.) It can become a glyph once its
-   meaning is settled.
+1. **Separators.** The original sketch chains statements without `;` (`$>#2PF"Measuring:"`). Today `;` is
+   required, so that an error can always say exactly where a statement ended. Whether a new instruction name
+   should end the previous statement on its own is still open.
+2. **`PR`.** The sketch's `PR"R"%O$>#O` has no defined meaning yet (printing a register is one reading). It
+   can become a glyph once its meaning is settled.
+
+Suggestions on either are welcome as an issue.

@@ -55,7 +55,7 @@ The report's `cpu` line says which kernels ran.
 
 Single gates at 27 qubits (main memory, ceiling about 75 GB/s):
 
-| gate | QOA 0.4.0 at commit 5750d4e | now |
+| gate | early 0.4.0 (commit 5750d4e) | 0.4.0 release |
 |---|---|---|
 | H on q0 | 19 GB/s | 66 GB/s |
 | H on q1 | 28 GB/s | 67 GB/s |
@@ -82,7 +82,7 @@ by arithmetic inside the cache and by bandwidth outside it.
 
 Whole circuits:
 
-| circuit | QOA 0.3.5 | QOA 0.4.0 (5750d4e) | now | Qiskit Aer 0.17 |
+| circuit | QOA 0.3.5 | early 0.4.0 (5750d4e) | 0.4.0 release | Qiskit Aer 0.17 |
 |---|---|---|---|---|
 | 24 qubits, 5 layers of H, CNOT chain, RZ (355 gates) | 23.3 s | 4.1 s | 0.83 - 0.90 s | 3.7 s (5.6 s without fusion) |
 | 27 qubits, one layer of 27 H gates | | 1.5 s (27 passes) | 0.68 s | |

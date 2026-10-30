@@ -76,21 +76,21 @@ lagun diezaieke, adibidez BasQ programaren eta Donostiako IBM ordenagailu kuanti
 | sareen denbora eta memoria-degradazioa eskalan | NetSquid, SeQUeNCe | QOA-k ez du denbora-nozioa |
 | hardwarean egunero exekutatzea | hornitzaileen SDKak | QOA-k haietara esportatzen du, baina ez du lanen kudeaketarik |
 
-## Hartzea: zer doan QOA-ren aurka, eta zer alde
+## Hartzea: zerk eragozten duen, eta zer duen QOA-k
 
-Jendeak ez ditu tresnak merituagatik bakarrik aukeratzen. Dagoeneko erabiltzen dutenean mantentzen
-dituzten indarrak:
+Jendeak ez ditu tresnak merituagatik bakarrik aukeratzen. Hauek dira dagoeneko erabiltzen dutenean
+mantentzen dituzten indarrak, eta QOA bakoitzean non dagoen:
 
-| indarra | QOA-ri zenbat eragiten dion | QOA-k dagoeneko duena | gehien lagunduko lukeena |
+| indarra | QOA-ri zenbat eragiten dion | QOA-k duena | gehien lagunduko lukeena |
 |---|---|---|---|
 | **Python ohitura**: ikastaroek, koadernoek eta lanek `pip install` eta Python suposatzen dituzte | gogor | edozein lengoaiak irakur dezakeen JSON txosten bat; OpenQASM sarrera eta irteera | Python pakete bat (pyo3 eta maturin-ekin), `run(iturburua)`-k txostena hiztegi gisa itzultzen duela, eta qiskit-eko zirkuituetara eta haietatik bihurketak |
-| **Instalatzeko marruskadura**: Rust tresna-kate bat oztopo bat da ikasleentzat | gogor | bitar bakar bat, sistemaren C liburutegia baino behar ez duena (eta ffmpeg `qoa visual`-erako) | aurrez konpilatutako bitarrak x86-64, ARM eta RISC-V-rako GitHub Releases-en; `cargo install qoa` |
-| **Ekosistema eta babesa**: IBM, Google, Xanadu, Quandela daude tresna handien atzean | gogor, eta ez konpongarria | elkarreragingarritasuna: QOA-k ez dio inori eskatzen qiskit edo Perceval uzteko | QOA lagun gisa kokatu, ez ordezko gisa |
+| **Instalatzeko marruskadura** | ertaina | 15 sistematarako bitar prestatuak: Windows, macOS eta Linux x86-64 eta ARM64-n, Linux RISC-V, IBM POWER, IBM Z eta LoongArch-en, eta Android-en ere ibiltzen diren bitar estatikoak | `cargo install qoa` crates.io-tik |
+| **Ekosistema eta babesa**: IBM, Google, Xanadu, Quandela daude tresna handien atzean | gogor, eta ez konpongarria | elkarreragingarritasuna: QOA-k ez dio inori eskatzen qiskit edo Perceval uzteko | QOA lagun gisa, ez ordezko gisa |
 | **"Mihiztadura" zaila dirudi** | ertaina | mnemoniko irakurgarriak, lerroa iradokizun batekin seinalatzen duten erroreak, glifo-sintaxia dentsitaterako | jendeak dagoeneko ezagutzen duen OpenQASM-etik hasten den bost minutuko tutorial bat |
-| **Konfiantza**: proiektu txiki bat zuzena al da? | ertaina | ohiz kanpoko proba-multzo zorrotz bat: erreferentziazko simulagailua, permanenteak, qiskit eta Perceval egiaztapen gurutzatuak, adibide guztien baieztapenak egiaztatuak | etengabeko integrazioa GitHub-en (probak x86-64-n, eta ARM eta RISC-V qemu-n) txapa ikusgai batekin |
-| **Mantentzaile bakarra**: hemendik urtebetera egongo da? | ertaina | kode-oinarri txiki eta irakurgarri bat, erabaki dokumentatuak | ekarpen-gida bat, arazo-txantiloiak, hasteko arazo on batzuk |
-| **Lizentzia**: GPL-3.0-k enpresa batzuk txertatzetik aldentzen ditu | baxua irakaskuntza eta ikerketarako, erreala industriarako | GPL-k proiektuaren irekitasuna babesten du | jabearen erabakia; LGPL edo lizentzia bikoitza dira ohiko konpromisoak |
-| **Hizkuntza**: tresna gehienak ingelesez bakarrik daude | QOA-ren *alde* doa euskarazko irakaskuntzan | euskara eta ingelesa osorik | euskarazko tutorialak; UPV/EHU eta BasQ-ekin harremana |
+| **Konfiantza**: proiektu txiki bat zuzena al da? | ertaina | proba-multzo zorrotz bat (erreferentziazko simulagailua, permanenteak, qiskit, aer eta Perceval egiaztapen gurutzatuak, adibide guztien baieztapenak egiaztatuak), CI publikoan prozesadore guztietan exekutatua | erabiltzaile independenteak aurkitu dutena jakinarazten |
+| **Mantentzaile bakarra**: hemendik urtebetera egongo da? | ertaina | kode-oinarri txiki eta irakurgarri bat, diseinu-aukera dokumentatuak eta [ekarpen-gida](../CONTRIBUTING.eu.md) bat | arazo-txantiloiak eta hasteko arazo on batzuk |
+| **Lizentzia**: GPL-3.0-k enpresa batzuk txertatzetik aldentzen ditu | baxua irakaskuntza eta ikerketarako, erreala industriarako | GPL-k proiektua irekita mantentzen du | proiektuaren lizentzia-aukera bat; LGPL edo lizentzia bikoitza dira ohiko konpromisoak |
+| **Hizkuntza**: tresna gehienak ingelesez bakarrik daude | QOA-ren *alde* doa euskarazko irakaskuntzan | euskara eta ingelesa osorik | euskarazko tutorialak |
 
 QOA-ren alde doana, batez ere, **lehendik daudenak mehe diren lekuan desberdina izatea** da: qubitak eta
 fotoiak programa bakarrean, egiazta daitezkeen erantzun zehatzak, nola kalkulatu diren esaten duten
@@ -98,13 +98,18 @@ emaitzak, eta bigarren hizkuntza bat. Ez du qiskit-i irabazi behar erabiltzea me
 gutxi batzuetarako tresna onena izan behar du, eta sartzeko aldaketa merkeena da dagoeneko OpenQASM
 irakurri eta idazten duela.
 
-## Hurrengo urrats gomendatuak, ahaleginaren araberako balioaren ordenan
+## Ibilbide-orria
 
-1. Aurrez konpilatutako bitarrak GitHub Releases-en, eta etengabeko integrazioa txapa batekin.
-2. Python pakete bat API minimo batekin (exekutatu, txostena hiztegi gisa, qiskit bihurketa) eta hiru
+Ahaleginaren araberako balioaren ordenan:
+
+1. Python pakete bat API minimo batekin (exekutatu, txostena hiztegi gisa, qiskit bihurketa) eta hiru
    koaderno (HOM, entrelazamendu iragarria, kerr zulo beltza) ingelesez eta euskaraz.
-3. OpenQASM 3 esportazioa, begiztak, erregistroak eta arrakasta lortu arteko errepikapenak dituzten
+2. OpenQASM 3 esportazioa, begiztak, erregistroak eta arrakasta lortu arteko errepikapenak dituzten
    programak hardwarera irits daitezen.
-4. Harremana euskarazko ikastaro kuantikoekin eta BasQ programarekin.
-5. Glifo-sintaxia finkatu (bere galdera irekiak [glyph.eu.md](glyph.eu.md)-n daude) eta JSON txostenaren
-   egonkortasuna, beste programek emaitzak irakurtzeko erabiltzen duten "ABI klasikoa".
+3. Quandela-ren Perceval-erako esportazioa, optika linealeko zatia hardware fotonikoan exekuta dadin.
+4. Euskarazko ikastaroetarako tutorialak.
+5. Glifo-sintaxi egonkor bat (finkatu gabeko puntuak [glyph.eu.md](glyph.eu.md)-n daude) eta JSON txosten
+   egonkor bat, beste programek emaitzak irakurtzeko erabiltzen duten "ABI klasikoa".
+
+Eginda dagoeneko: bitar prestatuak eta CI publikoa (0.4.0, 0.4.1-en zabaldua), eta gailu errealen
+kalibrazioetatik ateratako zarata-ereduak (0.4.1).

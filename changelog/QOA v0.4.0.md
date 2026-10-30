@@ -43,7 +43,7 @@ distributed and assembly code was never called. 0.4 fixes all of these.
   `--no-ranges`, `--hex`). Every text export is reassembled and checked against the original.
 * **Named registers, optional**: `QREG data 3`, `CREG flags 2`, `OREG arm 2` in plain QOA, then `data[1]` or
   `data`; plain `q0`, `c0`, `o0` keep working.
-* **Glyph syntax decisions**: `CC[0x10]%a%b$>#2` calls a classical routine at an address with a stack
+* **Glyph syntax, classical calls and placement**: `CC[0x10]%a%b$>#2` calls a classical routine at an address with a stack
   calling convention (`0x10:` labels mark addresses); `R{3}[0x4]` places a register at a location; `%`
   starts and separates values.
 * **CI and releases**: GitHub Actions test every push on Linux, Windows and macOS, and ARM64 and RISC-V under
@@ -59,9 +59,9 @@ distributed and assembly code was never called. 0.4 fixes all of these.
   [docs/kerr.md](../docs/kerr.md).
 * **Exact optics**: displacement and squeezing matrices come from closed forms instead of a padded matrix
   exponential, faster and exact at cutoffs where the old method silently stopped short.
-* **Glyph syntax (draft)**: the same instructions written densely, many per line, in `.qg` files
-  (`Q{2}; H/Q[0]; CX/Q[0],Q[1]; M/Q$>#C;`), built from the original concept sketch. `qoa import` shows the
-  plain QOA behind it and errors point at the glyph. A draft open for review: [docs/glyph.md](../docs/glyph.md).
+* **Glyph syntax (experimental)**: the same instructions written densely, many per line, in `.qg` files
+  (`Q{2}; H/Q[0]; CX/Q[0],Q[1]; M/Q$>#C;`), built from an original one-line sketch. `qoa import` shows the
+  plain QOA behind it and errors point at the glyph. It may still change: [docs/glyph.md](../docs/glyph.md).
 * **OpenQASM 2.0**: the whole language can be imported or run directly (gate definitions, `if`, the full
   `qelib1.inc`), and the qubit part of a program can be exported. IonQ JSON export.
 * **Honest output**: the report says how shots were computed (sampled from one simulation, simulated one by
@@ -158,7 +158,7 @@ konpontzen ditu.
   egiaztatzen da.
 * **Erregistro izendunak, aukerakoak**: `QREG data 3`, `CREG flags 2`, `OREG arm 2` QOA arruntean, gero
   `data[1]` edo `data`; `q0`, `c0`, `o0` arruntek funtzionatzen jarraitzen dute.
-* **Glifo-sintaxiaren erabakiak**: `CC[0x10]%a%b$>#2`-k helbide bateko errutina klasiko bat deitzen du
+* **Glifo-sintaxia, dei klasikoak eta kokapena**: `CC[0x10]%a%b$>#2`-k helbide bateko errutina klasiko bat deitzen du
   pila-konbentzio batekin (`0x10:` etiketek helbideak markatzen dituzte); `R{3}[0x4]`-k erregistro bat
   kokapen batean jartzen du; `%`-k balioak hasi eta bereizten ditu.
 * **CI eta argitalpenak**: GitHub Actions-ek push guztiak probatzen ditu linux, windows eta macos-en, eta
@@ -176,10 +176,10 @@ konpontzen ditu.
   bikoteka datoz. Ikus [docs/kerr.eu.md](../docs/kerr.eu.md).
 * **Optika zehatza**: desplazamendu- eta estutze-matrizeak forma itxietatik datoz, matrize-esponentzial
   betegarridun baten ordez: azkarragoak, eta zehatzak metodo zaharra isilean laburra geratzen zen mugetan.
-* **Glifo-sintaxia (zirriborroa)**: agindu berak modu trinkoan idatzita, lerro bakoitzean asko, `.qg`
-  fitxategietan (`Q{2}; H/Q[0]; CX/Q[0],Q[1]; M/Q$>#C;`), jatorrizko kontzeptu-zirriborrotik abiatuta.
-  `qoa import`-ek atzean dagoen QOA arrunta erakusten du eta erroreek glifoa seinalatzen dute. Berrikusteko
-  zirriborro bat: [docs/glyph.eu.md](../docs/glyph.eu.md).
+* **Glifo-sintaxia (esperimentala)**: agindu berak modu trinkoan idatzita, lerro bakoitzean asko, `.qg`
+  fitxategietan (`Q{2}; H/Q[0]; CX/Q[0],Q[1]; M/Q$>#C;`), lerro bakarreko jatorrizko zirriborro batetik
+  abiatuta. `qoa import`-ek atzean dagoen QOA arrunta erakusten du eta erroreek glifoa seinalatzen dute.
+  Oraindik alda daiteke: [docs/glyph.eu.md](../docs/glyph.eu.md).
 * **OpenQASM 2.0**: lengoaia osoa inporta edo zuzenean exekuta daiteke (`gate` definizioak, `if`, `qelib1.inc`
   osoa), eta programaren qubit-zatia esporta daiteke. IonQ JSON esportazioa.
 * **Irteera zintzoa**: txostenak esaten du nola kalkulatu diren shot-ak (simulazio bakarretik laginduta,

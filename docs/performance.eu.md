@@ -60,7 +60,7 @@ Txostenaren `cpu` lerroak esaten du zein kernel exekutatu diren.
 
 Ate bakarrak 27 qubitekin (memoria nagusia, muga 75 GB/s inguru):
 
-| atea | QOA 0.4.0, 5750d4e commit-ean | orain |
+| atea | 0.4.0-ren hasiera (5750d4e commit-a) | 0.4.0 bertsioa |
 |---|---|---|
 | H q0-n | 19 GB/s | 66 GB/s |
 | H q1-n | 28 GB/s | 67 GB/s |
@@ -87,7 +87,7 @@ aritmetikak mugatzen ditu cachearen barruan eta banda-zabalerak kanpoan.
 
 Zirkuitu osoak:
 
-| zirkuitua | QOA 0.3.5 | QOA 0.4.0 (5750d4e) | orain | Qiskit Aer 0.17 |
+| zirkuitua | QOA 0.3.5 | 0.4.0-ren hasiera (5750d4e) | 0.4.0 bertsioa | Qiskit Aer 0.17 |
 |---|---|---|---|---|
 | 24 qubit, H, CNOT katea eta RZ-ren 5 geruza (355 ate) | 23.3 s | 4.1 s | 0.83 - 0.90 s | 3.7 s (5.6 s fusiorik gabe) |
 | 27 qubit, 27 H ateko geruza bat | | 1.5 s (27 bidaia) | 0.68 s | |

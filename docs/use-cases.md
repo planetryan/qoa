@@ -73,32 +73,38 @@ around the BasQ programme and its IBM quantum computer in Donostia.
 | network timing and memory decay at scale | NetSquid, SeQUeNCe | QOA has no notion of time |
 | running on hardware day to day | the vendors' SDKs | QOA exports to them, but has no job management |
 
-## Adoption: what works against QOA, and what works for it
+## Adoption: what stands in the way, and what QOA has
 
-People do not choose tools on merit alone. The forces that keep them on what they already use:
+People do not choose tools on merit alone. These are the forces that keep them on what they already use, and
+where QOA stands on each:
 
-| force | how hard it hits QOA | what QOA already has | what would help most |
+| force | how hard it hits QOA | what QOA has | what would help most |
 |---|---|---|---|
 | **Python habit**: courses, notebooks and jobs assume `pip install` and Python | hard | a JSON report any language can read; OpenQASM in and out | a Python package (built with pyo3 and maturin) with `run(source)` returning the report as a dict, and conversions to and from Qiskit circuits |
-| **Install friction**: a Rust toolchain is a barrier for students | hard | one binary that needs only the system C library (and ffmpeg for `qoa visual`) | prebuilt binaries for x86-64, ARM and RISC-V on GitHub Releases; `cargo install qoa` |
-| **Ecosystem and backing**: IBM, Google, Xanadu, Quandela stand behind the big tools | hard, and not fixable | interoperability: QOA does not ask anyone to leave Qiskit or Perceval | position QOA as a companion, not a replacement |
+| **Install friction** | medium | prebuilt binaries for 15 systems: Windows, macOS and Linux on x86-64 and ARM64, Linux on RISC-V, IBM POWER, IBM Z and LoongArch, and static builds that also run on Android | `cargo install qoa` from crates.io |
+| **Ecosystem and backing**: IBM, Google, Xanadu, Quandela stand behind the big tools | hard, and not fixable | interoperability: QOA does not ask anyone to leave Qiskit or Perceval | QOA as a companion, not a replacement |
 | **"Assembly" sounds hard** | medium | readable mnemonics, errors that point at the line with a suggestion, the glyph syntax for density | a five-minute tutorial that starts from OpenQASM people already know |
-| **Trust**: is a small project correct? | medium | an unusually strict test suite: reference simulator, permanents, Qiskit and Perceval cross-checks, every example's claims checked | continuous integration on GitHub (tests on x86-64, and ARM and RISC-V under qemu) with a visible badge |
-| **One maintainer**: will it be around next year? | medium | a small, readable codebase, documented decisions | a contributing guide, issue templates, a few good first issues |
-| **Licence**: GPL-3.0 keeps some companies from embedding it | low for teaching and research, real for industry | GPL protects the project's openness | the owner's decision; LGPL or a dual licence are the usual compromises |
-| **Language**: most tools are English-only | works *for* QOA in Basque-medium teaching | complete Basque and English | Basque tutorials; contact with UPV/EHU and BasQ |
+| **Trust**: is a small project correct? | medium | a strict test suite (reference simulator, permanents, Qiskit, Aer and Perceval cross-checks, every example's claims checked) run in public CI on every supported processor | independent users reporting what they found |
+| **One maintainer**: will it be around next year? | medium | a small, readable codebase, documented design choices and a [contributing guide](../CONTRIBUTING.md) | issue templates and a few good first issues |
+| **Licence**: GPL-3.0 keeps some companies from embedding it | low for teaching and research, real for industry | GPL keeps the project open | a licensing choice for the project; LGPL or a dual licence are the usual compromises |
+| **Language**: most tools are English-only | works *for* QOA in Basque-medium teaching | complete Basque and English | Basque tutorials |
 
 What works in QOA's favour is mostly that it is **different where the incumbents are thin**: qubits and
 photons in one program, exact answers you can check, results that say how they were computed, and a second
 language. It does not have to win against Qiskit to be worth using; it has to be the best tool for a few
 specific jobs, and the cheapest switch in is that it already reads and writes OpenQASM.
 
-## Suggested next steps, in order of value for the effort
+## Roadmap
 
-1. Prebuilt binaries on GitHub Releases, and continuous integration with a badge.
-2. A Python package with a minimal API (run, report as a dict, Qiskit conversion) and three notebooks (HOM,
+In order of value for the effort:
+
+1. A Python package with a minimal API (run, report as a dict, Qiskit conversion) and three notebooks (HOM,
    heralded entanglement, the Kerr black hole) in English and Basque.
-3. OpenQASM 3 export, so programs with loops, registers and repeat-until-success reach hardware.
-4. Contact with Basque-medium quantum courses and the BasQ programme.
-5. Settle the glyph syntax (its open questions are in [glyph.md](glyph.md)) and the stability of the JSON
-   report, which is the "classical ABI" other programs read results through.
+2. OpenQASM 3 export, so programs with loops, registers and repeat-until-success reach hardware.
+3. Export to Quandela's Perceval, so the linear-optics part can run on photonic hardware.
+4. Tutorials for Basque-medium courses.
+5. A stable glyph syntax (its open points are in [glyph.md](glyph.md)) and a stable JSON report, the
+   "classical ABI" other programs read results through.
+
+Already done: prebuilt binaries and public CI (0.4.0, extended in 0.4.1), and noise models from real
+devices' calibrations (0.4.1).

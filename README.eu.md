@@ -133,7 +133,7 @@ errorea: CNOT-k 0. qubita bi aldiz erabiltzen du; qubitek desberdinak izan behar
    |         ^^
 ```
 
-### Glifo-sintaxia (zirriborroa)
+### Glifo-sintaxia (esperimentala)
 
 Lengoaia bera modu trinkoan ere idatz daiteke, lerro bakoitzean adierazpen askorekin, `.qg` fitxategietan:
 
@@ -143,7 +143,7 @@ Q{2}; #C{2}; H/Q[0]; CX/Q[0],Q[1]; M/Q$>#C; PF"bell: {}\n"%#C;
 
 `qoa import fitxategia.qg`-k ordezkatzen duen QOA arrunta erakusten du, `qoa export --to glyph
 fitxategia.qoa`-k alderantziz egiten du, eta erroreek glifoa seinalatzen dute. `CC[0x10]%a%b$>#2`-k helbide
-bateko errutina klasiko bat deitzen du, argumentuak pilan dituela. Berrikusteko zirriborro bat da: ikus
+bateko errutina klasiko bat deitzen du, argumentuak pilan dituela. Esperimentala da eta oraindik alda daiteke: ikus
 [docs/glyph.eu.md](docs/glyph.eu.md).
 
 ### Programa baten barrura begiratzea
@@ -196,7 +196,7 @@ egiaztatua bere iruzkinek diotenaren aurka:
 | `retry`, `sweep` | errepikatu arrakasta lortu arte; neurketa kuantiko baten inguruko begizta klasikoa |
 | `bell.qasm` | OpenQASM zuzenean exekutatuta |
 | `bell-torino.qasm` | Bell IBM Torino-rako transpilatua; exekutatu gailu horren zaratarekin: `--noise-model examples/bell-torino.json` |
-| `*.qg` | glifo-sintaxia: jatorrizko kontzeptua, bell, teleportazioa, HOM igorleekin, errepikatzea, eta errutina klasiko bat deitzen duen (`CC`) errepikapen-kode baten deskodetzailea |
+| `*.qg` | glifo-sintaxia: lerro bakarreko jatorrizko zirriborroa, bell, teleportazioa, HOM igorleekin, errepikatzea, eta errutina klasiko bat deitzen duen (`CC`) errepikapen-kode baten deskodetzailea |
 | `kerr.rs` | argia biraka dagoen zulo beltz baten inguruan, bere hawking bikoteak QOA-k kalkulatuta: `cargo run --release --example kerr -- --still kerr.png` ([docs/kerr.eu.md](docs/kerr.eu.md)) |
 
 ## Hardware erreala
@@ -255,6 +255,10 @@ QOA 0.4 nukleoaren berridazketa da. 0.3.5 bertsioa
 [`archive/v0.3.5-experimental`](https://github.com/planetryan/qoa/tree/archive/v0.3.5-experimental) adarrean
 gordeta dago. Ikus [0.4.0 bertsio-oharrak](<changelog/QOA v0.4.0.md>) zer aldatu den eta zergatik jakiteko, eta
 [0.4.1 bertsio-oharrak](<changelog/QOA v0.4.1.md>) ondoren etorri dena jakiteko.
+
+## Laguntzea
+
+QOA nola eraikitzen, egiaztatzen eta idazten den: [CONTRIBUTING.eu.md](CONTRIBUTING.eu.md).
 
 ## Lizentzia
 

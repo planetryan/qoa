@@ -1,14 +1,14 @@
-# QOA-ren glifo-sintaxia (0. zirriborroa)
+# QOA-ren glifo-sintaxia
 
 [In English: glyph.md](glyph.md)
 
-**Egoera: berrikusteko zirriborro bat.** Inplementatuta eta probatuta dago, beraz proba daiteke, baina
-beheko aukera guztiak proposamenak dira. Amaierako galdera irekiak zuk hartu beharreko erabakiak dira.
+**Egoera: esperimentala.** Sintaxia inplementatuta eta probatuta dago, baina geroko bertsio batean alda
+daiteke; aldaketa oro bertsio-oharretan agertuko da. Oraindik finkatu gabeko puntuak amaieran daude.
 
 ## Zergatik
 
-QOA arruntaren sintaxia lerro bakoitzeko agindu bat da, osorik idatzita: `CNOT q0 q1`. Zirriborro honen
-abiapuntu den kontzeptu-zirriborroak ideia oso bat lerro bakarrean biltzen du:
+QOA arruntaren sintaxia lerro bakoitzeko agindu bat da, osorik idatzita: `CNOT q0 q1`. Glifo-sintaxia lerro
+bakarreko zirriborro batetik abiatu zen, ideia oso bat lerro bakarrean biltzen duena:
 
 ```
 H/R{3}[0xMEMORY_LOCATION?]; CC"V"%3$>#2PF"Measuring:" PR"R"%O$>#OPF"Result:" PF"O"%O$<<>>; END;
@@ -41,9 +41,9 @@ MEASURE q0 -> c0
 MEASURE q1 -> c1
 ```
 
-## Kontzeptua irakurtzea
+## Jatorrizko zirriborroa irakurtzea
 
-| kontzeptua | 0. zirriborroaren irakurketa |
+| zirriborroa | esanahia |
 |---|---|
 | `H/R{3}` | `R{3}`-k 3 qubiteko erregistro bat adierazten du; `H/R`-k H aplikatzen die bakoitzari |
 | `[0xMEMORY_LOCATION?]` | adierazpen baten ondoren, kokapen bat: `R{3}[0x4]`-k R q4..q6-n jartzen du. Izen baten ondoren, elementu bat: `R[0x2]` |
@@ -54,10 +54,9 @@ MEASURE q1 -> c1
 | `;` | adierazpen bat amaitzen du, beraz lerro batek asko izan ditzake |
 | `END;` | gelditu (QOA-n HALT-en ezizena da jada) |
 | `CC"V"%3$>#2` | dei klasikoa: V errutina deitu 3 argumentuarekin eta emaitza R2-n utzi (ikus [Dei klasikoak](#dei-klasikoak-cc)) |
-| `PR"R"%O` | oraindik esleitu gabe: ikus galdera irekiak |
+| `PR"R"%O` | oraindik definitu gabe: ikus [Oraindik finkatu gabe](#oraindik-finkatu-gabe) |
 
-[examples/concept.qg](../examples/concept.qg) kontzeptua bera da, 0. zirriborroko programa erabilgarri gisa
-idatzita.
+[examples/concept.qg](../examples/concept.qg) zirriborro hori bera da, programa erabilgarri gisa idatzita.
 
 ## Erreferentzia
 
@@ -65,7 +64,7 @@ idatzita.
 
 - Adierazpen bakoitza `;`-rekin amaitzen da. Lerro batean nahi adina adierazpen sartzen dira; lerro-jauziek
   ez dute ezer esan nahi.
-- Lehen karakterea `;` duen lerroa iruzkina da (kontzeptuan bezala). `//`-k edonon hasten du iruzkin bat.
+- Lehen karakterea `;` duen lerroa iruzkina da (jatorrizko zirriborroan bezala). `//`-k edonon hasten du iruzkin bat.
 
 ### Erregistroak
 
@@ -187,9 +186,7 @@ M/Q[0..1]$>#C[0..1];                            MEASURE q0 -> c0 / MEASURE q1 ->
 U(-1.0, 0.3, -0.5)/Q[2]; M/Q[2]$>#C[2];         U q2 -1.0 0.3 -0.5 / MEASURE q2 -> c2
 ```
 
-## Erabakita, eta oraindik irekita
-
-Erabakita (2026ko urria):
+## Diseinu-aukerak
 
 - **`CC`** "dei klasikoa" da, memoria-kokapen baterako deia: `CC[0x10]`, goiko pila-konbentzioarekin.
 - **`%`** balioen hasiera eta bereizle logikoa da.
@@ -198,10 +195,12 @@ Erabakita (2026ko urria):
   `CREG flags 2`, `OREG arm 2`, gero `data[1]` edo `data`; `q0`, `c0` eta `o0` erabiltzen jarraitzen dute.
 - **Beste norabidea** badago: `qoa export --to glyph` (edo `--to-glyph`), goiko aukerekin.
 
-Oraindik irekita:
+## Oraindik finkatu gabe
 
-1. **Bereizleak.** Kontzeptuak adierazpenak `;` gabe kateatzen ditu (`$>#2PF"Measuring:"`). 0. zirriborroak
-   `;` eskatzen du, errore batek beti zehazki esan dezan non amaitu zen adierazpen bat. Agindu-izen berri batek
-   aurreko adierazpena bere kabuz amaitu beharko luke?
-2. **`PR`.** Zer esan nahi du `PR"R"%O$>#O`-k? (Asmakizun bat: erregistro bat inprimatu.) Esanahia
-   finkatzen denean glifo bihur daiteke.
+1. **Bereizleak.** Jatorrizko zirriborroak adierazpenak `;` gabe kateatzen ditu (`$>#2PF"Measuring:"`). Gaur
+   `;` derrigorrezkoa da, errore batek beti zehazki esan dezan non amaitu zen adierazpen bat. Agindu-izen berri
+   batek aurreko adierazpena bere kabuz amaitu beharko lukeen oraindik irekita dago.
+2. **`PR`.** Zirriborroko `PR"R"%O$>#O`-k ez du oraindik esanahi definiturik (erregistro bat inprimatzea da
+   irakurketa bat). Esanahia finkatzen denean glifo bihur daiteke.
+
+Bietako edozeini buruzko proposamenak ongi etorriak dira issue gisa.

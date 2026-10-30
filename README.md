@@ -129,7 +129,7 @@ error: CNOT uses qubit 0 twice; the qubits must be different
    |         ^^
 ```
 
-### Glyph syntax (draft)
+### Glyph syntax (experimental)
 
 The same language can also be written densely, many statements per line, in `.qg` files:
 
@@ -139,7 +139,7 @@ Q{2}; #C{2}; H/Q[0]; CX/Q[0],Q[1]; M/Q$>#C; PF"bell: {}\n"%#C;
 
 `qoa import file.qg` shows the plain QOA it stands for, `qoa export --to glyph file.qoa` goes the other
 way, and errors point at the glyph. `CC[0x10]%a%b$>#2` calls a classical routine at an address, with its
-arguments on the stack. It is a draft open for review: see [docs/glyph.md](docs/glyph.md).
+arguments on the stack. It is experimental and may still change: see [docs/glyph.md](docs/glyph.md).
 
 ### Looking inside a program
 
@@ -190,7 +190,7 @@ suite against what its comments claim:
 | `retry`, `sweep` | repeat-until-success; a classical loop around a quantum measurement |
 | `bell.qasm` | OpenQASM run directly |
 | `bell-torino.qasm` | Bell transpiled for IBM Torino; run it with that device's noise: `--noise-model examples/bell-torino.json` |
-| `*.qg` | the glyph syntax: the original concept, Bell, teleportation, HOM with emitters, retry, and a repetition-code decoder that calls a classical routine (`CC`) |
+| `*.qg` | the glyph syntax: the original one-line sketch, Bell, teleportation, HOM with emitters, retry, and a repetition-code decoder that calls a classical routine (`CC`) |
 | `kerr.rs` | light around a spinning black hole, with its Hawking pairs computed by QOA: `cargo run --release --example kerr -- --still kerr.png` ([docs/kerr.md](docs/kerr.md)) |
 
 ## Real hardware
@@ -247,6 +247,10 @@ QOA 0.4 is a rewrite of the core. Version 0.3.5 is preserved on the
 [`archive/v0.3.5-experimental`](https://github.com/planetryan/qoa/tree/archive/v0.3.5-experimental) branch.
 See the [0.4.0 release notes](<changelog/QOA v0.4.0.md>) for what changed and why, and the
 [0.4.1 release notes](<changelog/QOA v0.4.1.md>) for what came after.
+
+## Contributing
+
+How QOA is built, checked and written: [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 

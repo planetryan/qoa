@@ -41,6 +41,9 @@ Builds on [0.4.0](<QOA v0.4.0.md>): real-device noise, exact sums, and two more 
   * The report's new `numerics` line (and `norm_error` in json) shows how far the final state's norm has
     drifted from 1.
 * `qoa export --help` lists every export format.
+* The documentation is written for any reader: the glyph syntax is described as experimental with its open
+  points, the use cases end with a public roadmap, and [CONTRIBUTING.md](../CONTRIBUTING.md) sets out how
+  QOA is built, checked, written and released.
 * JSON numbers are read with exact round-tripping.
 
 ---
@@ -88,4 +91,8 @@ Builds on [0.4.0](<QOA v0.4.0.md>): real-device noise, exact sums, and two more 
   * Txostenaren `numerics` lerro berriak (eta json-eko `norm_error`-ek) amaierako egoeraren araua 1etik
     zenbat desbideratu den erakusten du.
 * `qoa export --help`-ek esportazio-formatu guztiak zerrendatzen ditu.
+* Dokumentazioa edozein irakurlerentzat idatzita dago: glifo-sintaxia esperimental gisa deskribatzen da bere
+  puntu irekiekin, erabilera-kasuak ibilbide-orri publiko batekin amaitzen dira, eta
+  [CONTRIBUTING.eu.md](../CONTRIBUTING.eu.md)-k QOA nola eraiki, egiaztatu, idatzi eta argitaratzen den
+  azaltzen du.
 * JSON zenbakiak zehaztasun osoz irakurtzen dira.
