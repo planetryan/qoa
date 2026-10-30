@@ -227,8 +227,10 @@ pub fn decode_audio(input: &Path, raw: Option<&Raw>) -> Result<Audio, String> {
     }
     let samples: Vec<f64> = out
         .stdout
-        .chunks_exact(8)
-        .map(|b| f64::from_le_bytes(b.try_into().expect("8 byte")))
+        .as_chunks::<8>()
+        .0
+        .iter()
+        .map(|b| f64::from_le_bytes(*b))
         .collect();
     let c = channels as usize;
     let mut chans = vec![Vec::with_capacity(samples.len() / c); c];
@@ -1251,8 +1253,10 @@ mod tests {
         // tartekatuta: l0 r0 l1 r1
         let bytes = interleaved_bytes(&[vec![1.0, 2.0], vec![3.0, 4.0]]);
         let back: Vec<f64> = bytes
-            .chunks_exact(8)
-            .map(|b| f64::from_le_bytes(b.try_into().unwrap()))
+            .as_chunks::<8>()
+            .0
+            .iter()
+            .map(|b| f64::from_le_bytes(*b))
             .collect();
         assert_eq!(back, vec![1.0, 3.0, 2.0, 4.0]);
     }

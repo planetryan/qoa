@@ -1008,7 +1008,7 @@ mod rv {
         let Ok(auxv) = std::fs::read("/proc/self/auxv") else {
             return false;
         };
-        auxv.chunks_exact(16).any(|e| {
+        auxv.as_chunks::<16>().0.iter().any(|e| {
             let key = u64::from_ne_bytes(e[..8].try_into().unwrap());
             let val = u64::from_ne_bytes(e[8..].try_into().unwrap());
             key == 16 && val & (1 << 21) != 0
