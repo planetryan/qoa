@@ -13,7 +13,8 @@ build = false
 # nukleoa: mihiztatzailea, simulagailua, cli
 clap = { version = "4.5", features = ["derive"] }
 serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
+# float_roundtrip: kalibrazioak (zarata-ereduak) bit berberekin irakurtzeko
+serde_json = { version = "1.0", features = ["float_roundtrip"] }
 num-complex = { version = "0.4", features = ["serde"] }
 rand = "0.9"
 rayon = "1.10"

@@ -94,6 +94,12 @@ above were made: Bell 97.8%, teleportation 97.4%, Grover 81.8% of shots on the r
 model. Programs the exporter refuses (register arithmetic, loops counted by a register, backward jumps)
 cannot go yet; the script says which lines and why.
 
+Every run also shows a third column, "QOA + model": QOA's own prediction for that device, simulated with
+the device's calibration (gate errors, T1/T2, readout errors), as described in [noise.md](noise.md). On a
+`--dry-run`, it matches Aer's simulation of the same calibration to sampling accuracy. On the real device,
+the gap between the two columns is what the calibration does not capture: idle decoherence, crosstalk,
+drift. `--save-model NAME` keeps the model and the transpiled circuit for `qoa run --noise-model`.
+
 **Photons:** Quandela Cloud offers free accounts and runs Perceval programs on photonic processors
 (Ascella, Belenos), but whether a free account includes QPU time, and how much, could not be checked from
 here; check [cloud.quandela.com](https://cloud.quandela.com). The QOA side is ready: `tools/hardware_check.py`

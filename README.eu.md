@@ -36,7 +36,9 @@ tresna bat da, ez ordenagailu kuantiko bat.
 
 Zer **ez** duen egiten: bere kabuz hardware kuantikoan exekutatu, 30 qubit inguru baino gehiago simulatu
 (egoera-bektorea bikoiztu egiten da qubit bakoitzeko; 28 qubit 4 GiB dira), edo denbora jarraituko fisika
-modelatu (pultsuak, dekoherentzia-tasak). Zarata eredu sinple eta dokumentatu bat da (`--noise`, `--loss`).
+modelatu (pultsuak, dekoherentzia-tasak). Zarata eredu sinple eta dokumentatu bat da (`--noise`, `--loss`),
+edo benetako gailu baten zarata kalibratua: ate-erroreak, T1/T2 erlaxazioa eta irakurketa-erroreak
+(`--noise-model`, [docs/noise.eu.md](docs/noise.eu.md)).
 
 Non den baliagarria, non diren beste tresnak hobeak, eta zerk eragozten duen hartzea:
 [docs/use-cases.eu.md](docs/use-cases.eu.md).
@@ -160,8 +162,8 @@ esportazio oker bat errore bat da, inoiz ez isilean desberdina den programa bat.
 ### Nola kalkulatzen diren shot-ak
 
 - Neurketa guztiak amaieran badaude, QOA-k behin simulatzen du eta shot guztiak egoera horretatik lagintzen ditu.
-- Programak zirkuitu erdian neurtzen badu, emaitzen arabera adarkatzen badu, edo `--noise`/`--loss` erabiltzen
-  badira, shot bakoitza hasieratik simulatzen da.
+- Programak zirkuitu erdian neurtzen badu, emaitzen arabera adarkatzen badu, edo `--noise`/`--loss`/`--noise-model`
+  erabiltzen badira, shot bakoitza hasieratik simulatzen da.
 - Ezer neurtzen ez badu, QOA-k amaierako egoera zehatza erakusten du (simulagailu batek bakarrik egin dezakeena).
 
 Txostenak beti esaten du hauetako zein gertatu den.
@@ -189,6 +191,7 @@ egiaztatua bere iruzkinek diotenaren aurka:
 | `heralded-entanglement` | urrutiko bi igorle entrelazatu haien fotoiak interferentzian jarriz |
 | `retry`, `sweep` | errepikatu arrakasta lortu arte; neurketa kuantiko baten inguruko begizta klasikoa |
 | `bell.qasm` | OpenQASM zuzenean exekutatuta |
+| `bell-torino.qasm` | Bell IBM Torino-rako transpilatua; exekutatu gailu horren zaratarekin: `--noise-model examples/bell-torino.json` |
 | `*.qg` | glifo-sintaxia: jatorrizko kontzeptua, bell, teleportazioa, HOM igorleekin, errepikatzea, eta errutina klasiko bat deitzen duen (`CC`) errepikapen-kode baten deskodetzailea |
 | `kerr.rs` | argia biraka dagoen zulo beltz baten inguruan, bere hawking bikoteak QOA-k kalkulatuta: `cargo run --release --example kerr -- --still kerr.png` ([docs/kerr.eu.md](docs/kerr.eu.md)) |
 
@@ -200,7 +203,8 @@ eta Eagle gailuetarako transpilatuta eta haien zarata neurtuarekin, zirkuitu txi
 gordetzen dute eta 8 qubiteko grover gako-bilaketa bat % 30era jaisten da. Optika linealeko zatia
 Quandela-ren Perceval-ekin bat dator 1e-15-raino. IBM Quantum-en doako kontu batekin (gailu errealeko 10 minutu
 28 egunean), `tools/run_on_ibm.py examples/bell.qoa`-k programa bat ordenagailu kuantiko erreal batean
-exekutatzen du eta emaitza QOA-renarekin konparatzen du. Neurketak, mugak eta xehetasunak:
+exekutatzen du eta emaitza QOA-renarekin konparatzen du. Ondoan, QOA-k gailuak zer itzuliko duen aurreikusten
+du gailuaren kalibraziotik bertatik ([docs/noise.eu.md](docs/noise.eu.md)). Neurketak, mugak eta xehetasunak:
 [docs/hardware.eu.md](docs/hardware.eu.md).
 
 ## Probak

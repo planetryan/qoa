@@ -26,6 +26,8 @@ pub struct Report {
     pub memory_bytes: u128,
     pub noise: f64,
     pub loss: f64,
+    // `--noise-model`: gailua eta haren kalibrazioa (bestela null)
+    pub noise_model: Option<ModelInfo>,
     pub method: Method,
     pub shots: u64,
     pub seed: u64,
@@ -43,6 +45,16 @@ pub struct Report {
     pub registers_first_shot: Vec<f64>,
     pub state: Option<Vec<AmpEntry>>,
     pub warnings: Vec<String>,
+}
+
+#[derive(Serialize, Debug)]
+pub struct ModelInfo {
+    pub device: String,
+    pub calibrated: String,
+    pub qubits: usize,
+    pub gates: usize,
+    // qoa-ren qubit bakoitzaren gailuko zenbakia (null ezezaguna bada)
+    pub physical_qubits: Vec<Option<u32>>,
 }
 
 #[derive(Serialize, Debug)]
@@ -120,6 +132,18 @@ pub fn build(input: ReportInput) -> Report {
         memory_bytes: dim * 16,
         noise: input.config.noise,
         loss: input.config.loss,
+        noise_model: input.config.model.as_ref().map(|m| ModelInfo {
+            device: m.device.clone(),
+            calibrated: m.calibrated.clone(),
+            qubits: m.qubits.len(),
+            gates: m.gate_count(),
+            physical_qubits: m
+                .qubits
+                .iter()
+                .take(p.n_qubits as usize)
+                .map(|q| q.physical)
+                .collect(),
+        }),
         method: out.method,
         shots: out.shots,
         seed: input.config.seed,
@@ -435,6 +459,30 @@ pub fn render(r: &Report, style: &Style) -> String {
         line(ts!("gpu work", "gpu lana"), work);
     }
     let noise = match (r.noise > 0.0, r.loss > 0.0) {
+        _ if r.noise_model.is_some() => {
+            let m = r.noise_model.as_ref().unwrap();
+            let physical: Vec<String> = m
+                .physical_qubits
+                .iter()
+                .enumerate()
+                .map(|(i, p)| match p {
+                    Some(p) => format!("q{}={}", i, p),
+                    None => format!("q{}=?", i),
+                })
+                .collect();
+            let when = if m.calibrated.is_empty() {
+                String::new()
+            } else {
+                t!(", calibrated {}", ", kalibratua {}", m.calibrated)
+            };
+            t!(
+                "device model {}{}: depolarizing error and T1/T2 relaxation after each native gate, readout errors on measurement (physical qubits {})",
+                "{} gailuaren eredua{}: depolarizazio-errorea eta T1/T2 erlaxazioa ate natibo bakoitzaren ondoren, irakurketa-erroreak neurketan (qubit fisikoak {})",
+                m.device,
+                when,
+                physical.join(" ")
+            )
+        }
         (false, false) => t!(
             "none: ideal gates, no photon loss",
             "bat ere ez: ate idealak, fotoi-galerarik gabe"

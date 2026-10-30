@@ -65,6 +65,11 @@ enum Command {
             "fotoi-galera: eragiketa optiko bakoitzaren ondoren, ukitutako moduetako fotoi bakoitza probabilitate honekin galtzen da"
         ))]
         loss: f64,
+        #[arg(long, value_name = "FILE", conflicts_with_all = ["noise", "loss"], help = ts!(
+            "a real device's noise model (json, from tools/run_on_ibm.py --save-model): after each native gate its depolarizing error and T1/T2 relaxation, and readout errors on measurements. The program must use only the device's native gates",
+            "benetako gailu baten zarata-eredua (json, tools/run_on_ibm.py --save-model-etik): ate natibo bakoitzaren ondoren haren depolarizazio-errorea eta T1/T2 erlaxazioa, eta irakurketa-erroreak neurketetan. programak gailuaren ate natiboak bakarrik erabil ditzake"
+        ))]
+        noise_model: Option<PathBuf>,
         #[arg(long, help = ts!("also show the exact state at the end of the first shot", "lehen shot-aren amaierako egoera zehatza ere erakutsi"))]
         state: bool,
         #[arg(long, default_value_t = 16, help = ts!("how many amplitudes to show (0 = all)", "zenbat anplitude erakutsi (0 = guztiak)"))]
@@ -94,7 +99,7 @@ enum Command {
         #[arg(short, long, help = ts!("output file (default: same name with .qx)", "irteera-fitxategia (lehenetsia: izen bera .qx-rekin)"))]
         output: Option<PathBuf>,
     },
-    #[command(about = ts!("Convert a program to OpenQASM 2.0 or IonQ json", "Programa bat OpenQASM 2.0 edo IonQ json bihurtu"))]
+    #[command(about = ts!("Convert a program to another form: glyph, OpenQASM 2.0, IonQ json, canonical QOA, a listing, json or a dot graph", "Programa bat beste forma batera bihurtu: glifoa, OpenQASM 2.0, IonQ json, QOA kanonikoa, zerrenda, json edo dot grafoa"))]
     Export {
         #[arg(help = ts!("program file", "programa-fitxategia"))]
         file: PathBuf,
@@ -294,13 +299,24 @@ fn main() -> ExitCode {
             seed,
             noise,
             loss,
+            noise_model,
             state,
             top,
             json,
             max_steps,
             gpu,
         } => cmd_run(
-            &file, shots, seed, noise, loss, state, top, json, max_steps, gpu,
+            &file,
+            shots,
+            seed,
+            noise,
+            loss,
+            noise_model.as_deref(),
+            state,
+            top,
+            json,
+            max_steps,
+            gpu,
         ),
         Command::Check { file } => cmd_check(&file),
         Command::Compile { file, output } => cmd_compile(&file, output),
@@ -425,6 +441,7 @@ fn cmd_run(
     seed: Option<u64>,
     noise: f64,
     loss: f64,
+    noise_model: Option<&Path>,
     show_state: bool,
     top: usize,
     json: bool,
@@ -438,6 +455,10 @@ fn cmd_run(
     } else {
         None
     };
+    let model = match noise_model {
+        Some(path) => Some(std::sync::Arc::new(qoa::noise::NoiseModel::load(path)?)),
+        None => None,
+    };
     let config = RunConfig {
         shots: shots.unwrap_or(1024),
         seed: seed.unwrap_or_else(rand::random::<u64>),
@@ -445,6 +466,7 @@ fn cmd_run(
         loss,
         max_steps,
         gpu,
+        model,
     };
     let start = Instant::now();
     // json moduan programaren irteera bildu egiten da; testu moduan zuzenean ateratzen da

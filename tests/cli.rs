@@ -567,3 +567,48 @@ fn export_writes_glyph_listing_json_and_dot() {
     let dot = stdout(&qoa("en", &["export", "--to", "dot", "examples/retry.qoa"]));
     assert!(dot.contains("b2 -> b2 [label=\"R0 = 0\"]"), "{}", dot);
 }
+
+#[test]
+fn device_noise_models_run_and_are_reported() {
+    let args = [
+        "run",
+        "examples/bell-torino.qasm",
+        "--noise-model",
+        "examples/bell-torino.json",
+        "--seed",
+        "1",
+    ];
+    let o = qoa("en", &args);
+    assert!(o.status.success(), "{}", stderr(&o));
+    let out = stdout(&o);
+    assert!(out.contains("device model fake_torino"), "{}", out);
+    assert!(out.contains("q0=92 q1=99"), "{}", out);
+    let o = qoa("en", &[&args[..], &["--json"]].concat());
+    let v: serde_json::Value = serde_json::from_str(&stdout(&o)).unwrap();
+    assert_eq!(v["noise_model"]["device"], "fake_torino");
+    assert_eq!(v["method"], "every_shot");
+    // ate natiboak ez dituen programa batek errore argia ematen du; --noise-ekin ezin da batera
+    let o = qoa(
+        "en",
+        &[
+            "run",
+            "examples/bell.qoa",
+            "--noise-model",
+            "examples/bell-torino.json",
+        ],
+    );
+    assert!(!o.status.success());
+    assert!(stderr(&o).contains("transpile"), "{}", stderr(&o));
+    let o = qoa("en", &[&args[..], &["--noise", "0.1"]].concat());
+    assert!(!o.status.success());
+    let o = qoa(
+        "eu",
+        &[
+            "run",
+            "examples/bell.qoa",
+            "--noise-model",
+            "examples/bell-torino.json",
+        ],
+    );
+    assert!(stderr(&o).contains("transpilatu"), "{}", stderr(&o));
+}

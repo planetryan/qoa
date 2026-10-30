@@ -4,12 +4,13 @@
 // erabili den:
 //   - sampled: neurketa guztiak amaieran badaude eta ez badago ausazkotasunik aurretik, behin
 //     simulatzen da eta shot guztiak egoera horretatik lagintzen dira (zehatza eta azkarra)
-//   - every shot: bestela, shot bakoitza hasieratik exekutatzen da
+//   - every shot: bestela, shot bakoitza hasieratik exekutatzen da (zarata edo gailu-eredu batekin beti)
 //   - state only: programak ez badu ezer neurtzen, behin exekutatzen da eta egoera zehatza erakusten da
 
 use crate::fock::{self, Mat};
 use crate::gpu::Gpu;
 use crate::kernel::QGate;
+use crate::noise::{GateNoise, Native, NoiseModel, Relax};
 use crate::program::{Basis, BinOp, Cmp, Count, Dest, Gate, NUM_REGS, Op, Program, Source, UnOp};
 use crate::state::State;
 use crate::{t, ts};
@@ -33,6 +34,9 @@ pub struct RunConfig {
     pub max_steps: u64,
     // qubit-ate sortak GPU honetan (`qoa run --gpu`); bestela CPUan
     pub gpu: Option<Arc<Gpu>>,
+    // benetako gailu baten zarata-eredua (`qoa run --noise-model`, ikus src/noise.rs): ate natiboak
+    // bakarrik, bakoitza bere errore, erlaxazio eta irakurketa-errorearekin
+    pub model: Option<Arc<NoiseModel>>,
 }
 
 impl Default for RunConfig {
@@ -44,6 +48,7 @@ impl Default for RunConfig {
             loss: 0.0,
             max_steps: 100_000_000,
             gpu: None,
+            model: None,
         }
     }
 }
@@ -178,8 +183,22 @@ pub fn run(
     out: &mut dyn Write,
 ) -> Result<RunOutput, RuntimeError> {
     let cache = MatrixCache::default();
+    if let Some(m) = &cfg.model
+        && prog.n_qubits as usize > m.qubits.len()
+    {
+        return Err(RuntimeError {
+            line: 0,
+            message: t!(
+                "the program uses {} qubits, but the device model ({}) describes only {}",
+                "programak {} qubit erabiltzen ditu, baina gailu-ereduak ({}) {} bakarrik deskribatzen ditu",
+                prog.n_qubits,
+                m.device,
+                m.qubits.len()
+            ),
+        });
+    }
     let has_readout = prog.has_readout();
-    let ideal = cfg.noise == 0.0 && cfg.loss == 0.0;
+    let ideal = cfg.noise == 0.0 && cfg.loss == 0.0 && cfg.model.is_none();
     let split = if has_readout && ideal {
         prog.sampling_split()
     } else {
@@ -405,7 +424,16 @@ impl<'a> Machine<'a> {
                     "{} urratsen ondoren gelditua; programak benetan gehiago behar baditu, handitu --max-steps",
                     self.cfg.max_steps)));
             }
+            // gailu-eredu batekin: eragiketa natiboa dela egiaztatu exekutatu aurretik, eta haren zarata
+            // aplikatu ondoren
+            let device = match self.cfg.model.as_deref() {
+                Some(model) => self.device_gate(pc, model)?,
+                None => None,
+            };
             let flow = self.step(pc)?;
+            if let Some((noise, qubits)) = device {
+                self.gate_noise(noise, &qubits);
+            }
             if let Some(e) = self.gpu_error.take() {
                 return Err(self.err(pc, e));
             }
@@ -540,6 +568,94 @@ impl<'a> Machine<'a> {
         }
     }
 
+    // gailu-eredua: eragiketa hau gailuan egin daitekeen. ate natibo bat bada, haren zarata eta qubitak
+    fn device_gate(
+        &self,
+        pc: usize,
+        model: &'a NoiseModel,
+    ) -> Result<Option<(&'a GateNoise, Vec<u32>)>, RuntimeError> {
+        match crate::noise::native(&self.prog.ops[pc]) {
+            Native::Free | Native::Readout => Ok(None),
+            Native::Unsupported(why) => Err(self.err(pc, t!(
+                "{}; with a device model ({}) a program can use only the device's native gates: transpile it for the device first (tools/run_on_ibm.py does)",
+                "{}; gailu-eredu batekin ({}) programak gailuaren ate natiboak bakarrik erabil ditzake: lehenik gailurako transpilatu (tools/run_on_ibm.py-k egiten du)",
+                why, model.device))),
+            Native::Gate(name, qubits) => match model.gate(&name, &qubits) {
+                Some(g) => Ok(Some((g, qubits))),
+                None => {
+                    let on: Vec<String> = qubits.iter().map(|q| format!("q{}", q)).collect();
+                    Err(self.err(pc, t!(
+                        "the device model ({}) has no '{}' on {}: the device can't run it directly (its native gates: {}). transpile the program for the device first (tools/run_on_ibm.py does)",
+                        "gailu-ereduak ({}) ez du '{}' aterik {} qubitetan: gailuak ezin du zuzenean egin (bere ate natiboak: {}). lehenik programa gailurako transpilatu (tools/run_on_ibm.py-k egiten du)",
+                        model.device, name, on.join(" "), model.gate_names().join(", "))))
+                }
+            },
+        }
+    }
+
+    // ate natibo baten zarata, aer-ek bezala: lehenik depolarizazioa (identitatea ez den n qubiteko
+    // pauli bat, uniformeki), gero qubit bakoitzaren T1/T2 erlaxazioa atearen iraupenean
+    fn gate_noise(&mut self, g: &GateNoise, qubits: &[u32]) {
+        if g.pauli > 0.0 && self.uniform() < g.pauli {
+            let k = self.rng.random_range(1..1u32 << (2 * qubits.len()));
+            for (i, &q) in qubits.iter().enumerate() {
+                match (k >> (2 * i)) & 3 {
+                    1 => self.gate(q, Gate::X, 0),
+                    2 => self.gate(q, Gate::Y, 0),
+                    3 => self.gate(q, Gate::Z, 0),
+                    _ => {}
+                }
+            }
+        }
+        for (r, &q) in g.relax.iter().zip(qubits) {
+            self.relax(q, *r);
+        }
+    }
+
+    // T1/T2 kanala ibilbide zehatz gisa. anplitude-moteltzea: jauzia (|1> -> |0>) gamma·P1 probabilitatez;
+    // bestela diag(1, √(1-gamma)) eboluzioa, normalizatuta. gero desfasea: Z bat z probabilitatez
+    fn relax(&mut self, q: u32, r: Relax) {
+        if r.gamma > 0.0 {
+            let u = self.uniform();
+            let st = self.st();
+            let p1 = st.prob_one(q as usize).clamp(0.0, 1.0);
+            if u < r.gamma * p1 {
+                st.collapse_qubit(q as usize, 1, p1);
+                self.gate(q, Gate::X, 0);
+            } else {
+                let s = 1.0 / (1.0 - r.gamma * p1).sqrt();
+                self.queue(QGate::Mat {
+                    q: q as usize,
+                    m: [
+                        C::new(s, 0.0),
+                        C::new(0.0, 0.0),
+                        C::new(0.0, 0.0),
+                        C::new(s * (1.0 - r.gamma).sqrt(), 0.0),
+                    ],
+                    controls: 0,
+                });
+            }
+        }
+        if r.z > 0.0 && self.uniform() < r.z {
+            self.gate(q, Gate::Z, 0);
+        }
+    }
+
+    // gailu-eredua: neurketaren emaitza klasikoa irakurketa-errorearekin (egoera kuantikoa ez da aldatzen)
+    fn readout(&mut self, q: u32, v: u8) -> u8 {
+        let cfg = self.cfg;
+        let Some(model) = cfg.model.as_deref() else {
+            return v;
+        };
+        let qn = &model.qubits[q as usize];
+        let flip = if v == 0 { qn.p0m1 } else { qn.p1m0 };
+        if flip > 0.0 && self.uniform() < flip {
+            1 - v
+        } else {
+            v
+        }
+    }
+
     fn lose_photons(&mut self, modes: &[u32]) {
         let g = self.cfg.loss;
         if g <= 0.0 {
@@ -664,11 +780,13 @@ impl<'a> Machine<'a> {
             }
             Op::Measure { q, basis, dest } => {
                 let v = self.measure_basis(*q, *basis);
+                let v = self.readout(*q, v);
                 self.write_bit(*dest, Some(*q), None, v as u32);
             }
             Op::MeasureAll => {
                 for q in 0..self.prog.n_qubits {
                     let v = self.measure_z(q);
+                    let v = self.readout(q, v);
                     self.bits[q as usize] = Some(v);
                 }
             }

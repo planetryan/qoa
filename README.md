@@ -34,7 +34,8 @@ not a quantum computer.
 
 What it does **not** do: run on quantum hardware by itself, simulate more than about 30 qubits (the state
 vector doubles with every qubit; 28 qubits is 4 GiB), or model continuous-time physics (pulses, decoherence
-rates). Noise is a simple, documented model (`--noise`, `--loss`).
+rates). Noise is either a simple, documented model (`--noise`, `--loss`) or a real device's calibrated noise:
+gate errors, T1/T2 relaxation and readout errors (`--noise-model`, [docs/noise.md](docs/noise.md)).
 
 Where it is useful, where other tools are better, and what stands in the way of adopting it:
 [docs/use-cases.md](docs/use-cases.md).
@@ -155,8 +156,8 @@ is an error, never a silently different program.
 ### How shots are computed
 
 - If every measurement comes at the end, QOA simulates once and samples all shots from that state.
-- If a program measures mid-circuit, branches on results, or uses `--noise`/`--loss`, every shot is simulated
-  from the start.
+- If a program measures mid-circuit, branches on results, or uses `--noise`/`--loss`/`--noise-model`, every
+  shot is simulated from the start.
 - If it measures nothing, QOA shows the exact final state (something only a simulator can do).
 
 The report always says which of these happened.
@@ -184,6 +185,7 @@ suite against what its comments claim:
 | `heralded-entanglement` | entangling two distant emitters by interfering their photons |
 | `retry`, `sweep` | repeat-until-success; a classical loop around a quantum measurement |
 | `bell.qasm` | OpenQASM run directly |
+| `bell-torino.qasm` | Bell transpiled for IBM Torino; run it with that device's noise: `--noise-model examples/bell-torino.json` |
 | `*.qg` | the glyph syntax: the original concept, Bell, teleportation, HOM with emitters, retry, and a repetition-code decoder that calls a classical routine (`CC`) |
 | `kerr.rs` | light around a spinning black hole, with its Hawking pairs computed by QOA: `cargo run --release --example kerr -- --still kerr.png` ([docs/kerr.md](docs/kerr.md)) |
 
@@ -194,7 +196,8 @@ feed-forward on measured bits, and runs the same in Qiskit. Transpiled for IBM's
 with their measured noise, small circuits keep 75-98% of the right answers and an 8-qubit Grover key search
 drops to 30%. The linear-optics part matches Quandela's Perceval to 1e-15. With a free IBM Quantum account
 (10 minutes of real-device time per 28 days), `tools/run_on_ibm.py examples/bell.qoa` runs a program on a
-real quantum computer and compares the result with QOA's. Measurements, limits and details:
+real quantum computer and compares the result with QOA's. Next to it, QOA predicts what the device will
+return from the device's own calibration ([docs/noise.md](docs/noise.md)). Measurements, limits and details:
 [docs/hardware.md](docs/hardware.md).
 
 ## Testing

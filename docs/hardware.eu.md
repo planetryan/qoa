@@ -100,6 +100,13 @@ teleportazioa % 97.4, grover % 81.8 shot-ak erantzun zuzenetan, Torino modeloan.
 dituen programak (erregistro-aritmetika, erregistro batek zenbatutako begiztak, atzerako jauziak) ezin dira
 oraindik bidali; script-ak zein lerro eta zergatik esaten du.
 
+Exekuzio bakoitzak hirugarren zutabe bat ere erakusten du, "QOA + eredua": QOA-ren beraren aurreikuspena
+gailu horretarako, gailuaren kalibrazioarekin simulatuta (ate-erroreak, T1/T2, irakurketa-erroreak), ikus
+[noise.eu.md](noise.eu.md). `--dry-run` batean aer-ek kalibrazio beraren simulazioarekin bat dator,
+laginketaren zehaztasunera arte. Gailu errealean, bi zutabeen arteko aldea da kalibrazioak jasotzen ez
+duena: itxaronaldietako dekoherentzia, diafonia, aldaketak denboran. `--save-model IZENA`-k eredua eta
+zirkuitu transpilatua gordetzen ditu, `qoa run --noise-model`-ekin exekutatzeko.
+
 **Fotoiak:** Quandela Cloud-ek doako kontuak eskaintzen ditu eta Perceval programak prozesadore fotonikoetan
 exekutatzen ditu (Ascella, Belenos), baina doako kontu batek QPU denbora duen, eta zenbat, ezin izan da hemendik
 egiaztatu; egiaztatu [cloud.quandela.com](https://cloud.quandela.com). QOA-ren aldea prest dago:
