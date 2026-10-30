@@ -8,13 +8,16 @@
 //      energia, transienteak...; parametro bisual bihurtu (`Look`) eta errendatu: perlin zarata +
 //      interferentzia + keinuak + desplazamendua, eta espektroa barra gisa. pixel gordinak zuzenean ffmpeg-en
 //      sarrerara. irudiak arte dira, ez fisika: 32 biteko kalkulua nahikoa da haietarako
-//   4. irteera: bideoa eta audio prozesatua, audioa bakarrik, bideoa bakarrik, edo bideoa jatorrizko audioarekin
+//   4. fase-espazioa: irudi bakoitzean, une horretako modu distiratsuenen egoera kuantikoa detekzioaren
+//      aurretik, haien wigner funtzio zehatza (src/light.rs, `Light::phase_space`), eta modu bakoitzean
+//      neurtutakoa (homodinoaren x-a edo fotoi-kopuruaren eraztuna). fisika da: 64 bitekoa
+//   5. irteera: bideoa eta audio prozesatua, audioa bakarrik, bideoa bakarrik, edo bideoa jatorrizko audioarekin
 //
 // ezaugarriak ordenan kalkulatzen dira (aurreko irudiaren araberakoak dira) eta errendatzea paraleloa da
 // banda horizontaletan, ordena finko batean; beraz hazi berak emaitza bera ematen du edozein hari-kopururekin.
 
 use indicatif::{ProgressBar, ProgressStyle};
-use qoa::light::{self, Light, Mdct};
+use qoa::light::{self, KerrSampler, Light, Mdct, Panel};
 use qoa::program::Gate;
 use qoa::report::Style;
 use qoa::state::State;
@@ -51,6 +54,25 @@ pub enum Mode {
     KeepAudio,
 }
 
+// fase-espazioko panelak: lerro bat artearen gainean, irudi osoa, edo ezer ez
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PhaseSpace {
+    Row,
+    Full,
+    Off,
+}
+
+impl PhaseSpace {
+    // modu-kopurua irudi bakoitzeko
+    fn picks(self) -> usize {
+        match self {
+            PhaseSpace::Row => 4,
+            PhaseSpace::Full => 8,
+            PhaseSpace::Off => 0,
+        }
+    }
+}
+
 // lagin gordinak: ffmpeg-en lagin-formatua (u8, s16le, f32le, ...), maiztasuna eta kanalak
 #[derive(Debug, Clone)]
 pub struct Raw {
@@ -71,6 +93,7 @@ pub struct Options<'a> {
     pub width: u32,
     pub height: u32,
     pub fps: u32,
+    pub phase_space: PhaseSpace,
     pub direction: SpectrumDirection,
     pub seed: u64,
     pub ffmpeg_flags: &'a [String],
@@ -266,26 +289,94 @@ fn interleaved_bytes(channels: &[Vec<f64>]) -> Vec<u8> {
     out
 }
 
-// argia kanal guztietan: mdct, zirkuitua, alderantzizkoa
+// fase-espazioan erakusten den modu bat: kanala, bin-a, eta koefizientea detekzioaren aurretik (sarearen
+// ondoren) eta ondoren
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Probe {
+    pub channel: usize,
+    pub bin: usize,
+    pub before: f64,
+    pub after: f64,
+}
+
+// bloke bateko `picks` modu distiratsuenak: lehenik gailurrak (|c| bere bi auzokideak baino handiagoa,
+// espektroko lerro desberdinak), gero gainerakoak |c|-ren arabera (isiltasunean, hutsa)
+fn brightest(frames: &[&[f64]], picks: usize) -> Vec<(usize, usize)> {
+    let mut peaks = Vec::new();
+    let mut rest = Vec::new();
+    for (ch, f) in frames.iter().enumerate() {
+        for k in 0..f.len() {
+            let a = f[k].abs();
+            let left = if k > 0 { f[k - 1].abs() } else { 0.0 };
+            let right = if k + 1 < f.len() { f[k + 1].abs() } else { 0.0 };
+            if a > 0.0 && a >= left && a > right {
+                peaks.push((a, ch, k));
+            } else {
+                rest.push((a, ch, k));
+            }
+        }
+    }
+    let order = |x: &(f64, usize, usize), y: &(f64, usize, usize)| {
+        y.0.total_cmp(&x.0).then((x.1, x.2).cmp(&(y.1, y.2)))
+    };
+    peaks.sort_by(order);
+    rest.sort_by(order);
+    peaks
+        .into_iter()
+        .chain(rest)
+        .take(picks)
+        .map(|(_, ch, k)| (ch, k))
+        .collect()
+}
+
+// argia kanal guztietan: mdct, zirkuitua, alderantzizkoa. `picks` > 0 bada, bloke bakoitzeko modu
+// distiratsuenak ere bai (fase-espaziorako)
 pub fn apply_light(
     audio: &Audio,
     light: &Light,
     block: usize,
     seed: u64,
-) -> (Vec<Vec<f64>>, light::Summary) {
+    picks: usize,
+) -> (Vec<Vec<f64>>, light::Summary, Vec<Vec<Probe>>) {
     let mdct = Mdct::new(block);
     let mut frames: Vec<Vec<Vec<f64>>> = audio
         .channels
         .iter()
         .map(|c| light::analyze(&mdct, c))
         .collect();
+    let mut probes: Vec<Vec<Probe>> = Vec::new();
+    if picks > 0 {
+        let mut before = frames.clone();
+        light.apply_mesh(&mut before);
+        let blocks = before.first().map_or(0, |c| c.len());
+        probes = (0..blocks)
+            .into_par_iter()
+            .map(|f| {
+                let cols: Vec<&[f64]> = before.iter().map(|c| &c[f][..]).collect();
+                brightest(&cols, picks)
+                    .into_iter()
+                    .map(|(channel, bin)| Probe {
+                        channel,
+                        bin,
+                        before: before[channel][f][bin],
+                        after: 0.0,
+                    })
+                    .collect()
+            })
+            .collect();
+    }
     let summary = light.process(&mut frames, seed);
+    for (f, list) in probes.iter_mut().enumerate() {
+        for p in list.iter_mut() {
+            p.after = frames[p.channel][f][p.bin];
+        }
+    }
     let out = frames
         .iter()
         .zip(&audio.channels)
         .map(|(f, c)| light::synthesize(&mdct, f, c.len()))
         .collect();
-    (out, summary)
+    (out, summary, probes)
 }
 
 // irudi bateko audio-ezaugarriak
@@ -813,6 +904,174 @@ fn render(
     render_spectrum(pixels, mags, direction, width, height);
 }
 
+// --- fase-espazioa ---
+
+// panelen kokapena (goiko ezkerreko izkinak) eta tamaina; None txikiegiak badira
+fn panel_layout(
+    mode: PhaseSpace,
+    width: usize,
+    height: usize,
+) -> Option<(Vec<(usize, usize)>, usize)> {
+    let (cells, size) = match mode {
+        PhaseSpace::Off => return None,
+        PhaseSpace::Row => {
+            let size = (height as f64 * 0.22).round() as usize;
+            let gap = (size / 8).max(4);
+            let count = 4.min(width.saturating_sub(gap) / (size + gap).max(1));
+            (
+                (0..count)
+                    .map(|k| (gap + k * (size + gap), gap))
+                    .collect::<Vec<_>>(),
+                size,
+            )
+        }
+        PhaseSpace::Full => {
+            let (cols, rows) = if width >= height { (4, 2) } else { (2, 4) };
+            let gap = (width.min(height) / 40).max(4);
+            let size = ((width.saturating_sub((cols + 1) * gap)) / cols)
+                .min(height.saturating_sub((rows + 1) * gap) / rows);
+            let x0 = (width - (cols * size + (cols - 1) * gap)) / 2;
+            let y0 = (height - (rows * size + (rows - 1) * gap)) / 2;
+            (
+                (0..rows)
+                    .flat_map(|r| {
+                        (0..cols).map(move |c| (x0 + c * (size + gap), y0 + r * (size + gap)))
+                    })
+                    .collect(),
+                size,
+            )
+        }
+    };
+    (size >= 24 && !cells.is_empty()).then_some((cells, size))
+}
+
+// wigner-en kolorea, v = W / max|W| ∈ [-1, 1]: positiboa beltzetik laranjara eta zurira, negatiboa (egoera
+// ez-klasikoa) beltzetik urdinera eta ziana-zurira
+fn wigner_color(v: f64) -> [f64; 3] {
+    let t = v.abs().min(1.0).powf(0.7);
+    let (mid, top) = if v >= 0.0 {
+        ([1.0, 0.42, 0.08], [1.0, 0.96, 0.85])
+    } else {
+        ([0.1, 0.4, 1.0], [0.75, 0.95, 1.0])
+    };
+    let mut out = [0.0; 3];
+    for c in 0..3 {
+        out[c] = if t < 0.6 {
+            mid[c] * t / 0.6
+        } else {
+            mid[c] + (top[c] - mid[c]) * (t - 0.6) / 0.4
+        };
+    }
+    out
+}
+
+// W pixel batean: panela pantailaren tamainan kalkulatuta badago, zuzenean; bestela interpolazio bilineala
+fn panel_value(panel: &Panel, size: usize, px: usize, py: usize) -> f64 {
+    let n = panel.n;
+    if n == size {
+        return panel.w[py * n + px];
+    }
+    let f = n as f64 / size as f64;
+    let (x, y) = ((px as f64 + 0.5) * f - 0.5, (py as f64 + 0.5) * f - 0.5);
+    let (x0, y0) = (x.floor().max(0.0), y.floor().max(0.0));
+    let (ix, iy) = ((x0 as usize).min(n - 1), (y0 as usize).min(n - 1));
+    let (jx, jy) = ((ix + 1).min(n - 1), (iy + 1).min(n - 1));
+    let (fx, fy) = ((x - x0).clamp(0.0, 1.0), (y - y0).clamp(0.0, 1.0));
+    let row = |r: usize| panel.w[r * n + ix] * (1.0 - fx) + panel.w[r * n + jx] * fx;
+    row(iy) * (1.0 - fy) + row(jy) * fy
+}
+
+// panelak irudian: wigner funtzioa, hutsaren eraztuna eskala gisa (1σ, beheko ezkerrean) eta neurtutakoa
+// (homodinoa: x-ren marra; batez bestekoa: marra etena; zenbaketa: √(2n+1) erradioko eraztuna)
+#[allow(clippy::too_many_arguments)]
+fn draw_panels(
+    pixels: &mut [u8],
+    width: usize,
+    height: usize,
+    mode: PhaseSpace,
+    cells: &[(usize, usize)],
+    size: usize,
+    panels: &[(Panel, Probe)],
+    light: &Light,
+) {
+    if mode == PhaseSpace::Full {
+        pixels
+            .par_iter_mut()
+            .for_each(|v| *v = (*v as f32 * 0.35) as u8);
+    }
+    let scale = light.amplitude_scale();
+    for ((x0, y0), (panel, probe)) in cells.iter().zip(panels) {
+        let top = panel.w.iter().fold(0.0f64, |m, v| m.max(v.abs()));
+        let h = 2.0 * panel.half / size as f64;
+        let left = panel.center.0 - panel.half;
+        let upper = panel.center.1 + panel.half;
+        let after = probe.after * scale;
+        let line_x =
+            (light.detect != light::Detect::Count).then(|| (2f64.sqrt() * after - left) / h);
+        let ring =
+            (light.detect == light::Detect::Count).then(|| (2.0 * after * after + 1.0).sqrt());
+        let vac = std::f64::consts::FRAC_1_SQRT_2 / h;
+        let pad = (size / 24) as f64;
+        let vac_c = (pad + vac.max(1.5), size as f64 - pad - vac.max(1.5));
+        let border = (size / 240).max(1);
+        let dashed = light.detect == light::Detect::Mean;
+        pixels[y0 * width * 3..(y0 + size).min(height) * width * 3]
+            .par_chunks_mut(width * 3)
+            .enumerate()
+            .for_each(|(py, row)| {
+                for px in 0..size.min(width - x0) {
+                    let o = (x0 + px) * 3;
+                    let w = panel_value(panel, size, px, py);
+                    let c = wigner_color(if top > 0.0 { w / top } else { 0.0 });
+                    let mut rgb = [0.0; 3];
+                    for k in 0..3 {
+                        rgb[k] = row[o + k] as f64 / 255.0 * 0.18 + c[k];
+                    }
+                    let mut over = |color: [f64; 3], a: f64| {
+                        for k in 0..3 {
+                            rgb[k] = rgb[k] * (1.0 - a) + color[k] * a;
+                        }
+                    };
+                    let (fx, fy) = (px as f64 + 0.5, py as f64 + 0.5);
+                    // neurtutakoa
+                    if let Some(lx) = line_x {
+                        let a = (1.0 - (fx - lx).abs() / (border as f64 + 0.5)).max(0.0);
+                        if a > 0.0 && (!dashed || (py / 6) % 2 == 0) {
+                            over([0.45, 1.0, 0.55], 0.85 * a);
+                        }
+                    }
+                    if let Some(radius) = ring {
+                        let (x, p) = (left + fx * h, upper - fy * h);
+                        let a = (1.0
+                            - ((x * x + p * p).sqrt() - radius).abs()
+                                / (h * (border as f64 + 0.5)))
+                            .max(0.0);
+                        if a > 0.0 {
+                            over([0.45, 1.0, 0.55], 0.85 * a);
+                        }
+                    }
+                    // hutsaren eraztuna
+                    let dv = ((fx - vac_c.0).powi(2) + (fy - vac_c.1).powi(2)).sqrt();
+                    let a = if vac >= 1.5 {
+                        (1.0 - (dv - vac).abs() / 0.75).max(0.0)
+                    } else {
+                        (1.0 - (dv - 1.0).max(0.0)).max(0.0)
+                    };
+                    if a > 0.0 {
+                        over([0.85, 0.85, 0.85], 0.8 * a);
+                    }
+                    // ertza
+                    if px < border || py < border || px + border >= size || py + border >= size {
+                        over([0.6, 0.6, 0.6], 0.6);
+                    }
+                    for k in 0..3 {
+                        row[o + k] = (rgb[k].clamp(0.0, 1.0) * 255.0).round() as u8;
+                    }
+                }
+            });
+    }
+}
+
 // --- bideoa ---
 
 fn label_detect(d: light::Detect) -> String {
@@ -894,7 +1153,8 @@ pub fn run(o: &Options) -> Result<(), String> {
     );
 
     // argia: bideoak beti audio prozesatua jarraitzen du; audioa prozesatua da --keep-audio gabe
-    let (processed, summary) = apply_light(&audio, &o.light, o.block, o.seed);
+    let picks = if video { o.phase_space.picks() } else { 0 };
+    let (processed, summary, probes) = apply_light(&audio, &o.light, o.block, o.seed, picks);
     let mut effects = Vec::new();
     if o.light.mix != 0.0 {
         effects.push(t!(
@@ -938,6 +1198,16 @@ pub fn run(o: &Options) -> Result<(), String> {
         },
     );
     line(ts!("detection", "detekzioa"), label_detect(o.light.detect));
+    if picks > 0 {
+        line(
+            ts!("phase space", "fase-espazioa"),
+            t!(
+                "the exact Wigner function of the {} brightest modes in every frame, before detection, with what was measured",
+                "irudi bakoitzean {} modu distiratsuenen wigner funtzio zehatza, detekzioaren aurretik, neurtutakoarekin",
+                picks
+            ),
+        );
+    }
     if o.light.detect == light::Detect::Mean && o.light.squeeze_db > 0.0 && o.light.kerr == 0.0 {
         line(
             ts!("note", "oharra"),
@@ -1111,6 +1381,10 @@ pub fn run(o: &Options) -> Result<(), String> {
         let perlin = Perlin::new(o.seed);
         let mut bits = BitSource::new(o.seed);
         let (mut prev_rms, mut hue) = (0.0, 0.0);
+        // fase-espazioa: panelak bloke bakoitzeko behin (irudi jarraituek bloke bera izan dezakete)
+        let layout = panel_layout(o.phase_space, width, height);
+        let sampler = (summary.kappa != 0.0).then(|| KerrSampler::new(summary.kappa));
+        let mut shown: Option<(usize, Vec<(Panel, Probe)>)> = None;
         for i in 0..frames {
             let chunk = &signal[(i * per_frame).min(len)..((i + 1) * per_frame).min(len)];
             fft_in.fill(0.0);
@@ -1135,6 +1409,39 @@ pub fn run(o: &Options) -> Result<(), String> {
                 i as u64,
                 o.seed,
             );
+            if let Some((cells, size)) = &layout {
+                // irudiaren erdiko laginaren blokea (f blokea f·N laginean dago zentratuta)
+                let at = (i as f64 + 0.5) / o.fps as f64 * rate as f64;
+                let f =
+                    ((at / o.block as f64).round() as usize).min(probes.len().saturating_sub(1));
+                if shown.as_ref().is_none_or(|s| s.0 != f) && !probes.is_empty() {
+                    let n = (*size).min(720);
+                    let scale = o.light.amplitude_scale();
+                    let panels = probes[f]
+                        .par_iter()
+                        .take(cells.len())
+                        .map(|p| {
+                            (
+                                o.light.phase_space(p.before * scale, sampler.as_ref(), n),
+                                *p,
+                            )
+                        })
+                        .collect();
+                    shown = Some((f, panels));
+                }
+                if let Some((_, panels)) = &shown {
+                    draw_panels(
+                        &mut buf,
+                        width,
+                        height,
+                        o.phase_space,
+                        cells,
+                        *size,
+                        panels,
+                        &o.light,
+                    );
+                }
+            }
             // ffmpeg amaitu bada (adib. aukera oker bat), idazle-haria gelditu da: ondoren jakinaraziko da
             if to_writer.send(buf).is_err() {
                 break;
@@ -1444,6 +1751,56 @@ mod tests {
         let hs = bar_heights(&many, 100, 40);
         assert_eq!(hs[50], 10);
         assert_eq!(hs.iter().filter(|&&x| x > 0).count(), 1);
+    }
+
+    #[test]
+    fn panels_fit_in_the_frame_without_overlapping() {
+        for (w, h) in [
+            (1920, 1080),
+            (3840, 2160),
+            (1280, 720),
+            (1080, 1920),
+            (320, 180),
+            (500, 500),
+        ] {
+            for mode in [PhaseSpace::Row, PhaseSpace::Full] {
+                let Some((cells, size)) = panel_layout(mode, w, h) else {
+                    continue;
+                };
+                assert!(cells.len() <= mode.picks());
+                for (i, &(x, y)) in cells.iter().enumerate() {
+                    assert!(x + size <= w && y + size <= h, "{}x{} {:?}", w, h, mode);
+                    for &(x2, y2) in &cells[i + 1..] {
+                        assert!(
+                            x + size <= x2 || x2 + size <= x || y + size <= y2 || y2 + size <= y
+                        );
+                    }
+                }
+            }
+        }
+        assert_eq!(
+            panel_layout(PhaseSpace::Row, 1920, 1080).unwrap().0.len(),
+            4
+        );
+        assert_eq!(
+            panel_layout(PhaseSpace::Full, 3840, 2160).unwrap().0.len(),
+            8
+        );
+        assert!(panel_layout(PhaseSpace::Row, 96, 54).is_none());
+        assert!(panel_layout(PhaseSpace::Off, 1920, 1080).is_none());
+    }
+
+    #[test]
+    fn the_brightest_modes_are_spectral_peaks_first() {
+        let a = [0.1, 0.9, 0.8, 0.2, 0.0, -0.5, 0.0];
+        let b = [0.0, 0.0, 0.3, 0.0, 0.0, 0.0, 0.0];
+        // gailurrak: a[1] 0.9, a[5] 0.5, b[2] 0.3; gero gainerakoak: a[2] 0.8...
+        assert_eq!(
+            brightest(&[&a, &b], 4),
+            vec![(0, 1), (0, 5), (1, 2), (0, 2)]
+        );
+        // isiltasuna: hutsa, bin-en ordenan
+        assert_eq!(brightest(&[&[0.0; 4]], 2), vec![(0, 0), (0, 1)]);
     }
 
     // errendatze-abiadura bakarrik (ffmpeg gabe): cargo test --release --bin qoa -- --ignored --nocapture

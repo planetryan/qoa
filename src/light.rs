@@ -227,11 +227,8 @@ impl Light {
         Ok(())
     }
 
-    // kanal bakoitzaren irudiak (mdct koefizienteak) tokian prozesatu. `seed`-ek zarata erabakitzen du: hazi
-    // berak emaitza bera ematen du hari-kopurua edozein dela ere (irudi bakoitzak bere rng-a)
-    pub fn process(&self, channels: &mut [Vec<Vec<f64>>], seed: u64) -> Summary {
-        let s = (2.0 * self.photons).sqrt();
-        let t = 1.0 - self.loss;
+    // habe-zatitzaile sarea irudi guztietan (detekzioaren aurreko lehen urratsa)
+    pub fn apply_mesh(&self, channels: &mut [Vec<Vec<f64>>]) {
         if self.mix != 0.0 {
             let (sn, cs) = self.mix.sin_cos();
             channels
@@ -239,6 +236,132 @@ impl Light {
                 .flat_map(|ch| ch.par_iter_mut())
                 .for_each(|frame| mesh(frame, cs, sn));
         }
+    }
+
+    // α koefizientetik: α = √t · √(2P) · c
+    pub fn amplitude_scale(&self) -> f64 {
+        (1.0 - self.loss).sqrt() * (2.0 * self.photons).sqrt()
+    }
+
+    // galeraren ondoko argi estutua: X-ren bariantza, egoera puruaren estutzea eta Im α-ren zarata
+    pub fn noise_params(&self) -> (f64, f64, f64, f64) {
+        let t = 1.0 - self.loss;
+        let squeezed = 10f64.powf(-self.squeeze_db / 10.0);
+        let vx = t * squeezed / 2.0 + (1.0 - t) / 2.0;
+        let vp = t / squeezed / 2.0 + (1.0 - t) / 2.0;
+        let r_pure = -0.5 * (2.0 * vx).ln();
+        let s_u = ((vp - 1.0 / (4.0 * vx)).max(0.0) / 2.0).sqrt();
+        (vx, vp, r_pure, s_u)
+    }
+
+    // modu baten egoeraren wigner funtzioa detekzioaren aurretik, n×n pixeletan (ikus `Panel`). `sampler`-ek
+    // kerr-en κ dakar (None: kerr-ik gabe). kerr-ik gabe egoera gaussiarra da, forma itxian; kerr-ekin egoera
+    // purua garapen desplazatutik; galera eta estutzea batera daudenean, egoera nahasia da: galeraren zarataren
+    // (Im α-n, kerr-aren aurretik) gaineko integrala trapezio-erregela moldakorrarekin, irudia 1e-3-ra
+    // egonkortu arte
+    pub fn phase_space(&self, alpha: f64, sampler: Option<&KerrSampler>, n: usize) -> Panel {
+        let (vx, vp, r_pure, s_u) = self.noise_params();
+        let Some(sampler) = sampler.filter(|s| s.kappa != 0.0) else {
+            let center = (2f64.sqrt() * alpha, 0.0);
+            let half = view_half(vx.max(vp));
+            return Panel {
+                center,
+                half,
+                n,
+                w: gaussian_pixels((0.0, 0.0), vx, vp, half, n),
+                nodes: 0,
+            };
+        };
+        let node = |u: f64| sampler.expansion(&Pure::lab(C::new(alpha, u), r_pure));
+        let (beta, d) = node(0.0);
+        let (mean, vx0, vp0) = moments(&d);
+        let offset = |b: C| (2f64.sqrt() * b.re, 2f64.sqrt() * b.im);
+        let b0 = offset(beta);
+        let center = (b0.0 + mean.0, b0.1 + mean.1);
+        if s_u == 0.0 {
+            let half = view_half(vx0.max(vp0));
+            let h = 2.0 * half / n as f64;
+            let grid = Grid::new(
+                center,
+                half,
+                n,
+                reach(&d),
+                (center.1 - b0.1).abs() + half + h,
+            );
+            return Panel {
+                center,
+                half,
+                n,
+                w: grid.image(&[grid.part(1.0, b0, &d)]),
+                nodes: 1,
+            };
+        }
+        // nahastea: ∫ N(u; 0, s_u²) W_u du, ±5.5 s_u (kanpoko masa 4e-8), urratsa s_u/2-tik erdibituz.
+        // sareta lehen mailako nodoetatik (muturrak barne), tarte batekin
+        let half = view_half(vx0.max(vp0) + 2.0 * s_u * s_u);
+        let h = 2.0 * half / n as f64;
+        let weight = |u: f64| (-0.5 * (u / s_u).powi(2)).exp();
+        let mut step = s_u / 2.0;
+        let mut us = vec![0.0];
+        us.extend((1..=11).flat_map(|k| [k as f64 * step, -(k as f64) * step]));
+        let first: Vec<(f64, C, Vec<C>)> = us
+            .par_iter()
+            .map(|&u| {
+                let (b, d) = node(u);
+                (u, b, d)
+            })
+            .collect();
+        let far = first.iter().fold(0.0f64, |r, x| r.max(reach(&x.2)));
+        let pmax = first
+            .iter()
+            .fold(0.0f64, |r, x| r.max((center.1 - offset(x.1).1).abs()));
+        let grid = Grid::new(center, half, n, 1.1 * far + 1.0, pmax + 1.0 + half + h);
+        let mut parts: Vec<Part> = first
+            .iter()
+            .map(|(u, b, d)| grid.part(weight(*u), offset(*b), d))
+            .collect();
+        let mut w = grid.image(&parts);
+        for _ in 0..5 {
+            step /= 2.0;
+            let count = (5.5 * s_u / step).round() as i64;
+            let mids: Vec<f64> = (1..=count)
+                .step_by(2)
+                .flat_map(|k| [k as f64 * step, -(k as f64) * step])
+                .collect();
+            let more: Vec<Part> = mids
+                .par_iter()
+                .map(|&u| {
+                    let (b, d) = node(u);
+                    grid.part(weight(u), offset(b), &d)
+                })
+                .collect();
+            parts.extend(more);
+            let next = grid.image(&parts);
+            let top = next.iter().fold(0.0f64, |m, v| m.max(v.abs()));
+            let change = next
+                .iter()
+                .zip(&w)
+                .fold(0.0f64, |m, (a, b)| m.max((a - b).abs()));
+            w = next;
+            if change <= 1e-3 * top {
+                break;
+            }
+        }
+        Panel {
+            center,
+            half,
+            n,
+            w,
+            nodes: parts.len(),
+        }
+    }
+
+    // kanal bakoitzaren irudiak (mdct koefizienteak) tokian prozesatu. `seed`-ek zarata erabakitzen du: hazi
+    // berak emaitza bera ematen du hari-kopurua edozein dela ere (irudi bakoitzak bere rng-a)
+    pub fn process(&self, channels: &mut [Vec<Vec<f64>>], seed: u64) -> Summary {
+        let s = (2.0 * self.photons).sqrt();
+        let t = 1.0 - self.loss;
+        self.apply_mesh(channels);
         // fotoiak galeren ondoren: |α|² = t·(s·c)²
         let (total, brightest) = channels
             .par_iter()
@@ -268,9 +391,7 @@ impl Light {
         // galeraren ondoko argi estutua gaussiar nahasia da: X-n `variance` duen egoera estutu purua, P-n zarata
         // klasiko gaussiar batekin desplazatuta (vp - 1/(4 vx)), zehazki. u = Im α-ren zarataren desbideratzea
         let squeezing = self.squeeze_db > 0.0;
-        let r_pure = -0.5 * (2.0 * variance).ln();
-        let vp = t / squeezed / 2.0 + (1.0 - t) / 2.0;
-        let s_u = ((vp - 1.0 / (4.0 * variance)).max(0.0) / 2.0).sqrt();
+        let (_, _, r_pure, s_u) = self.noise_params();
         let gain = 1.0 / (t.sqrt() * s);
         // kerr-en ondoko homodinoa: taulak behin, modu guztientzat
         let sampler =
@@ -618,8 +739,8 @@ impl KerrSampler {
     // modu baten egoera fock oinarri desplazatuan: ψ = D(β) Σ_k d_k |k>, β = a e^{iφ_r} (egoera klasikoaren
     // puntua, osagai erreferentziala). osagai bakoitza D(-β)|a e^{iφ_j}> = e^{i a² sin δ_j}|γ_j> da, γ_j = a(e^{iδ_j} - 1),
     // eta <k|γ> = e^{-|γ|²/2} γ^k/√k!. kerr-en egoera trinkoa da fotoi-kopuru txikitan (kerr fasearen araberakoa),
-    // beraz k-ren batura koefizienteak arbuiagarriak direnean gelditzen da. itzultzen du (x0 = √2 Re β, d_k)
-    fn displaced(&self, a: f64) -> (f64, Vec<C>) {
+    // beraz k-ren batura koefizienteak arbuiagarriak direnean gelditzen da. itzultzen du (β, d_k)
+    fn displaced(&self, a: f64) -> (C, Vec<C>) {
         let n_bar = a * a;
         let m = Self::size(n_bar) as i64;
         let table = self.table_for(m as usize);
@@ -725,12 +846,22 @@ impl KerrSampler {
                 break;
             }
         }
-        (2f64.sqrt() * a * phi_r.cos(), d)
+        (C::from_polar(a, phi_r), d)
+    }
+
+    // egoera puru baten garapena fock oinarri desplazatuan: (β, d_k), ψ = D(β) Σ d_k |k>
+    pub fn expansion(&self, p: &Pure) -> (C, Vec<C>) {
+        if p.r == 0.0 && p.psi == 0.0 {
+            self.displaced(p.a)
+        } else {
+            self.displaced_pure(p)
+        }
     }
 
     // X-ren banaketa metatu zehatza eta dentsitatea x puntuetan (α >= 0), garapen bakarrarekin
     pub fn cdf_and_density(&self, alpha: f64, xs: &[f64]) -> Vec<(f64, f64)> {
-        let (x0, d) = self.displaced(alpha.abs());
+        let (beta, d) = self.displaced(alpha.abs());
+        let x0 = 2f64.sqrt() * beta.re;
         xs.iter().map(|x| cdf_density(&d, x - x0)).collect()
     }
 
@@ -741,8 +872,8 @@ impl KerrSampler {
         if a == 0.0 {
             return (-x * x).exp() / PI.sqrt();
         }
-        let (x0, d) = self.displaced(a);
-        cdf_density(&d, x - x0).1
+        let (beta, d) = self.displaced(a);
+        cdf_density(&d, x - 2f64.sqrt() * beta.re).1
     }
 
     // X-ren lagin bat kerr-en ondoko egoeran: banaketa metatu zehatzaren alderantzizkoa
@@ -752,8 +883,8 @@ impl KerrSampler {
         if a == 0.0 {
             return normal_pair(rng).0 / 2f64.sqrt();
         }
-        let (x0, d) = self.displaced(a);
-        sign * invert(&d, x0, rng)
+        let (beta, d) = self.displaced(a);
+        sign * invert(&d, 2f64.sqrt() * beta.re, rng)
     }
 
     // X-ren lagin bat kerr-en ondoren egoera estutu puru batean: R(ψ) D(a) S(r e^{iθ}) |0>
@@ -1192,4 +1323,317 @@ fn hilbert(b: &[C]) -> Vec<C> {
     // (b ⊛ g)(k) = Σ_l b_l g(k-l) = Σ_l b_l (-1/(k-l)) = Σ_l b_l/(l-k)
     let scale = 1.0 / n as f64;
     (0..kk).map(|k| fb[k] * scale).collect()
+}
+
+// --------------------------------------------------------------------- fase-espazioa (bistaratzeko)
+
+// wigner funtzioa n×n pixeletan: pixel bakoitza W-ren batez bestekoa da pixelaren karratuan (p-n zehazki,
+// x-n simpson-en erregelarekin, W-ren maiztasun handienaren nyquist-aren azpiko azpilaginekin), beraz
+// xehetasun finak ez dira aliasing bihurtzen. errenkadak p handienetik txikienera; `center` (x, p) eta `half` erdi-zabalera.
+// `nodes`: kalkulatutako egoera puruak (0 gaussiarrarentzat)
+pub struct Panel {
+    pub center: (f64, f64),
+    pub half: f64,
+    pub n: usize,
+    pub w: Vec<f64>,
+    pub nodes: usize,
+}
+
+impl Panel {
+    pub fn pixel(&self) -> f64 {
+        2.0 * self.half / self.n as f64
+    }
+}
+
+// ikuspegiaren erdi-zabalera bariantza handienetik: 4.5σ, gutxienez 3.5 (hutsaren σ = 0.71)
+fn view_half(var: f64) -> f64 {
+    (4.5 * var.sqrt()).max(3.5)
+}
+
+// garapen desplazatuaren momentuak: (⟨x⟩, ⟨p⟩), Var x, Var p (fotoi-kopuruaren eskailera-eragileekin)
+fn moments(d: &[C]) -> ((f64, f64), f64, f64) {
+    let norm: f64 = d.iter().map(|c| c.norm_sqr()).sum();
+    let (mut a, mut a2, mut n) = (C::new(0.0, 0.0), C::new(0.0, 0.0), 0.0);
+    for k in 0..d.len() {
+        n += k as f64 * d[k].norm_sqr();
+        if k + 1 < d.len() {
+            a += d[k].conj() * d[k + 1] * ((k + 1) as f64).sqrt();
+        }
+        if k + 2 < d.len() {
+            a2 += d[k].conj() * d[k + 2] * (((k + 1) * (k + 2)) as f64).sqrt();
+        }
+    }
+    let (a, a2, n) = (a / norm, a2 / norm, n / norm);
+    let (mx, mp) = (2f64.sqrt() * a.re, 2f64.sqrt() * a.im);
+    (
+        (mx, mp),
+        (a2.re + n + 0.5 - mx * mx).max(0.0),
+        (-a2.re + n + 0.5 - mp * mp).max(0.0),
+    )
+}
+
+// N(0, σ²)-ren masa [lo, hi] tartean, kantzelaziorik gabe
+fn gauss_mass(lo: f64, hi: f64, sigma: f64) -> f64 {
+    let k = 1.0 / (sigma * 2f64.sqrt());
+    if lo >= 0.0 {
+        0.5 * (erfc(lo * k) - erfc(hi * k))
+    } else if hi <= 0.0 {
+        0.5 * (erfc(-hi * k) - erfc(-lo * k))
+    } else {
+        1.0 - 0.5 * erfc(-lo * k) - 0.5 * erfc(hi * k)
+    }
+}
+
+// egoera gaussiar baten pixelak (kobariantza diagonala, erdia ikuspegiaren erdiarekiko `off`), zehazki:
+// pixelaren batez bestekoa bi masa gaussiarren biderkadura da
+fn gaussian_pixels(off: (f64, f64), vx: f64, vp: f64, half: f64, n: usize) -> Vec<f64> {
+    let h = 2.0 * half / n as f64;
+    let edge = |i: usize| -half + i as f64 * h;
+    let bx: Vec<f64> = (0..n)
+        .map(|c| gauss_mass(edge(c) - off.0, edge(c + 1) - off.0, vx.sqrt()))
+        .collect();
+    let bp: Vec<f64> = (0..n)
+        .map(|r| gauss_mass(-edge(r + 1) - off.1, -edge(r) - off.1, vp.sqrt()))
+        .collect();
+    let mut out = Vec::with_capacity(n * n);
+    for p in &bp {
+        out.extend(bx.iter().map(|x| x * p / (h * h)));
+    }
+    out
+}
+
+// Σ d_k ψ_k(z), hermite funtzioen errepikapena eskala bereiziarekin (ψ_0 azpigainezka ez dadin z handietan)
+fn hermite_sum(d: &[C], z: f64) -> C {
+    let mut lg = -z * z / 2.0 - 0.25 * PI.ln();
+    let (mut prev, mut cur) = (0.0f64, 1.0f64);
+    let mut sum = C::new(0.0, 0.0);
+    for (j, dj) in d.iter().enumerate() {
+        sum += dj * cur;
+        let next =
+            (2.0 / (j + 1) as f64).sqrt() * z * cur - (j as f64 / (j + 1) as f64).sqrt() * prev;
+        prev = cur;
+        cur = next;
+        if cur.abs() > 1e150 {
+            cur *= 1e-150;
+            prev *= 1e-150;
+            sum *= 1e-150;
+            lg += 150.0 * std::f64::consts::LN_10;
+        }
+    }
+    if lg < -745.0 {
+        C::new(0.0, 0.0)
+    } else {
+        sum * lg.exp()
+    }
+}
+
+// fft-rako tamaina egokia: 2^a 3^b 5^c >= n
+fn good_size(n: usize) -> usize {
+    let mut best = n.next_power_of_two();
+    let mut p5 = 1;
+    while p5 < best {
+        let mut p3 = p5;
+        while p3 < best {
+            let mut p = p3;
+            while p < n {
+                p *= 2;
+            }
+            best = best.min(p);
+            p3 *= 3;
+        }
+        p5 *= 5;
+    }
+    best
+}
+
+// garapen baten zati esanguratsua (atzeko koefiziente isilak kenduta) eta haren irismena: φ eta haren
+// momentua |z| <= √(2K+1) + 8 barruan daude (hermite funtzioen itzulera-puntua, gero gaussiarki erortzen dira)
+fn significant(d: &[C]) -> &[C] {
+    let big = d.iter().fold(0.0f64, |m, x| m.max(x.norm()));
+    let k = d
+        .iter()
+        .rposition(|x| x.norm() > 1e-13 * big)
+        .map_or(1, |k| k + 1);
+    &d[..k.min(d.len())]
+}
+
+fn reach(d: &[C]) -> f64 {
+    (2.0 * significant(d).len() as f64 + 1.0).sqrt() + 8.0
+}
+
+// irudi baten sareta, egoera puru guztiek partekatua (ikus `wigner_expansion`)
+struct Grid {
+    center: (f64, f64),
+    half: f64,
+    n: usize,
+    h: f64,
+    // simpson-en tarteak pixel bakoitzeko (bikoitia) eta y-ren urratsak tarte bakoitzeko
+    m: usize,
+    k: usize,
+    delta: f64,
+    j_max: usize,
+    reach: f64,
+}
+
+// egoera puru bat saretan: pisua, momentuaren desplazamendua (P = √2 Im β) eta φ z_q = b + qδ puntuetan
+struct Part {
+    weight: f64,
+    p_shift: f64,
+    q_lo: i64,
+    phi: Vec<C>,
+}
+
+impl Grid {
+    // `reach`: zati guztien irismen handiena; `pmax`: |p| handiena zatien sistema desplazatuetan
+    fn new(center: (f64, f64), half: f64, n: usize, reach: f64, pmax: f64) -> Grid {
+        let h = 2.0 * half / n as f64;
+        let m = 2 * (h / (0.9 * PI / (4.0 * reach)) / 2.0).ceil().max(1.0) as usize;
+        let dx = h / m as f64;
+        let k = (dx / (0.9 * PI / (reach + pmax + h))).ceil().max(1.0) as usize;
+        let delta = dx / k as f64;
+        Grid {
+            center,
+            half,
+            n,
+            h,
+            m,
+            k,
+            delta,
+            j_max: (reach / delta).ceil() as usize,
+            reach,
+        }
+    }
+
+    // D(β) Σ d_k |k> egoera, `offset` = (√2 Re β, √2 Im β)
+    fn part(&self, weight: f64, offset: (f64, f64), d: &[C]) -> Part {
+        let d = significant(d);
+        let b = self.center.0 - self.half - offset.0;
+        let q_lo = ((-self.reach - b) / self.delta).floor() as i64;
+        let q_hi = ((self.reach - b) / self.delta).ceil() as i64;
+        let phi = (q_lo..=q_hi.max(q_lo - 1))
+            .into_par_iter()
+            .map(|q| hermite_sum(d, b + q as f64 * self.delta))
+            .collect();
+        Part {
+            weight,
+            p_shift: offset.1,
+            q_lo,
+            phi,
+        }
+    }
+
+    // zatien batez besteko haztatua (W lineala da ρ-n)
+    fn image(&self, parts: &[Part]) -> Vec<f64> {
+        let (n, m, j_max, delta, h) = (self.n, self.m, self.j_max, self.delta, self.h);
+        let total: f64 = parts.iter().map(|p| p.weight).sum();
+        // chirp-z: a_j = G_j e^{2i p0 jδ}, p_r = p0 - r h, α = 2hδ
+        let alpha = 2.0 * h * delta;
+        let p0 = self.center.1 + self.half - h / 2.0;
+        let len = good_size(j_max + n);
+        let mut planner = FftPlanner::new();
+        let fft = planner.plan_fft_forward(len);
+        let ifft = planner.plan_fft_inverse(len);
+        let mut kernel = vec![C::new(0.0, 0.0); len];
+        for u in -(j_max as i64)..n as i64 {
+            let ph = 0.5 * alpha * (u * u) as f64;
+            kernel[u.rem_euclid(len as i64) as usize] = C::from_polar(1.0, ph);
+        }
+        fft.process(&mut kernel);
+        let chirp: Vec<C> = (0..=j_max)
+            .map(|j| {
+                let jf = j as f64;
+                let y = jf * delta;
+                let sinc = if j == 0 { 1.0 } else { (h * y).sin() / (h * y) };
+                let w = if j == 0 { 0.5 } else { 1.0 } * sinc;
+                C::from_polar(w, 2.0 * p0 * y - 0.5 * alpha * jf * jf)
+            })
+            .collect();
+        // zati bakoitzaren pisua eta momentuaren desplazamendua: e^{2i(p - P)y}
+        let shifts: Vec<Vec<C>> = parts
+            .iter()
+            .map(|p| {
+                (0..=j_max)
+                    .map(|j| C::from_polar(p.weight / total, -2.0 * p.p_shift * j as f64 * delta))
+                    .collect()
+            })
+            .collect();
+        let simpson: Vec<f64> = (0..=m)
+            .map(|s| {
+                let c = if s == 0 || s == m {
+                    1.0
+                } else if s % 2 == 1 {
+                    4.0
+                } else {
+                    2.0
+                };
+                c / (3 * m) as f64
+            })
+            .collect();
+        let rows: Vec<C> = (0..n)
+            .map(|r| C::from_polar(1.0 / len as f64, -0.5 * alpha * (r * r) as f64))
+            .collect();
+        let scale = 2.0 * delta / PI;
+        let columns: Vec<Vec<f64>> = (0..n)
+            .into_par_iter()
+            .map(|col| {
+                let mut buf = vec![C::new(0.0, 0.0); len];
+                let mut g = vec![C::new(0.0, 0.0); j_max + 1];
+                for (part, shift) in parts.iter().zip(&shifts) {
+                    g.fill(C::new(0.0, 0.0));
+                    for (s, ws) in simpson.iter().enumerate() {
+                        // φ(x+y)* φ(x-y): bi puntuak φ-ren tartean daudeneko j-ak bakarrik
+                        let i = ((col * m + s) * self.k) as i64 - part.q_lo;
+                        let len = part.phi.len() as i64;
+                        if i < 0 || i >= len {
+                            continue;
+                        }
+                        let i = i as usize;
+                        let span = (j_max + 1).min(len as usize - i).min(i + 1);
+                        let up = &part.phi[i..i + span];
+                        let down = part.phi[i + 1 - span..=i].iter().rev();
+                        for ((slot, a), b) in g.iter_mut().zip(up).zip(down) {
+                            *slot += a.conj() * b * ws;
+                        }
+                    }
+                    for ((slot, gj), sh) in buf.iter_mut().zip(&g).zip(shift) {
+                        *slot += gj * sh;
+                    }
+                }
+                for (slot, ch) in buf.iter_mut().zip(&chirp) {
+                    *slot *= ch;
+                }
+                fft.process(&mut buf);
+                for (slot, kf) in buf.iter_mut().zip(&kernel) {
+                    *slot *= kf;
+                }
+                ifft.process(&mut buf);
+                rows.iter()
+                    .zip(&buf)
+                    .map(|(rw, v)| scale * (rw * v).re)
+                    .collect()
+            })
+            .collect();
+        let mut out = vec![0.0; n * n];
+        for (col, column) in columns.iter().enumerate() {
+            for (row, v) in column.iter().enumerate() {
+                out[row * n + col] = *v;
+            }
+        }
+        out
+    }
+}
+
+// φ = Σ d_k |k> egoeraren wigner funtzioa, W(x, p) = (1/π) ∫ φ*(x+y) φ(x-y) e^{2ipy} dy, pixelen batez
+// bestekoa (ikus `Panel`), ikuspegiaren erdia `c` fotoi-kopuruaren sistema desplazatuan.
+//  - y-ren integrala trapezio-erregela da, δ urratsarekin: zehatza da integrakizunaren espektroa 2π/δ-ren
+//    azpitik dagoenean (|p| + irismena)
+//  - pixelaren p-ren batez bestekoa zehatza da: e^{2ipy} → e^{2ip_r y} sin(hy)/(hy)
+//  - x-n, simpson-en erregela m tarterekin (m bikoitia) pixel bakoitzean, tarteak W-ren maiztasun
+//    handienaren (2·irismena) nyquist-aren erdiaren azpitik
+//  - errenkada guztiak batera chirp-z (bluestein) batekin: Σ_j a_j e^{-iα r j}, fft bitan
+//  - egoera nahasi batean, zati puruen G_j-ak batzen dira fft-en aurretik (fft-ak behin irudi bakoitzeko)
+pub fn wigner_expansion(d: &[C], c: (f64, f64), half: f64, n: usize) -> Vec<f64> {
+    let h = 2.0 * half / n as f64;
+    let grid = Grid::new(c, half, n, reach(d), c.1.abs() + half + h);
+    grid.image(&[grid.part(1.0, (0.0, 0.0), d)])
 }

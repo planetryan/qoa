@@ -365,6 +365,78 @@ fn render_raw(wav: &Path, out: &Path, seed: &str) -> Vec<u8> {
 }
 
 #[test]
+fn visual_draws_the_quantum_states_of_the_light() {
+    if !have_ffmpeg() {
+        eprintln!("ffmpeg ez dago; proba hau saltatzen da");
+        return;
+    }
+    let wav = scratch("visual-states.wav");
+    write_wav(&wav);
+    let render = |name: &str| {
+        let out = scratch(name);
+        let o = qoa(
+            "en",
+            &[
+                "visual",
+                wav.to_str().unwrap(),
+                out.to_str().unwrap(),
+                "--resolution",
+                "320x180",
+                "--fps",
+                "8",
+                "--phase-space",
+                "full",
+                "--kerr",
+                "2",
+                "--squeeze",
+                "3",
+                "--loss",
+                "0.2",
+                "--photons",
+                "1000",
+                "--detect",
+                "count",
+                "--seed",
+                "3",
+                "--",
+                "-an",
+                "-c:v",
+                "rawvideo",
+                "-pix_fmt",
+                "rgb24",
+                "-f",
+                "rawvideo",
+            ],
+        );
+        assert!(o.status.success(), "{}{}", stdout(&o), stderr(&o));
+        assert!(stdout(&o).contains("phase space"), "{}", stdout(&o));
+        std::fs::read(out).unwrap()
+    };
+    let a = render("visual-states-a.rgb");
+    let b = render("visual-states-b.rgb");
+    assert_eq!(a.len(), 4 * 320 * 180 * 3);
+    assert!(a == b, "hazi berak bideo bera eman behar du");
+    // 8 panel (4×2), 75 pixelekoak, (4, 13)-tik 4 pixeleko tarteekin: panel bakoitzean egoeraren gailurra
+    // (laranja-zuria) dago
+    let frame = &a[..320 * 180 * 3];
+    for r in 0..2 {
+        for c in 0..4 {
+            let (x0, y0) = (4 + c * 79, 13 + r * 79);
+            let mut warm = 0;
+            for y in y0..y0 + 75 {
+                for x in x0..x0 + 75 {
+                    let p = &frame[(y * 320 + x) * 3..(y * 320 + x) * 3 + 3];
+                    if p[0] > 200 && p[2] < 160 {
+                        warm += 1;
+                    }
+                }
+            }
+            assert!(warm > 0, "{} {}: panelik ez", r, c);
+        }
+    }
+}
+
+#[test]
 fn visual_renders_the_same_video_for_the_same_seed() {
     if !have_ffmpeg() {
         eprintln!("ffmpeg ez dago; proba hau saltatzen da");

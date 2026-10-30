@@ -184,8 +184,9 @@ jakinarazten du, ezkutatu ordez; arbuiagarria ez denean, abisu bat ematen du eta
 bakoitza egoera koherente bat daraman argi-modu bat bihurtzen da, argiak galera, estutzea, kerr ingurune bat
 edo habe-zatitzaile sare bat zeharkatzen ditu, eta bere benetako zarata kuantikoarekin detektatzen da.
 Emaitza audio, bideo edo biak gisa ateratzen da (`--audio-only`, `--video-only`, `--keep-audio`); sarrera
-ffmpeg-ek irakurtzen duen edozer da, edo sarrera estandarreko lagin gordinak. Argia zehazki kalkulatzen da:
-[docs/visual.eu.md](docs/visual.eu.md).
+ffmpeg-ek irakurtzen duen edozer da, edo sarrera estandarreko lagin gordinak. Bideoak argiaren egoera
+kuantikoak erakusten ditu gertatzen diren unean: modu distiratsuenen wigner funtzio zehatza irudi bakoitzean,
+edozein bereizmenetan, 4K60 eta gehiago. Argia zehazki kalkulatzen da: [docs/visual.eu.md](docs/visual.eu.md).
 
 ## Adibideak
 

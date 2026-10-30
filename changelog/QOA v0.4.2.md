@@ -19,6 +19,11 @@
     * photon counting of squeezed light.
   * See [docs/visual.md](../docs/visual.md).
   * Decoding is in 64-bit floating point; `.wav` and `.flac` outputs are 24-bit by default.
+* **The light's quantum states on video** (`qoa visual --phase-space row|full|off`). Every frame shows the
+  exact Wigner function of the brightest modes before detection: coherent blobs, squeezed ellipses, Kerr
+  crescents and their negative regions. The result that was measured is marked on each one. Each pixel is
+  the exact average over its area, so nothing aliases. Any resolution and frame rate work, including 4K60,
+  and ffmpeg options after `--` set the encoding.
 
 ## Changed
 
@@ -48,6 +53,11 @@
     * argi estutuaren fotoi-zenbaketa.
   * Ikus [docs/visual.eu.md](../docs/visual.eu.md).
   * Deskodetzea 64 biteko koma higikorrean egiten da; `.wav` eta `.flac` irteerak 24 bitekoak dira lehenetsiz.
+* **Argiaren egoera kuantikoak bideoan** (`qoa visual --phase-space row|full|off`). Irudi bakoitzak modu
+  distiratsuenen wigner funtzio zehatza erakusten du detekzioaren aurretik: orban koherenteak, elipse
+  estutuak, kerr ilargi-erdiak eta haien eskualde negatiboak. Bakoitzean neurtutako emaitza markatzen da.
+  Pixel bakoitza bere azaleraren batez besteko zehatza da, beraz ez dago aliasing-ik. Edozein bereizmen eta
+  irudi-abiadura erabil daiteke, 4K60 barne, eta `--` ondorengo ffmpeg aukerek kodeketa erabakitzen dute.
 
 ## Aldatua
 

@@ -178,7 +178,9 @@ not negligible, the run warns and suggests a larger cutoff.
 mode of light carrying a coherent state, the light passes through loss, squeezing, a Kerr medium or a
 beamsplitter mesh, and is detected with its real quantum noise. The result comes out as audio, video or both
 (`--audio-only`, `--video-only`, `--keep-audio`); the input is anything ffmpeg reads, or raw samples from
-standard input. The light is computed exactly: [docs/visual.md](docs/visual.md).
+standard input. The video shows the light's quantum states as they happen: the exact Wigner function of the
+brightest modes in every frame, at any resolution up to 4K60 and beyond. The light is computed exactly:
+[docs/visual.md](docs/visual.md).
 
 ## Examples
 

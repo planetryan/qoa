@@ -225,8 +225,13 @@ enum Command {
             "modu-kopurua bloke eta kanal bakoitzeko (MDCT tamaina, bikoitia, 16 edo gehiago)"
         ))]
         block: usize,
-        #[arg(long, default_value = "1920x1080", help = ts!("resolution, e.g. 1920x1080", "bereizmena, adib. 1920x1080"))]
+        #[arg(long, default_value = "1920x1080", help = ts!("resolution, e.g. 1920x1080 or 3840x2160", "bereizmena, adib. 1920x1080 edo 3840x2160"))]
         resolution: String,
+        #[arg(long, value_enum, default_value = "row", help = ts!(
+            "the light's quantum states (exact Wigner functions of the brightest modes): row (4 panels over the art), full (8 large panels) or off",
+            "argiaren egoera kuantikoak (modu distiratsuenen wigner funtzio zehatzak): row (4 panel artearen gainean), full (8 panel handi) edo off"
+        ))]
+        phase_space: PhaseSpaceArg,
         #[arg(long, default_value_t = 60, help = ts!("frames per second", "irudi segundoko"))]
         fps: u32,
         #[arg(long, conflicts_with = "rtl", help = ts!("spectrum runs left to right", "espektroa ezkerretik eskuinera"))]
@@ -243,6 +248,13 @@ enum Command {
         #[arg(last = true, allow_hyphen_values = true, help = ts!("arguments passed to ffmpeg after --", "-- ondoren ffmpeg-i pasatzen zaizkion argumentuak"))]
         ffmpeg_args: Vec<String>,
     },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, ValueEnum)]
+enum PhaseSpaceArg {
+    Row,
+    Full,
+    Off,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, ValueEnum)]
@@ -423,6 +435,7 @@ fn main() -> ExitCode {
             block,
             resolution,
             fps,
+            phase_space,
             ltr,
             rtl,
             seed,
@@ -464,6 +477,11 @@ fn main() -> ExitCode {
                 block,
                 &resolution,
                 fps,
+                match phase_space {
+                    PhaseSpaceArg::Row => visualizer::PhaseSpace::Row,
+                    PhaseSpaceArg::Full => visualizer::PhaseSpace::Full,
+                    PhaseSpaceArg::Off => visualizer::PhaseSpace::Off,
+                },
                 ltr,
                 rtl,
                 seed,
@@ -1002,6 +1020,7 @@ fn cmd_visual(
     block: usize,
     resolution: &str,
     fps: u32,
+    phase_space: visualizer::PhaseSpace,
     ltr: bool,
     rtl: bool,
     seed: Option<u64>,
@@ -1035,6 +1054,7 @@ fn cmd_visual(
         width,
         height,
         fps,
+        phase_space,
         direction,
         seed: seed.unwrap_or_else(rand::random::<u64>),
         ffmpeg_flags,

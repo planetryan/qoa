@@ -520,3 +520,153 @@ fn kerr_homodyne_of_squeezed_light_matches_the_fock_sum() {
         );
     }
 }
+
+// --------------------------------------------------------------------- fase-espazioa
+
+// panelaren integrala eta batez besteko (x, p)
+fn panel_moments(p: &light::Panel) -> (f64, f64, f64) {
+    let (h, n) = (p.pixel(), p.n);
+    let (mut tot, mut mx, mut mp) = (0.0, 0.0, 0.0);
+    for row in 0..n {
+        for col in 0..n {
+            let w = p.w[row * n + col] * h * h;
+            tot += w;
+            mx += w * (p.center.0 - p.half + (col as f64 + 0.5) * h);
+            mp += w * (p.center.1 + p.half - (row as f64 + 0.5) * h);
+        }
+    }
+    (tot, mx / tot, mp / tot)
+}
+
+#[test]
+fn phase_space_panels_hold_the_exact_state() {
+    // (kerr, estutzea, galera, α): gaussiarra, kerr purua, kerr estutua, eta nahastea (galera + estutzea + kerr)
+    for (kerr, sq, loss, alpha) in [
+        (0.0, 0.0, 0.0, 30.0),
+        (0.0, 6.0, 0.2, -12.0),
+        (3.0, 0.0, 0.0, 40.0),
+        (3.0, 6.0, 0.0, 25.0),
+        (3.0, 6.0, 0.2, 30.0),
+    ] {
+        let light = Light {
+            photons: 1e3,
+            loss,
+            squeeze_db: sq,
+            kerr,
+            mix: 0.0,
+            detect: Detect::Homodyne,
+        };
+        let kappa = kerr / (2.0 * 1600.0);
+        let sampler = KerrSampler::new(kappa);
+        let p = light.phase_space(alpha, Some(&sampler), 96);
+        let (_, _, r, s) = light.noise_params();
+        let field = if kerr == 0.0 {
+            Cx::new(alpha, 0.0)
+        } else if s > 0.0 {
+            kerr_mean_mixed(alpha, r, s, kappa)
+        } else {
+            kerr_mean_pure(Cx::new(alpha, 0.0), r, kappa)
+        };
+        let (tot, mx, mp) = panel_moments(&p);
+        let want = (2f64.sqrt() * field.re, 2f64.sqrt() * field.im);
+        println!(
+            "{kerr} {sq} {loss} {alpha}: ∫W {tot:.10} ⟨x⟩ {mx:.8} ({:.8}) ⟨p⟩ {mp:.8} ({:.8}) nodes {}",
+            want.0, want.1, p.nodes
+        );
+        assert!((tot - 1.0).abs() < 1e-4, "∫W = {}", tot);
+        assert!((mx - want.0).abs() < 1e-3 && (mp - want.1).abs() < 1e-3);
+    }
+}
+
+// W(x, p) definiziotik, trapezio fin batekin (erreferentzia)
+fn wigner_direct(d: &[Cx], x: f64, p: f64) -> f64 {
+    let psi = |z: f64| {
+        let (mut prev, mut cur) = (0.0, std::f64::consts::PI.powf(-0.25) * (-z * z / 2.0).exp());
+        let mut sum = Cx::new(0.0, 0.0);
+        for (j, dj) in d.iter().enumerate() {
+            sum += dj * cur;
+            let next =
+                (2.0 / (j + 1) as f64).sqrt() * z * cur - (j as f64 / (j + 1) as f64).sqrt() * prev;
+            prev = cur;
+            cur = next;
+        }
+        sum
+    };
+    let dy = 0.01;
+    let mut acc = 0.0;
+    for k in -1500..=1500 {
+        let y = k as f64 * dy;
+        acc += (psi(x + y).conj() * psi(x - y) * Cx::from_polar(1.0, 2.0 * p * y)).re;
+    }
+    acc * dy / std::f64::consts::PI
+}
+
+#[test]
+fn wigner_pixels_are_pixel_averages_without_aliasing() {
+    // |1>: W(0,0) = -1/π; eta superposizio bat, pixel handiekin (marra finak pixel bakoitzean batez bestekoa)
+    let one = [Cx::new(0.0, 0.0), Cx::new(1.0, 0.0)];
+    let mix: Vec<Cx> = (0..12)
+        .map(|k| Cx::from_polar(1.0 / 12f64.sqrt(), 0.7 * k as f64))
+        .collect();
+    for (d, c, half, n) in [
+        (&one[..], (0.0, 0.0), 3.5, 35),
+        (&mix[..], (0.4, -0.3), 6.0, 16),
+    ] {
+        let w = light::wigner_expansion(d, c, half, n);
+        let h = 2.0 * half / n as f64;
+        let top = w.iter().fold(0.0f64, |m, v| m.max(v.abs()));
+        let mut worst: f64 = 0.0;
+        for (row, col) in [
+            (n / 2, n / 2),
+            (n / 2 - 1, n / 2),
+            (3, 7),
+            (n - 4, 2),
+            (n / 3, n / 2 + 2),
+        ] {
+            // pixelaren batez bestekoa: gauss-legendre konposatua, 4 tarte × 4 puntu dimentsio bakoitzean
+            let gl = [
+                (-0.861_136_311_594_052_6, 0.347_854_845_137_453_8),
+                (-0.339_981_043_584_856_3, 0.652_145_154_862_546_1),
+                (0.339_981_043_584_856_3, 0.652_145_154_862_546_1),
+                (0.861_136_311_594_052_6, 0.347_854_845_137_453_8),
+            ];
+            let nodes: Vec<(f64, f64)> = (0..4)
+                .flat_map(|t| {
+                    gl.iter()
+                        .map(move |&(u, w)| ((t as f64 + 0.5 + u / 2.0) / 4.0, w / 8.0))
+                })
+                .collect();
+            let mut avg = 0.0;
+            for &(fx, wx) in &nodes {
+                for &(fp, wp) in &nodes {
+                    let x = c.0 - half + (col as f64 + fx) * h;
+                    let p = c.1 + half - (row as f64 + fp) * h;
+                    avg += wx * wp * wigner_direct(d, x, p);
+                }
+            }
+            worst = worst.max((w[row * n + col] - avg).abs());
+        }
+        println!(
+            "{} modes, pixel {h:.3}: worst {:.2e} of max {:.3}",
+            d.len(),
+            worst,
+            top
+        );
+        assert!(worst < 1e-5 * top, "{} {}", worst, top);
+    }
+    let w = light::wigner_expansion(&one, (0.0, 0.0), 3.5, 35);
+    assert!((w[17 * 35 + 17] + 1.0 / std::f64::consts::PI).abs() < 0.01);
+}
+
+#[test]
+fn strong_kerr_states_have_negative_wigner_regions() {
+    let light = Light {
+        kerr: 8.0,
+        ..Light::default()
+    };
+    let kappa = 8.0 / (2.0 * 2e5);
+    let p = light.phase_space(2e5f64.sqrt(), Some(&KerrSampler::new(kappa)), 128);
+    let max = p.w.iter().cloned().fold(f64::MIN, f64::max);
+    let min = p.w.iter().cloned().fold(f64::MAX, f64::min);
+    assert!(min < -0.05 * max, "{} {}", min, max);
+}

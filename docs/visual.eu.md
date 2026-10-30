@@ -11,6 +11,7 @@ qoa visual abestia.flac irteera.flac --audio-only        # audio prozesatua baka
 qoa visual abestia.mp3 irteera.mp4 --keep-audio          # jatorrizko audioa, bideoa argi prozesatutik
 qoa visual abestia.mp3 irteera.mp4 --video-only          # bideoa, audio-pistarik gabe
 ffmpeg -i abestia.mp3 -f s16le -ac 1 -ar 48000 - | qoa visual - irteera.wav --raw s16le --rate 48000 --channels 1 --audio-only
+qoa visual abestia.flac irteera.mkv --resolution 3840x2160 --fps 60 --phase-space full -- -c:v libx265 -crf 14
 ```
 
 Sarrera ffmpeg-ek irakur dezakeen edozer da (mp3, flac, wav, ogg, bideo baten audioa...), edo lagin
@@ -93,10 +94,46 @@ Argi estutua zehatza da konbinazio guztietan:
 
 ## Bideoa
 
-Bideoa artea da. Irudi bakoitzak soinu prozesatuaren ozentasuna, zentroide espektrala, banden energiak eta
+Bideoak bi geruza ditu. Edozein bereizmen eta irudi-abiadura erabil daiteke (`--resolution 3840x2160 --fps 60`
+4K60-rako), eta `--` ondorengo guztia ffmpeg-era doa, beraz kodetzailea, kalitatea eta edukiontzia zuk
+aukeratzen dituzu.
+
+**Artea.** Irudi bakoitzak soinu prozesatuaren ozentasuna, zentroide espektrala, banden energiak eta
 transienteak hartzen ditu, eta zarata-eremu bat, interferentzia-eredu bat, keinuak eta espektro-barra bat
 gidatzen ditu. Argiaren irteerari jarraitzen dio, beraz zarata kuantikoa eta kerr distortsioa irudian ere
-ikusten dira. Moduen fase-espazioko egoerak marrazten dituen geruza bat 0.4.2-rako dago aurreikusita.
+ikusten dira.
+
+**Argiaren egoera kuantikoak** (`--phase-space`). Irudi bakoitzak une horretako modu distiratsuenak
+erakusten ditu, detekzioaren aurretik dauden bezala. Bakoitza bere wigner funtzio gisa marrazten da: bi
+koadraturen, X (horizontala) eta P (bertikala), gaineko probabilitate-mapa baten bertsio kuantikoa:
+
+![Galeratik eta kerr ingurune batetik pasatutako argi estutuaren zortzi modu, bakoitza zenbatutako fotoi-kopuruarekin](images/phase-space.jpg)
+
+- **Koloreak.** Laranjatik zurira, egoera dagoen tokia da. Urdinak balio negatiboak markatzen ditu, egoera
+  klasiko batek ezin dituenak; kerr ingurunea nahikoa indartsua denean agertzen dira.
+- **Eraztun txikiak**, izkinan, hutsaren zarataren tamaina du, eskala gisa. Egoera koherente bat tamaina
+  horretako orban biribil bat da, argi estutua elipse bat, eta kerr argia ilargi-erdi bihurtzen da.
+- **Marka berdea** neurtutakoa da: marra bertikal bat emaitza homodinoan, marra eten bat batez besteko
+  zehatzean, edo arku bat zenbatutako fotoi-kopuruan. Arku hori jatorriaren inguruko √(2n+1) erradioko
+  zirkuluaren zati bat da.
+- **Antolaketa.** `row`-ek (lehenetsia) 4 panel jartzen ditu artearen gainean, `full`-ek irudia 8 panel
+  handiri ematen die, eta `off`-ek itzaltzen ditu.
+
+Panelak kalkulatuta daude, ez marraztuta:
+
+- Kerr ingurunerik gabe egoera gaussiarra da, eta forma itxian marrazten da.
+- Kerr-ekin, shot homodinoek erabiltzen duten garapen zehatz beretik dator.
+- Estutzeak, galerak eta kerr-ek batera egoera nahasi bat ematen dute. Galeraren zarataren gainean batez
+  bestekoa egiten da, irudia aldatzeari utzi arte (bere gailurraren 1e-3-ra) bere burua fintzen duen
+  erregela batekin, gehienez 705 egoera pururekin.
+- Pixel bakoitza W-ren batez bestekoa da pixel horretan, beraz pixel bat baino xehetasun finagoak ezin dira
+  eredu faltsu bihurtu (aliasing). `tests/light.rs`-k integrazio zuzenarekin egiaztatzen du, 1e-5-raino.
+  Panel bakoitzak 1 probabilitatea eta egoeraren batez besteko eremu zehatza dituela ere egiaztatzen du.
+
+Kerr ingurunerik gabe panelek ia ez dute ezer kostatzen. Kerr-ekin, eta batez ere estutzea, galera eta kerr
+batera daudenean, bideoaren zatirik geldoena dira: 4 nukleotan 720p-ko irudi batek 0,4 eta 0,7 s artean
+behar ditu orduan.
+
 Irudiak paraleloan marrazten dira ordena finko batean, beraz hazi berak bideo bera ematen du.
 
 ## Hardware erreala
