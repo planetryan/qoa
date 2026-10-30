@@ -56,13 +56,27 @@ Argian ez da ezer hurbiltzen:
   batura zuzen batekin egiaztatzen du, 1e-12-raino.
 - Kerr-ek fotoi-estatistika poisson uzten du, eta zehazki lagintzen da, edozein batez bestekorekin
   milaka milioiraino, hörmann-en baztertze eraldatuarekin eta log-probabilitate zehatz batekin.
+- Kerr ingurune baten ondoren, shot homodino bat egoera ez-gaussiarraren banaketa zehatzetik ateratzen da:
+  - Kerr fasea, κn(n−1), zehazki banatzen da egoera koherentearen biraketa batean eta axola duten
+    fotoi-kopuruen gaineko chirp koadratiko batean.
+  - Chirp-aren fourier-koefizienteek egoera egoera koherente biratuen gainjarketa bihurtzen dute. Leiho-tamaina
+    bakoitzeko fft bat modu guztiek partekatzen dute, eta koefizienteak haien batura 1e-12 azpitik dagoen
+    bitartean bakarrik ezabatzen dira.
+  - Gainjarketa hori egoeraren puntu klasikora desplazatutako sistema batera eramaten da, non
+    fotoi-kopuruaren garapen labur bat den. Garapena koefizienteak anplitudean 1e-17 azpitik daudenean gelditzen
+    da.
+  - Shot-a banaketa metatu zehatzaren alderantzizkoa da. Haren gai ez-diagonalak hermite funtzioen
+    wronskiar bat dira, eta diagonalak eskailera-eragileen errepikapen batetik datoz.
+  - `tests/light.rs`-k dentsitatea fotoi-kopuruaren oinarriko batura zuzen batekin egiaztatzen du 1e-12-raino
+    (1e-14 inguruan bat dator), eta laginen batez bestekoa eta bariantza haien forma itxiekin.
+  - Shot batek 0,15 ms inguru behar ditu nukleo batean moduaren kerr fasea txikia denean (modu gehienak), eta
+    1,5 eta 2,5 ms artean handia denean (modu distiratsuenak `--kerr 2`-rekin). Moduak paraleloan doaz nukleo
+    guztietan.
 - Zarata kanal eta bloke bakoitzeko hazi bidezko sorgailu batetik dator, beraz hazi berak irteera bera
   ematen du edozein hari-kopururekin.
 
-Konbinazio batek ez du kalkulu zehatzik audio-abiaduran, eta baztertu egiten da: **kerr detekzio
-homodinoarekin**. Modu bakoitza egoera ez-gaussiar distiratsu bat litzateke, eta bat zehazki segundoko
-44.000 aldiz lagintzea ez dago eskura. `--detect mean` edo `--detect count` kerr-ekin ibiltzen dira. Argi
-estutuaren zenbaketa ez dago oraindik inplementatuta.
+Bi konbinazio ez daude oraindik inplementatuta, eta hala dioten erroreak dira: argi estutua kerr ingurune
+batetik (`--squeeze` eta `--kerr`), eta argi estutuaren zenbaketa (`--squeeze` eta `--detect count`).
 
 ## Bideoa
 

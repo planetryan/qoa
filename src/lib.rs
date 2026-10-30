@@ -1,6 +1,13 @@
 // qoa liburutegia: mihiztatzailea, simulagailua eta inportazio/esportazioa.
 // rust egonkorrean konpilatzen da, nightly ezaugarririk gabe.
 
+// QOA 64 bitekoa da bakarrik: fisika 64 biteko koma higikorrean kalkulatzen du eta egoera handiek 64 biteko
+// helbide-espazioa behar dute (2^32 anplitude = 64 GiB)
+#[cfg(not(target_pointer_width = "64"))]
+compile_error!(
+    "QOA is 64-bit only: build it for a 64-bit target (x86-64, ARM64, RISC-V 64, POWER, IBM Z, LoongArch). / QOA 64 bitekoa da bakarrik: konpilatu 64 biteko helburu baterako (x86-64, ARM64, RISC-V 64, POWER, IBM Z, LoongArch)."
+);
+
 pub mod asm; // .qoa testua -> programa
 pub mod dd; // batura zehatzak double-double aritmetikarekin (~106 bit): araua, probabilitateak
 pub mod disasm; // desmihiztatzea eta analisirako esportazioak (qoa, listing, json, dot, glyph)

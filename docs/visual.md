@@ -55,13 +55,25 @@ Nothing in the light is approximated:
   photon-number basis, to 1e-12.
 - Kerr leaves the photon statistics Poisson, and they are sampled exactly, for any mean up to billions,
   with Hörmann's transformed rejection and an exact log-probability.
+- After a Kerr medium, a homodyne shot is drawn from the exact distribution of the non-Gaussian state:
+  - The Kerr phase κn(n−1) is split exactly into a rotation of the coherent state and a quadratic chirp
+    over the photon numbers that matter.
+  - The chirp's Fourier coefficients turn the state into a superposition of rotated coherent states. One
+    FFT per window size is shared by every mode, and coefficients are dropped only while their total stays
+    below 1e-12.
+  - That superposition is moved into a frame displaced to the state's classical point, where it is a short
+    photon-number expansion. The expansion stops when its coefficients fall below 1e-17 in amplitude.
+  - The shot comes from inverting the exact cumulative distribution. Its off-diagonal terms are a
+    Wronskian of Hermite functions, and its diagonal terms come from a ladder-operator recurrence.
+  - `tests/light.rs` checks the density against a direct sum in the photon-number basis to 1e-12 (it agrees
+    to about 1e-14), and the samples' mean and variance against their closed forms.
+  - A shot costs about 0.15 ms on one core when the mode's Kerr phase is small (most modes), and 1.5 to
+    2.5 ms when it is large (the brightest modes with `--kerr 2`). Modes run in parallel on every core.
 - The noise comes from a seeded generator per channel and block, so the same seed gives the same output on
   any number of threads.
 
-One combination has no exact computation at audio rates and is refused: **Kerr with homodyne detection**.
-Every mode would be a bright non-Gaussian state, and sampling one exactly about 44,000 times a second is out
-of reach. `--detect mean` or `--detect count` work with Kerr. Counting squeezed light is not implemented
-yet.
+Two combinations are not implemented yet, and are errors that say so: squeezed light through a Kerr medium
+(`--squeeze` with `--kerr`), and counting squeezed light (`--squeeze` with `--detect count`).
 
 ## The video
 

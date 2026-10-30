@@ -2,9 +2,14 @@
 // gordetzen duela (modu ortonormalak), efekturik gabe argiak seinalea bera itzultzen duela, homodinoaren
 // zarata hutsaren (eta estutze eta galeren) bariantza zehatza dela, kerr-en batez besteko eremua fock
 // oinarriko batura zuzenarekin bat datorrela, poisson laginketa zehatza dela, konbinazio ez-zehatzak
-// erroreak direla, eta hazi berak emaitza bera ematen duela hari-kopurua edozein dela ere.
+// erroreak direla, kerr-en ondoko homodinoaren dentsitatea fock oinarriko batura zuzenarekin bat datorrela
+// eta haren laginek batez besteko eta bariantza zehatzak dituztela, eta hazi berak emaitza bera ematen duela
+// hari-kopurua edozein dela ere.
 
-use qoa::light::{self, Detect, Light, Mdct, kerr_mean, normal_pair, poisson, poisson_log_pmf};
+use num_complex::Complex64 as Cx;
+use qoa::light::{
+    self, Detect, KerrSampler, Light, Mdct, kerr_mean, normal_pair, poisson, poisson_log_pmf,
+};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 
@@ -193,6 +198,7 @@ fn combinations_without_an_exact_computation_are_errors() {
     let bad = [
         Light {
             kerr: 1.0,
+            squeeze_db: 3.0,
             ..Light::default()
         },
         Light {
@@ -217,7 +223,7 @@ fn combinations_without_an_exact_computation_are_errors() {
     for l in bad {
         assert!(l.check().is_err(), "{:?}", l);
     }
-    for detect in [Detect::Mean, Detect::Count] {
+    for detect in [Detect::Mean, Detect::Count, Detect::Homodyne] {
         assert!(
             Light {
                 kerr: 2.0,
@@ -249,4 +255,122 @@ fn the_same_seed_gives_the_same_light_on_any_thread_count() {
     let one = in_pool(1);
     assert_eq!(in_pool(4), one);
     assert_ne!(run(&light, &x, 6), one);
+}
+
+// kerr-en ondoko X dentsitatea fock oinarrian zuzenean: Σ_n c_n e^{-iκn(n-1)} ψ_n(x), hermite funtzioak
+// errepikapen egonkorrarekin (n txikiak)
+fn fock_density(alpha: f64, kappa: f64, x: f64) -> f64 {
+    let n_max = 300;
+    let mut c = vec![0.0f64; n_max];
+    c[0] = (-alpha * alpha / 2.0).exp();
+    for n in 1..n_max {
+        c[n] = c[n - 1] * alpha / (n as f64).sqrt();
+    }
+    let mut psi_prev = 0.0;
+    let mut psi = std::f64::consts::PI.powf(-0.25) * (-x * x / 2.0).exp();
+    let mut amp = Cx::new(0.0, 0.0);
+    for (n, &cn) in c.iter().enumerate() {
+        let ph = -kappa * (n * n.saturating_sub(1)) as f64;
+        amp += Cx::from_polar(cn, ph) * psi;
+        let next =
+            (2.0 / (n + 1) as f64).sqrt() * x * psi - (n as f64 / (n + 1) as f64).sqrt() * psi_prev;
+        psi_prev = psi;
+        psi = next;
+    }
+    amp.norm_sqr()
+}
+
+#[test]
+fn kerr_homodyne_density_matches_the_fock_sum() {
+    for (alpha, kappa) in [
+        (2.0, 0.1),
+        (4.0, 0.05),
+        (-3.0, 0.3),
+        (6.0, 0.01),
+        (8.0, 0.002),
+    ] {
+        let sampler = KerrSampler::new(kappa);
+        let mut worst: f64 = 0.0;
+        for i in -400..=400 {
+            let x = i as f64 * 0.03;
+            worst = worst.max((sampler.density(alpha, x) - fock_density(alpha, kappa, x)).abs());
+        }
+        assert!(worst < 1e-12, "α {} κ {}: {}", alpha, kappa, worst);
+    }
+}
+
+// ⟨x⟩ = √2 Re⟨a⟩, ⟨x²⟩ = Re⟨a²⟩ + n̄ + 1/2, ⟨a²⟩ = α² e^{-2iκ} exp(n̄(e^{-4iκ} - 1))
+fn kerr_moments(alpha: f64, kappa: f64) -> (f64, f64) {
+    let n = alpha * alpha;
+    let a1 = alpha * (Cx::new(0.0, -2.0 * kappa).exp() - 1.0).scale(n).exp();
+    let a2 =
+        Cx::from_polar(n, -2.0 * kappa) * (Cx::new(0.0, -4.0 * kappa).exp() - 1.0).scale(n).exp();
+    let mean = 2f64.sqrt() * a1.re;
+    (mean, a2.re + n + 0.5 - mean * mean)
+}
+
+#[test]
+fn kerr_homodyne_samples_have_the_exact_mean_and_variance() {
+    // txikia, ertaina eta distiratsua (n̄ = 9e4, kerr fasea 2 rad)
+    for (alpha, kappa, m) in [
+        (4.0, 0.05, 6_000),
+        (30.0, 0.0005, 3_000),
+        (300.0, 2.0 / (2.0 * 9e4), 1_500),
+    ] {
+        let sampler = KerrSampler::new(kappa);
+        let mut rng = StdRng::seed_from_u64(17);
+        let xs: Vec<f64> = (0..m).map(|_| sampler.sample(alpha, &mut rng)).collect();
+        let mean = xs.iter().sum::<f64>() / m as f64;
+        let var = xs.iter().map(|x| (x - mean) * (x - mean)).sum::<f64>() / (m - 1) as f64;
+        let (want_mean, want_var) = kerr_moments(alpha, kappa);
+        let se = (want_var / m as f64).sqrt();
+        assert!(
+            (mean - want_mean).abs() < 5.0 * se,
+            "α {}: ⟨x⟩ {} ≠ {}",
+            alpha,
+            mean,
+            want_mean
+        );
+        // bariantzaren errore estandarra: σ²·√(2/m), kurtosia kontuan hartzeko 2 aldiz
+        assert!(
+            (var - want_var).abs() < 5.0 * 2.0 * want_var * (2.0 / m as f64).sqrt(),
+            "α {}: var {} ≠ {}",
+            alpha,
+            var,
+            want_var
+        );
+    }
+}
+
+// banaketa metatua dentsitatearen integralarekin bat dator (trapezioak, h = 0.002) eta 0-tik 1-era doa
+#[test]
+fn kerr_homodyne_cdf_is_the_integral_of_the_density() {
+    for (alpha, rad) in [(3.0, 0.6), (300.0, 2.0)] {
+        let kappa = rad / (2.0 * alpha * alpha);
+        let sampler = KerrSampler::new(kappa);
+        let center = kerr_moments(alpha, kappa).0;
+        let (lo, n, h) = (center - 40.0, 40_000, 0.002);
+        let xs: Vec<f64> = (0..=n).map(|i| lo + i as f64 * h).collect();
+        let v = sampler.cdf_and_density(alpha, &xs);
+        assert!(
+            v[0].0.abs() < 1e-14 && (v[n].0 - 1.0).abs() < 1e-12,
+            "{:?} {:?}",
+            v[0],
+            v[n]
+        );
+        let mut acc = 0.0;
+        for i in 1..=n {
+            acc += (v[i - 1].1 + v[i].1) * h / 2.0;
+            if i % 4000 == 0 {
+                assert!(
+                    (v[i].0 - v[0].0 - acc).abs() < 1e-6,
+                    "α {} x {}: {} ≠ {}",
+                    alpha,
+                    xs[i],
+                    v[i].0 - v[0].0,
+                    acc
+                );
+            }
+        }
+    }
 }

@@ -715,7 +715,24 @@ fn visual_carries_audio_through_light() {
         "{}",
         stdout(&o)
     );
-    // zehazki kalkula ezin dena errore bat da
+    // kerr homodinoarekin: egoera ez-gaussiarraren lagin zehatzak
+    let kerr = scratch("light-kerr.wav");
+    let o = qoa(
+        "en",
+        &[
+            "visual",
+            wav.to_str().unwrap(),
+            kerr.to_str().unwrap(),
+            "--audio-only",
+            "--kerr",
+            "1",
+            "--photons",
+            "100",
+        ],
+    );
+    assert!(o.status.success(), "{}{}", stdout(&o), stderr(&o));
+    assert_eq!(decode(&kerr).len(), input.len());
+    // inplementatu gabea errore bat da
     let o = qoa(
         "en",
         &[
@@ -725,14 +742,12 @@ fn visual_carries_audio_through_light() {
             "--audio-only",
             "--kerr",
             "1",
+            "--squeeze",
+            "3",
         ],
     );
     assert!(!o.status.success());
-    assert!(
-        stderr(&o).contains("no exact computation"),
-        "{}",
-        stderr(&o)
-    );
+    assert!(stderr(&o).contains("not implemented"), "{}", stderr(&o));
     let o = qoa(
         "en",
         &[

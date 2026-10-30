@@ -14,9 +14,9 @@
 //
 // kalkulu guztiak zehatzak dira: egoera koherenteak errotazio eta galeren ondoren koherenteak dira, egoera
 // gaussiarrek forma itxia dute, kerr-en batez besteko eremua α·exp(|α|²(e^{-2iκ} - 1)) da zehazki, eta
-// fotoi-zenbaketak poisson banaketa zehatza lagintzen du (kerr-ek ez du fotoi-kopurua aldatzen). konbinazio
-// batek kalkulu zehatzik ez badu (kerr homodinoarekin: egoera ez-gaussiar distiratsu bat modu bakoitzeko,
-// segundoko 44.000 aldiz), errore bat da, ez hurbilketa bat.
+// fotoi-zenbaketak poisson banaketa zehatza lagintzen du (kerr-ek ez du fotoi-kopurua aldatzen), eta kerr-en
+// ondoko homodinoak egoera ez-gaussiarraren X banaketa zehatza lagintzen du (`KerrSampler`). konbinazio batek
+// kalkulu zehatzik ez badu, errore bat da, ez hurbilketa bat.
 
 use crate::t;
 use num_complex::Complex64 as C;
@@ -229,9 +229,9 @@ impl Light {
                 "--squeeze changes only the quantum noise, and --detect mean has none: use --detect homodyne to hear it",
                 "--squeeze-k zarata kuantikoa bakarrik aldatzen du, eta --detect mean-ek ez du zaratarik: erabili --detect homodyne entzuteko"
             )),
-            Detect::Homodyne if self.kerr != 0.0 => Err(t!(
-                "--kerr with --detect homodyne has no exact computation at audio rates: every mode would be a bright non-Gaussian state to sample (about 44,000 per second). Use --detect mean (exact mean field) or --detect count (exact photon statistics)",
-                "--kerr eta --detect homodyne batera ezin dira zehazki kalkulatu audio-abiaduran: modu bakoitza lagindu beharreko egoera ez-gaussiar distiratsu bat litzateke (44.000 inguru segundoko). Erabili --detect mean (batez besteko eremu zehatza) edo --detect count (fotoi-estatistika zehatza)"
+            Detect::Homodyne if self.kerr != 0.0 && self.squeeze_db > 0.0 => Err(t!(
+                "squeezed light through a Kerr medium (--squeeze with --kerr) is not implemented yet",
+                "argi estutua kerr ingurune batetik (--squeeze eta --kerr) ez dago oraindik"
             )),
             Detect::Count if self.squeeze_db > 0.0 => Err(t!(
                 "photon counting of squeezed light (--squeeze with --detect count) is not implemented yet",
@@ -280,6 +280,9 @@ impl Light {
         let squeezed = 10f64.powf(-self.squeeze_db / 10.0);
         let variance = t * squeezed / 2.0 + (1.0 - t) / 2.0;
         let gain = 1.0 / (t.sqrt() * s);
+        // kerr-en ondoko homodinoa: taulak behin, modu guztientzat
+        let sampler =
+            (self.detect == Detect::Homodyne && kappa != 0.0).then(|| KerrSampler::new(kappa));
         let modes = channels.iter().map(|ch| ch.len()).sum::<usize>()
             * channels
                 .first()
@@ -299,6 +302,10 @@ impl Light {
                     *c = gain
                         * match self.detect {
                             Detect::Mean => field,
+                            Detect::Homodyne if sampler.is_some() => {
+                                let x = sampler.as_ref().unwrap().sample(alpha, &mut rng);
+                                x / 2f64.sqrt()
+                            }
                             Detect::Homodyne => {
                                 let g = match spare.take() {
                                     Some(g) => g,
@@ -451,4 +458,456 @@ pub fn poisson(rng: &mut StdRng, lambda: f64) -> u64 {
             return k as u64;
         }
     }
+}
+
+// --------------------------------------------------------------------- kerr eta homodinoa
+
+// kerr-en ondoko egoera, U = exp(-iκ n(n-1)) |α>, zehazki. n(n-1) = (n-c0)² + (2c0-1)(n-c0) + c0(c0-1)
+// denez (c0 ≈ |α|² osoa), egoera biraketa bat (θ0 = κ(2c0-1)) eta chirp koadratiko bat da: e^{-iκ(n-c0)²}.
+// chirp-a fotoi-kopuruaren leiho batean (M luzera, ertzetan erf-leun batez itzalita, leihoaren erdian 1
+// zehazki) bere fourier-koefizienteekin idazten da, eta e^{i n θ_j} faktore bakoitza egoera koherente baten
+// biraketa da: ψ = Σ_j C_j |a e^{iφ_j}>, φ_j = 2πj/M - θ0. koefizienteak M eta κ-ren menpe bakarrik daude,
+// beraz M tamaina bakoitzeko fft bat egiten da behin, modu guztientzat.
+//
+// zehaztasuna: leihotik kanpo poisson amplitudeak < 1e-16 (12σ + 30); ezabatutako koefizienteen Σ|F_j| <= 1e-12,
+// beraz egoeraren errorea <= 1e-12 eta laginen banaketarena (bariazio osoa) <= 3e-12. distiratsuenetan,
+// faseak (√2·a·x·Δsin) 1e6 radianetaraino iristen dira: sarrerako 64 biteko a eta x-ek berek ematen dute
+// haien doitasuna (1e-10 rad inguru), eta algoritmoak ez du hori baino gehiago galtzen.
+//
+// laginketa: P(x) = |Σ C_j φ_j(x)|², φ_j(x) = π^{-1/4} e^{-(x-μ_j)²/2} e^{iΦ_j(x)}, μ_j = √2 a cos φ_j.
+// cauchy-schwarz-en bidez P(x) <= S·Σ |C_j| e^{-(x-μ_j)²}/√π (S = Σ|C_j|), gaussiarren nahaste bat:
+// j aukeratu |C_j|/S probabilitatez, x ~ N(μ_j, 1/2), eta onartu P(x)/(S·Σ|C_j| e^{-(x-μ_j)²}) probabilitatez.
+// leihoaren tamaina M ez da 2-ren berredura bat: oktaba bakoitzeko 16 tamaina, alferrik gutxi galtzeko.
+
+const TWO_PI_HI: f64 = std::f64::consts::TAU;
+const TWO_PI_LO: f64 = 2.449_293_598_294_706_4e-16;
+// ezabatutako koefizienteen |F| batura handiena (egoeraren errore-muga); fft-aren biribiltze-zarata (1e-18
+// inguru koefiziente bakoitzeko) ezabatzeko adina
+const DROPPED: f64 = 1e-12;
+
+// κ·q mod 2π, double-double-n (q osoa eta zehatza)
+fn phase_mod(kappa: f64, q: f64) -> f64 {
+    let (p, e) = crate::dd::two_prod::<false>(kappa, q);
+    let k = (p / TWO_PI_HI).round();
+    let (a, ae) = crate::dd::two_prod::<false>(k, TWO_PI_HI);
+    ((p - a) - ae) - k * TWO_PI_LO + e
+}
+
+// itzala: laukizuzen bat gaussiar diskretu batekin konboluzionatuta (aurrizki-baturekin): leuna (haren
+// espektroa gaussiar gisa jaisten da) eta erdian 1 zehazki. `sw` gaussiarraren zabalera da, eta itzala 0 da
+// mutur bakoitzetik 7·sw-ra (e^{-49})
+fn taper(m: usize, sw: f64) -> Vec<f64> {
+    let half = (7.0 * sw).ceil() as i64;
+    let mut prefix = Vec::with_capacity(2 * half as usize + 2);
+    let mut acc = crate::dd::Dd::ZERO;
+    prefix.push(0.0);
+    for k in -half..=half {
+        let t = k as f64 / sw;
+        acc.add((-t * t).exp());
+        prefix.push(acc.value());
+    }
+    let total = acc.value();
+    // cdf(d) = Σ_{k <= d} G(k) / Σ G
+    let cdf = |d: i64| -> f64 {
+        if d < -half {
+            0.0
+        } else if d >= half {
+            1.0
+        } else {
+            prefix[(d + half + 1) as usize] / total
+        }
+    };
+    let (m1, m2) = (half, m as i64 - 1 - half);
+    (0..m as i64).map(|i| cdf(i - m1) - cdf(i - m2)).collect()
+}
+
+// M tamaina bakoitzeko koefiziente esanguratsuak (j zeinuduna, F_j)
+type Table = Arc<Vec<(i64, C)>>;
+
+pub struct KerrSampler {
+    kappa: f64,
+    // behar direnean kalkulatuta
+    tables: std::sync::Mutex<std::collections::HashMap<usize, Table>>,
+}
+
+impl KerrSampler {
+    pub fn new(kappa: f64) -> KerrSampler {
+        KerrSampler {
+            kappa,
+            tables: Default::default(),
+        }
+    }
+
+    // leihoaren tamaina: euskarria (n̄ ± 12σ ± 31) itzalaren zati lauaren barruan ([0.21M, 0.79M] inguru),
+    // oktaba bakoitzeko 16 tamainatara biribilduta, taulak berrerabiltzeko
+    fn size(n_bar: f64) -> usize {
+        let w = 12.0 * n_bar.sqrt() + 31.0;
+        let need = (2.0 * w / 0.56).ceil().max(64.0) as usize;
+        let step = (need.next_power_of_two() / 32).max(2);
+        need.div_ceil(step) * step
+    }
+
+    fn table_for(&self, m: usize) -> Table {
+        if let Some(t) = self.tables.lock().unwrap().get(&m) {
+            return t.clone();
+        }
+        // blokeoa askatuta kalkulatu
+        let t = Arc::new(Self::table(self.kappa, m));
+        self.tables.lock().unwrap().entry(m).or_insert(t).clone()
+    }
+
+    fn table(kappa: f64, m: usize) -> Vec<(i64, C)> {
+        let h = (m / 2) as i64;
+        let tp = taper(m, m as f64 / 64.0);
+        let mut buf: Vec<C> = (0..m)
+            .map(|i| {
+                let taper = tp[i];
+                let d = i as i64 - h;
+                let ph = phase_mod(kappa, (d * d) as f64);
+                let (sn, cs) = ph.sin_cos();
+                C::new(cs, -sn) * taper
+            })
+            .collect();
+        FftPlanner::new().plan_fft_forward(m).process(&mut buf);
+        let inv = 1.0 / m as f64;
+        let mut all: Vec<(i64, C)> = buf
+            .iter()
+            .enumerate()
+            .map(|(j, f)| {
+                let js = if j < m / 2 {
+                    j as i64
+                } else {
+                    j as i64 - m as i64
+                };
+                (js, f * inv)
+            })
+            .collect();
+        // txikienetatik hasita ezabatu, beren |F| batura DROPPED-era iritsi arte
+        all.sort_by(|a, b| a.1.norm().total_cmp(&b.1.norm()));
+        let mut dropped = 0.0;
+        let mut cut = 0;
+        for (i, (_, f)) in all.iter().enumerate() {
+            if dropped + f.norm() > DROPPED {
+                cut = i;
+                break;
+            }
+            dropped += f.norm();
+            cut = i + 1;
+        }
+        all.split_off(cut)
+    }
+
+    // modu baten egoera fock oinarri desplazatuan: ψ = D(β) Σ_k d_k |k>, β = a e^{iφ_r} (egoera klasikoaren
+    // puntua, osagai erreferentziala). osagai bakoitza D(-β)|a e^{iφ_j}> = e^{i a² sin δ_j}|γ_j> da, γ_j = a(e^{iδ_j} - 1),
+    // eta <k|γ> = e^{-|γ|²/2} γ^k/√k!. kerr-en egoera trinkoa da fotoi-kopuru txikitan (kerr fasearen araberakoa),
+    // beraz k-ren batura koefizienteak arbuiagarriak direnean gelditzen da. itzultzen du (x0 = √2 Re β, d_k)
+    fn displaced(&self, a: f64) -> (f64, Vec<C>) {
+        let n_bar = a * a;
+        let m = Self::size(n_bar) as i64;
+        let table = self.table_for(m as usize);
+        let c0 = n_bar.round() as i64;
+        let n_lo = c0 - m / 2;
+        // θ0 = κ(2c0 - 1) mod 2π; erreferentzia: chirp-aren erdia (j = 0), hau da egoeraren angelu klasikoa φ_r = -θ0
+        // (koefiziente handiena ez: chirp-aren espektroaren ertzetan fresnel-uhinak handiagoak izan daitezke)
+        let theta0 = phase_mod(self.kappa, (2 * c0 - 1) as f64);
+        let j_r = 0i64;
+        let phi_r =
+            (TWO_PI_HI * j_r as f64 / m as f64 - theta0) + TWO_PI_LO * j_r as f64 / m as f64;
+        let (a2, a2e) = crate::dd::two_prod::<false>(a, a);
+        // (koefizientea, γ, lehen k esanguratsua)
+        let comps: Vec<(C, C, usize)> = table
+            .iter()
+            .map(|&(j, f)| {
+                // C_j = F_j e^{-i 2π j n_lo / M}, osoko aritmetikaz murriztuta
+                let r = ((j as i128 * n_lo as i128).rem_euclid(m as i128)) as f64;
+                let (sn, cs) = (TWO_PI_HI * r / m as f64).sin_cos();
+                let d = TWO_PI_HI * (j - j_r) as f64 / m as f64;
+                let (sh, ch) = (d / 2.0).sin_cos();
+                // γ = a(e^{iδ} - 1) = 2ia sin(δ/2) e^{iδ/2}
+                let g = C::new(-2.0 * a * sh * sh, 2.0 * a * sh * ch);
+                // e^{i a² sin δ}, a² double-double-n
+                let ph = phase_mod2(a2, a2e, d.sin());
+                let cj = f * C::new(cs, -sn) * C::from_polar(1.0, ph);
+                // |γ| handiekin e^{-|γ|²/2} ia azpinormala da (bit gutxi): log-ean hasi k = (|γ| - 20)²-n, non
+                // |<k|γ>| ≈ e^{-400} (normala, eta lehenagoko guztiak arbuiagarriak)
+                let start = if g.norm_sqr() < 1200.0 {
+                    0
+                } else {
+                    ((g.norm() - 20.0).powi(2) as usize).max(1)
+                };
+                (cj, g, start)
+            })
+            .collect();
+        // osagai bakoitzaren egoera: t = <k|γ>, eta noiz amaitzen den (poisson-en goiko isatsa, |γ|² + 20|γ| + 60)
+        let n = comps.len();
+        let c: Vec<C> = comps.iter().map(|x| x.0).collect();
+        let g: Vec<C> = comps.iter().map(|x| x.1).collect();
+        let start: Vec<usize> = comps.iter().map(|x| x.2).collect();
+        let end: Vec<usize> = g
+            .iter()
+            .map(|g| (g.norm_sqr() + 20.0 * g.norm() + 60.0) as usize)
+            .collect();
+        let mut t: Vec<C> = (0..n)
+            .map(|i| {
+                if start[i] == 0 {
+                    C::new((-g[i].norm_sqr() / 2.0).exp(), 0.0)
+                } else {
+                    C::new(0.0, 0.0)
+                }
+            })
+            .collect();
+        // aktibo dauden osagaiak (hasita eta amaitu gabe)
+        let mut active: Vec<usize> = (0..n).filter(|&i| start[i] == 0).collect();
+        let mut pending: Vec<usize> = (0..n).filter(|&i| start[i] > 0).collect();
+        pending.sort_by_key(|&i| std::cmp::Reverse(start[i]));
+        let mut d = Vec::new();
+        let mut quiet = 0;
+        let mut rot = C::new(1.0, 0.0);
+        let step = C::from_polar(1.0, phi_r);
+        for k in 0..100_000usize {
+            if k > 0 {
+                let inv = 1.0 / (k as f64).sqrt();
+                for &i in &active {
+                    t[i] = t[i] * g[i] * inv;
+                }
+                // e^{ikφ_r}: 64 urratsero zehazki berriz kalkulatuta, biribiltzea ez metatzeko
+                rot = if k % 64 == 0 {
+                    C::from_polar(1.0, (k as f64 * phi_r) % std::f64::consts::TAU)
+                } else {
+                    rot * step
+                };
+            }
+            // k-n hasten direnak: log-ean, |<k|γ>|² = poisson(k; |γ|²)
+            while let Some(&i) = pending.last() {
+                if start[i] > k {
+                    break;
+                }
+                pending.pop();
+                let mag = (poisson_log_pmf(k as u64, g[i].norm_sqr()) / 2.0).exp();
+                t[i] = C::from_polar(mag, (k as f64 * g[i].arg()) % std::f64::consts::TAU);
+                active.push(i);
+            }
+            active.retain(|&i| k <= end[i]);
+            let mut sum = C::new(0.0, 0.0);
+            let mut scale = 0.0;
+            for &i in &active {
+                let term = c[i] * t[i];
+                sum += term;
+                scale += term.re.abs() + term.im.abs();
+            }
+            let dk = sum * rot;
+            // zero numerikoa: 1e-17 azpitik, edo baturaren biribiltze-zarataren azpitik (osagai urrunek elkar
+            // ezeztatzen dute, eta haien hondarra ez da egoera)
+            let floor = 1e-17f64.max(1e-11 * scale);
+            quiet = if dk.norm() < floor { quiet + 1 } else { 0 };
+            d.push(dk);
+            // isatsa: 40 koefiziente jarraian zero numerikoak (probabilitatearen irizpide bat ez litzateke nahikoa:
+            // 1e-12 probabilitate = 1e-6 anplitude)
+            if k > 40 && quiet >= 40 {
+                break;
+            }
+        }
+        (2f64.sqrt() * a * phi_r.cos(), d)
+    }
+
+    // X-ren banaketa metatu zehatza eta dentsitatea x puntuetan (α >= 0), garapen bakarrarekin
+    pub fn cdf_and_density(&self, alpha: f64, xs: &[f64]) -> Vec<(f64, f64)> {
+        let (x0, d) = self.displaced(alpha.abs());
+        xs.iter().map(|x| cdf_density(&d, x - x0)).collect()
+    }
+
+    // X koadraturaren dentsitatea (hutsa: bariantza 1/2), α >= 0 edo < 0
+    pub fn density(&self, alpha: f64, x: f64) -> f64 {
+        let a = alpha.abs();
+        let x = if alpha < 0.0 { -x } else { x };
+        if a == 0.0 {
+            return (-x * x).exp() / PI.sqrt();
+        }
+        let (x0, d) = self.displaced(a);
+        cdf_density(&d, x - x0).1
+    }
+
+    // X-ren lagin bat kerr-en ondoko egoeran: banaketa metatu zehatzaren alderantzizkoa
+    pub fn sample(&self, alpha: f64, rng: &mut StdRng) -> f64 {
+        let a = alpha.abs();
+        let sign = if alpha < 0.0 { -1.0 } else { 1.0 };
+        if a == 0.0 {
+            return normal_pair(rng).0 / 2f64.sqrt();
+        }
+        let (x0, d) = self.displaced(a);
+        let total: f64 = crate::dd::sum(d.iter().map(|c| c.norm_sqr()));
+        let target = rng.random::<f64>() * total;
+        // hermite funtzioak √(2K+1)-tik aurrera erortzen dira; +12 tarte
+        let reach = (2.0 * d.len() as f64 + 3.0).sqrt() + 12.0;
+        let (mut lo, mut hi) = (-reach, reach);
+        let mut y = 0.0;
+        for _ in 0..200 {
+            let (f, p) = cdf_density(&d, y);
+            let err = f - target;
+            if err > 0.0 {
+                hi = y;
+            } else {
+                lo = y;
+            }
+            if hi - lo < 1e-13 * (1.0 + y.abs()) || err.abs() < 1e-16 {
+                break;
+            }
+            // newton, tartetik irtetzen bada erdibitu
+            let step = if p > 0.0 { y - err / p } else { f64::NAN };
+            y = if step > lo && step < hi {
+                step
+            } else {
+                (lo + hi) / 2.0
+            };
+        }
+        sign * (x0 + y)
+    }
+}
+
+// κ·q mod 2π, q = hi + lo (double-double) bider s
+fn phase_mod2(hi: f64, lo: f64, s: f64) -> f64 {
+    let (p, e) = crate::dd::two_prod::<false>(hi, s);
+    let e = e + lo * s;
+    let k = (p / TWO_PI_HI).round();
+    let (a, ae) = crate::dd::two_prod::<false>(k, TWO_PI_HI);
+    ((p - a) - ae) - k * TWO_PI_LO + e
+}
+
+// erfc zehatza: |x| < 2 taylor seriez (erf), bestela zatiki jarraituz (lentz)
+pub fn erfc(x: f64) -> f64 {
+    if x < 0.0 {
+        return 2.0 - erfc(-x);
+    }
+    if x < 2.0 {
+        // erf(x) = 2/√π Σ (-1)^n x^{2n+1} / (n! (2n+1))
+        let x2 = x * x;
+        let mut term = x;
+        let mut sum = x;
+        for n in 1..80 {
+            term *= -x2 / n as f64;
+            let add = term / (2 * n + 1) as f64;
+            sum += add;
+            if add.abs() < 1e-18 * sum.abs() {
+                break;
+            }
+        }
+        return 1.0 - 2.0 / PI.sqrt() * sum;
+    }
+    // erfc(x) = e^{-x²}/√π · 1/(x + (1/2)/(x + 1/(x + (3/2)/(x + ...))))
+    let tiny = 1e-300;
+    let mut f = x;
+    let mut c = x;
+    let mut dd = 0.0;
+    for n in 1..300 {
+        let an = n as f64 / 2.0;
+        dd = x + an * dd;
+        dd = if dd.abs() < tiny { tiny } else { dd };
+        c = x + an / c;
+        c = if c.abs() < tiny { tiny } else { c };
+        dd = 1.0 / dd;
+        let delta = c * dd;
+        f *= delta;
+        if (delta - 1.0).abs() < 1e-17 {
+            break;
+        }
+    }
+    (-x * x).exp() / (PI.sqrt() * f)
+}
+
+// F(y) = ∫_{-∞}^y |Σ d_k ψ_k|² eta P(y) = |Σ d_k ψ_k(y)|², ψ_k hermite funtzio normalizatuak. k != l denean
+// ∫ψ_kψ_l = (ψ_k'ψ_l - ψ_kψ_l')/(2(l-k)) (wronskiarra, ψ'' = (y² - 2k - 1)ψ-tik); diagonala errepikapenez:
+// J_kk = J_{k-1,k-1} + (√(k-1) J_{k-2,k} - √(k+1) J_{k-1,k+1} - √2 ψ_{k-1}ψ_k)/√k, J_00 = erfc(-y)/2
+fn cdf_density(d: &[C], y: f64) -> (f64, f64) {
+    let kk = d.len();
+    // ψ_0..ψ_{K+1}
+    let mut psi = Vec::with_capacity(kk + 2);
+    psi.push(PI.powf(-0.25) * (-y * y / 2.0).exp());
+    psi.push(2f64.sqrt() * y * psi[0]);
+    for n in 1..=kk {
+        let next = (2.0 / (n + 1) as f64).sqrt() * y * psi[n]
+            - (n as f64 / (n + 1) as f64).sqrt() * psi[n - 1];
+        psi.push(next);
+    }
+    // ψ_k' = (√k ψ_{k-1} - √(k+1) ψ_{k+1})/√2
+    let dpsi: Vec<f64> = (0..=kk)
+        .map(|k| {
+            let down = if k > 0 {
+                (k as f64).sqrt() * psi[k - 1]
+            } else {
+                0.0
+            };
+            (down - ((k + 1) as f64).sqrt() * psi[k + 1]) / 2f64.sqrt()
+        })
+        .collect();
+    let j_off =
+        |k: usize, l: usize| (dpsi[k] * psi[l] - psi[k] * dpsi[l]) / (2.0 * (l as f64 - k as f64));
+    // diagonala
+    let mut jd = Vec::with_capacity(kk);
+    jd.push(erfc(-y) / 2.0);
+    for k in 1..kk {
+        let a = if k >= 2 {
+            ((k - 1) as f64).sqrt() * j_off(k - 2, k)
+        } else {
+            0.0
+        };
+        let b = ((k + 1) as f64).sqrt() * j_off(k - 1, k + 1);
+        let c = 2f64.sqrt() * psi[k - 1] * psi[k];
+        jd.push(jd[k - 1] + (a - b - c) / (k as f64).sqrt());
+    }
+    let mut cdf = crate::dd::Dd::ZERO;
+    let mut amp = C::new(0.0, 0.0);
+    for k in 0..kk {
+        amp += d[k] * psi[k];
+        cdf.add(d[k].norm_sqr() * jd[k]);
+    }
+    // ez-diagonala: Σ_{k≠l} Re(d_k d̄_l) J_kl = Re Σ_k A_k Σ_{l≠k} B̄_l/(l-k), A_k = d_k ψ_k', B_k = d_k ψ_k
+    // (hilbert-en transformazio diskretua: K handietan fft bidez, K log K)
+    let a: Vec<C> = (0..kk).map(|k| d[k] * dpsi[k]).collect();
+    let b: Vec<C> = (0..kk).map(|k| (d[k] * psi[k]).conj()).collect();
+    let h = hilbert(&b);
+    for k in 0..kk {
+        cdf.add((a[k] * h[k]).re);
+    }
+    (cdf.value(), amp.norm_sqr())
+}
+
+// h_k = Σ_{l≠k} b_l/(l-k): zuzenean K txikietan, bestela korrelazio gisa fft-z (2K luzerako zero-betetzea)
+fn hilbert(b: &[C]) -> Vec<C> {
+    let kk = b.len();
+    if kk <= 256 {
+        return (0..kk)
+            .map(|k| {
+                let mut s = C::new(0.0, 0.0);
+                for (l, bl) in b.iter().enumerate() {
+                    if l != k {
+                        s += bl / (l as f64 - k as f64);
+                    }
+                }
+                s
+            })
+            .collect();
+    }
+    // h_k = Σ_m b_{k+m} r(m), r(m) = 1/m (m≠0): korrelazioa = konboluzioa b-rekin eta r(-m)-rekin
+    let n = (2 * kk).next_power_of_two();
+    let mut planner = FftPlanner::new();
+    let fwd = planner.plan_fft_forward(n);
+    let inv = planner.plan_fft_inverse(n);
+    let mut fb: Vec<C> = (0..n)
+        .map(|i| if i < kk { b[i] } else { C::new(0.0, 0.0) })
+        .collect();
+    // kernel-a: g(j) = r(-j) = -1/j, j zeinuduna (-K..K) n moduluan
+    let mut fg = vec![C::new(0.0, 0.0); n];
+    for j in 1..kk as i64 {
+        fg[j as usize] = C::new(-1.0 / j as f64, 0.0);
+        fg[n - j as usize] = C::new(1.0 / j as f64, 0.0);
+    }
+    fwd.process(&mut fb);
+    fwd.process(&mut fg);
+    for (x, y) in fb.iter_mut().zip(&fg) {
+        *x *= y;
+    }
+    inv.process(&mut fb);
+    // (b ⊛ g)(k) = Σ_l b_l g(k-l) = Σ_l b_l (-1/(k-l)) = Σ_l b_l/(l-k)
+    let scale = 1.0 / n as f64;
+    (0..kk).map(|k| fb[k] * scale).collect()
 }

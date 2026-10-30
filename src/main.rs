@@ -206,8 +206,8 @@ enum Command {
         ))]
         squeeze: f64,
         #[arg(long, default_value_t = 0.0, value_name = "RAD", allow_negative_numbers = true, help = ts!(
-            "Kerr self-phase: the brightest mode picks up this many radians (needs --detect mean or count)",
-            "kerr fase propioa: modu distiratsuenak hainbeste radian hartzen ditu (--detect mean edo count behar du)"
+            "Kerr self-phase: the brightest mode picks up this many radians",
+            "kerr fase propioa: modu distiratsuenak hainbeste radian hartzen ditu"
         ))]
         kerr: f64,
         #[arg(long, default_value_t = 0.0, value_name = "RAD", allow_negative_numbers = true, help = ts!(
