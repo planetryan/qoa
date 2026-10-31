@@ -16,6 +16,9 @@ eraikitako mihiztatzailearen kopia eta hark bere buruaz eraikitzen duena berdina
 qoa compile --assembler tools/asm.qoa programa.qoa       # emaitza bera: qoa compile programa.qoa
 ```
 
+Mihiztatzailearen iturburua biltegiko `tools/asm.qoa` da, eta QOA 0.4.4-tik aurrera argitalpen-pakete
+guztiek ere badakarte (0.4.3-rako, hartu biltegitik).
+
 `--assembler`-ek edozein QOA programa hartzen du, iturburu gisa edo `.qx` konpilatu gisa. QOA-k exekutatzen
 du iturburu-fitxategia sarreran eta fitxategi-izena argumentu gisa emanda, eta inprimatzen duena `.qx`
 gisa idazten du. Haren errore-mezuak zuzenean terminalera doaz, eta haren irteera-egoera `qoa`-rena bihurtzen

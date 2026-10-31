@@ -1,7 +1,8 @@
 # fitxategi honek QOA-ren bitarrak konpilatzen ditu sistema eta arkitektura guztietarako, eta `v*` etiketa
 # batean (adib. v0.4.0) GitHub argitalpen bat sortzen du haiekin:
 #
-#   qoa-<bertsioa>-<helburua>.zip / .tar.gz   helburu bakoitzeko: qoa edo qoa.exe, abiarazlea, adibideak
+#   qoa-<bertsioa>-<helburua>.zip / .tar.gz   helburu bakoitzeko: qoa edo qoa.exe, abiarazlea, adibideak eta
+#                                             tools/asm.qoa (QOAn idatzitako mihiztatzailea)
 #   qoa-<bertsioa>-all.zip                    guztiak batera: bin/<helburua>/, run.sh, run.ps1, run.cmd
 #   SHA256SUMS                                fitxategi guztien laburpenak
 #
@@ -99,6 +100,7 @@ jobs:
           cp "target/${{ matrix.target }}/release/$exe" "bin/${{ matrix.target }}/"
           cp README.md README.eu.md LICENSE "dist/$name/"
           cp -r examples "dist/$name/"
+          mkdir -p "dist/$name/tools" && cp tools/asm.qoa "dist/$name/tools/"
           case "${{ matrix.target }}" in
             *windows*) cp run.ps1 run.cmd "dist/$name/"; (cd dist && 7z a -tzip "$name.zip" "$name" > /dev/null) ;;
             *) cp run.sh "dist/$name/"; tar -C dist -czf "dist/$name.tar.gz" "$name" ;;
@@ -111,6 +113,11 @@ jobs:
         run: |
           ${{ matrix.run }} "bin/${{ matrix.target }}/${{ steps.package.outputs.exe }}" --version
           ${{ matrix.run }} "bin/${{ matrix.target }}/${{ steps.package.outputs.exe }}" run examples/bell.qoa --seed 1
+          # QOA-k QOA eraikitzen du makina honetan ere: rust-ek eraikitako mihiztatzaileak bere burua berdin eraikitzen du
+          q="${{ matrix.run }} bin/${{ matrix.target }}/${{ steps.package.outputs.exe }}"
+          $q compile tools/asm.qoa -o stage1.qx
+          $q compile --assembler stage1.qx tools/asm.qoa -o stage2.qx
+          cmp stage1.qx stage2.qx
       - uses: actions/upload-artifact@v4
         with:
           name: build-${{ matrix.target }}
@@ -137,6 +144,7 @@ jobs:
           chmod +x "$name"/bin/*/qoa || true
           cp run.sh run.ps1 run.cmd README.md README.eu.md LICENSE "$name/"
           cp -r examples "$name/"
+          mkdir -p "$name/tools" && cp tools/asm.qoa "$name/tools/"
           zip -qr "dist/$name.zip" "$name"
           (cd dist && sha256sum * > SHA256SUMS)
           cat dist/SHA256SUMS
@@ -163,7 +171,11 @@ jobs:
         run: unzip -q qoa-*-all.zip && mv qoa-*-all bundle
       - name: run.sh
         if: runner.os != 'Windows'
-        run: cd bundle && ./run.sh run examples/bell.qoa --seed 1
+        run: |
+          cd bundle && ./run.sh run examples/bell.qoa --seed 1
+          ./run.sh compile --assembler tools/asm.qoa examples/bell.qoa -o bell-qoa.qx
+          ./run.sh compile examples/bell.qoa -o bell-rust.qx
+          cmp bell-qoa.qx bell-rust.qx
       - name: run.ps1
         if: runner.os == 'Windows'
         shell: pwsh
