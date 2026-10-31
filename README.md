@@ -261,6 +261,9 @@ On a 4-core Xeon (2.3 GHz), single gates now run at the memory's limit (about 75
 fusion), and QOA 0.3.5 took 23 s. Details, measurements and how to reproduce them:
 [docs/performance.md](docs/performance.md).
 
+`qoa --benchmark` (or `--bm`) measures every part of QOA on this machine and scores it against a reference
+machine: [docs/benchmark.md](docs/benchmark.md).
+
 `qoa run --gpu` applies the qubit gates on a GPU instead, through Vulkan or OpenCL (AMD Instinct, NVIDIA,
 Intel), in 64-bit floats, with the same idea (many gates per pass over memory, in shared-memory tiles). With
 MPI, each process uses its own GPU. It is verified against the CPU on a software Vulkan driver and on POCL,

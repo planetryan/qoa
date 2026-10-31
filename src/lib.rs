@@ -9,6 +9,7 @@ compile_error!(
 );
 
 pub mod asm; // .qoa testua -> programa
+pub mod bench; // errendimendu-proba osoa (`qoa --benchmark`, `--bm`): puntuazioa eta xehetasunak
 pub mod dd; // batura zehatzak double-double aritmetikarekin (~106 bit): araua, probabilitateak
 pub mod disasm; // desmihiztatzea eta analisirako esportazioak (qoa, listing, json, dot, glyph)
 pub mod dist; // egoera-bektore bat MPI prozesuetan banatuta (`qoa run --mpi --distribute`)

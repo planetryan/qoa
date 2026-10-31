@@ -35,12 +35,47 @@ const QOA_AUTHOR: &str = "Ryan (@planetryan on github)";
     )
 )]
 struct Cli {
+    #[arg(long, visible_alias = "bm", help = ts!(
+        "measure this machine: every part of QOA, with a score per part and in total (the same as `qoa benchmark`)",
+        "makina hau neurtu: QOA-ren zati guztiak, puntuazio batekin zati bakoitzeko eta guztira (`qoa benchmark` bera)"
+    ))]
+    benchmark: bool,
+    #[arg(long, requires = "benchmark", help = ts!(
+        "with --benchmark: smaller problems, about 10 seconds instead of half a minute",
+        "--benchmark-ekin: problema txikiagoak, 10 segundo inguru minutu erdiaren ordez"
+    ))]
+    quick: bool,
+    #[arg(long = "no-gpu", requires = "benchmark", help = ts!(
+        "with --benchmark: skip the GPU part",
+        "--benchmark-ekin: GPU zatia saltatu"
+    ))]
+    no_gpu: bool,
+    #[arg(long, requires = "benchmark", help = ts!(
+        "with --benchmark: print the result as json",
+        "--benchmark-ekin: emaitza json gisa inprimatu"
+    ))]
+    json: bool,
     #[command(subcommand)]
-    command: Command,
+    command: Option<Command>,
 }
 
 #[derive(Subcommand, Debug)]
 enum Command {
+    #[command(visible_aliases = ["bench", "bm"], about = ts!(
+        "Measure this machine: every part of QOA, with a score per part and in total",
+        "Makina hau neurtu: QOA-ren zati guztiak, puntuazio batekin zati bakoitzeko eta guztira"
+    ))]
+    Benchmark {
+        #[arg(long, help = ts!(
+            "smaller problems, about 10 seconds instead of half a minute",
+            "problema txikiagoak, 10 segundo inguru minutu erdiaren ordez"
+        ))]
+        quick: bool,
+        #[arg(long = "no-gpu", help = ts!("skip the GPU part", "GPU zatia saltatu"))]
+        no_gpu: bool,
+        #[arg(long, help = ts!("print the result as json", "emaitza json gisa inprimatu"))]
+        json: bool,
+    },
     #[command(about = ts!("Run a program (.qoa, .qg, .qasm or .qx) and show its results", "Programa bat exekutatu (.qoa, .qg, .qasm edo .qx) eta emaitzak erakutsi"))]
     Run {
         #[arg(help = ts!("program file", "programa-fitxategia"))]
@@ -403,7 +438,25 @@ fn main() -> ExitCode {
         }
         Err(e) => e.exit(),
     };
-    let result = match cli.command {
+    let command = match (cli.command, cli.benchmark) {
+        (Some(c), _) => c,
+        (None, true) => Command::Benchmark {
+            quick: cli.quick,
+            no_gpu: cli.no_gpu,
+            json: cli.json,
+        },
+        (None, false) => {
+            use clap::CommandFactory;
+            let _ = Cli::command().print_help();
+            return ExitCode::from(2);
+        }
+    };
+    let result = match command {
+        Command::Benchmark {
+            quick,
+            no_gpu,
+            json,
+        } => cmd_benchmark(quick, no_gpu, json),
         Command::Run {
             file,
             shots,
@@ -700,6 +753,24 @@ fn cmd_run(
             println!();
         }
         print!("{}", report::render(&rep, &Style::detect()));
+    }
+    Ok(())
+}
+
+// errendimendu-proba: atal bakoitza abiaraztean aurrerapena stderr-era, emaitza stdout-era
+fn cmd_benchmark(quick: bool, no_gpu: bool, json: bool) -> Result<(), String> {
+    let style = Style::detect();
+    let report = qoa::bench::run(quick, !no_gpu, |name| {
+        eprint!("\r{} {:<12}", ts!("measuring", "neurtzen"), name);
+    });
+    eprint!("\r{:<40}\r", "");
+    if json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&report).map_err(|e| e.to_string())?
+        );
+    } else {
+        print!("{}", qoa::bench::render(&report, &style));
     }
     Ok(())
 }
