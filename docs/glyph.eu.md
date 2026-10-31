@@ -54,7 +54,7 @@ MEASURE q1 -> c1
 | `;` | adierazpen bat amaitzen du, beraz lerro batek asko izan ditzake |
 | `END;` | gelditu (QOA-n HALT-en ezizena da jada) |
 | `CC"V"%3$>#2` | dei klasikoa: V errutina deitu 3 argumentuarekin eta emaitza R2-n utzi (ikus [Dei klasikoak](#dei-klasikoak-cc)) |
-| `PR"R"%O` | oraindik definitu gabe: ikus [Oraindik finkatu gabe](#oraindik-finkatu-gabe) |
+| `PR"R"%O` | etiketarekin inprimatu: `R = ` eta balioa (ikus [PR](#042-n-finkatua)) |
 
 [examples/concept.qg](../examples/concept.qg) zirriborro hori bera da, programa erabilgarri gisa idatzita.
 
@@ -108,6 +108,7 @@ R1 gehituko lukeelako. Idatzi `#1`, `Q[1]` edo `q1`.
 | `COUNT/L[0]$>#3` | | `COUNT o0 -> R3` |
 | `PF"x = {}\n"%#3` | inprimatu, `%`-k `{}` bakoitzari bere balioa ematen dio | `PRINTF "x = {}\n" R3` |
 | `PF"{}"%#C` | bit-erregistro bat zenbaki oso gisa inprimatzen da | `PACKBITS R31 c0 c1` eta `PRINTF "{}" R31` |
+| `PR"x"%#3` | etiketa bat eta balioak inprimatu: `x = 3.5` | `PRINTF "x = {}\n" R3` |
 | `<<>>` | egoera zehatza erakutsi | `DUMPSTATE` |
 | `<<#>>` | erregistro guztiak erakutsi | `DUMPREGS` |
 | `izena:` | etiketa | `izena:` |
@@ -195,12 +196,14 @@ U(-1.0, 0.3, -0.5)/Q[2]; M/Q[2]$>#C[2];         U q2 -1.0 0.3 -0.5 / MEASURE q2 
   `CREG flags 2`, `OREG arm 2`, gero `data[1]` edo `data`; `q0`, `c0` eta `o0` erabiltzen jarraitzen dute.
 - **Beste norabidea** badago: `qoa export --to glyph` (edo `--to-glyph`), goiko aukerekin.
 
-## Oraindik finkatu gabe
+## 0.4.2-n finkatua
 
-1. **Bereizleak.** Jatorrizko zirriborroak adierazpenak `;` gabe kateatzen ditu (`$>#2PF"Measuring:"`). Gaur
-   `;` derrigorrezkoa da, errore batek beti zehazki esan dezan non amaitu zen adierazpen bat. Agindu-izen berri
-   batek aurreko adierazpena bere kabuz amaitu beharko lukeen oraindik irekita dago.
-2. **`PR`.** Zirriborroko `PR"R"%O$>#O`-k ez du oraindik esanahi definiturik (erregistro bat inprimatzea da
-   irakurketa bat). Esanahia finkatzen denean glifo bihur daiteke.
-
-Bietako edozeini buruzko proposamenak ongi etorriak dira issue gisa.
+1. **Bereizleak: `;` beharrezkoa da.** Jatorrizko zirriborroak adierazpenak hura gabe kateatzen ditu
+   (`$>#2PF"Measuring:"`). Agindu-izen berri batek ezin du aurreko adierazpena bere kabuz amaitu, izenak libreak
+   direlako: `PF` edo `M` erregistro bat izan daiteke agindu bat bezala, beraz `#PF` eta `#P` gero `F...`
+   berdin irakurriko lirateke. `;`-rekin adierazpen bakoitzak amaiera argia du, eta errore batek beti esan
+   dezake zein adierazpenetan dagoen.
+2. **`PR`-k etiketarekin inprimatzen du.** `PR"x"%#3`-k `x = 3` inprimatzen du, eta balio batzuk elkarren
+   ondoan ateratzen dira (`PR"bikotea"%#1%#2`-k `bikotea = 1 2`). Balioak `PF`-n bezala dabiltza: zenbakiak,
+   erregistroak, bitak, eta bit-erregistroak zenbaki oso gisa. Qubitek eta moduek ez dute baliorik neurtu
+   arte, beraz errore bat dira. `PR"hemen"` bakarrik idatzita etiketa bakarrik inprimatzen du.

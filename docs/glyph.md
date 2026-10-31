@@ -54,7 +54,7 @@ MEASURE q1 -> c1
 | `;` | ends a statement, so a line can hold many |
 | `END;` | stop (already QOA's alias for HALT) |
 | `CC"V"%3$>#2` | call classical: call routine V with the argument 3 and put its result in R2 (see [Classical calls](#classical-calls-cc)) |
-| `PR"R"%O` | not defined yet: see [Not settled yet](#not-settled-yet) |
+| `PR"R"%O` | print with a label: `R = ` and the value (see [PR](#settled-in-042)) |
 
 [examples/concept.qg](../examples/concept.qg) is that sketch written out as a working program.
 
@@ -107,6 +107,7 @@ Write `#1`, `Q[1]` or `q1`.
 | `COUNT/L[0]$>#3` | | `COUNT o0 -> R3` |
 | `PF"x = {}\n"%#3` | print, `%` gives each `{}` its value | `PRINTF "x = {}\n" R3` |
 | `PF"{}"%#C` | a bit register prints as a whole number | `PACKBITS R31 c0 c1` then `PRINTF "{}" R31` |
+| `PR"x"%#3` | print a label and values: `x = 3.5` | `PRINTF "x = {}\n" R3` |
 | `<<>>` | show the exact state | `DUMPSTATE` |
 | `<<#>>` | show every register | `DUMPREGS` |
 | `name:` | label | `name:` |
@@ -191,12 +192,13 @@ U(-1.0, 0.3, -0.5)/Q[2]; M/Q[2]$>#C[2];         U q2 -1.0 0.3 -0.5 / MEASURE q2 
   `data[1]` or `data`; `q0`, `c0` and `o0` keep working.
 - **The other direction** exists: `qoa export --to glyph` (or `--to-glyph`) with the options above.
 
-## Not settled yet
+## Settled in 0.4.2
 
-1. **Separators.** The original sketch chains statements without `;` (`$>#2PF"Measuring:"`). Today `;` is
-   required, so that an error can always say exactly where a statement ended. Whether a new instruction name
-   should end the previous statement on its own is still open.
-2. **`PR`.** The sketch's `PR"R"%O$>#O` has no defined meaning yet (printing a register is one reading). It
-   can become a glyph once its meaning is settled.
-
-Suggestions on either are welcome as an issue.
+1. **Separators: `;` is required.** The original sketch chains statements without it (`$>#2PF"Measuring:"`).
+   A new instruction name cannot end the previous statement on its own, because names are free: `PF` or `M`
+   can be a register as well as an instruction, so `#PF` and `#P` followed by `F...` would read the same. With
+   `;` every statement has a clear end, and an error can always say which statement it is in.
+2. **`PR` prints with a label.** `PR"x"%#3` prints `x = 3`, and several values come out side by side
+   (`PR"pair"%#1%#2` prints `pair = 1 2`). Values work as in `PF`: numbers, registers, bits, and bit registers
+   as whole numbers. Qubits and modes have no value until they are measured, so they are an error. `PR"here"`
+   alone prints just the label.

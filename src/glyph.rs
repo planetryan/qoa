@@ -6,6 +6,7 @@
 //   RZ(pi/4)/R[2];                 parametroak parentesi artean
 //   MEASURE/R$>#C;                 $> = emaitza hona doa (->)
 //   PF"emaitza: {}"%#C;            % = balio hau inprimatu
+//   PR"x"%#3;                      izena eta balioa: `x = 3` (PRINTF "x = {}\n" R3)
 //   <<>>;  *3{ X/R[0]; }  ?#C[0]>amaiera;  amaiera:;  END;
 //
 // itzulpenak sarrerako adierazpen bakoitza QOA lerro bat edo gehiago bihurtzen du, eta lerro bakoitzak
@@ -1257,6 +1258,42 @@ fn op_lines(
     pos: Pos,
     len: u32,
 ) -> Result<Vec<String>, Diagnostic> {
+    // `PR"izena"%a%b`: izena eta balioak inprimatu (`izena = a b` eta lerro-jauzia), PRINTF bidez
+    let label;
+    let (name, texts) = if name == "PR" {
+        let wrong = |m: String| Err(diag(pos, len, m));
+        if texts.len() != 1 || !operands.is_empty() || !dests.is_empty() {
+            return wrong(
+                ts!(
+                    "PR takes one label and the values to print: PR\"x\"%#3",
+                    "PR-k etiketa bat eta inprimatzeko balioak hartzen ditu: PR\"x\"%#3"
+                )
+                .into(),
+            );
+        }
+        let text = texts[0].trim_matches('"');
+        if text.contains('{') || text.contains('}') {
+            return wrong(
+                ts!(
+                    "a PR label cannot contain { or }; use PF for a format of your own",
+                    "PR etiketa batek ezin du { edo } eduki; erabili PF zure formatu baterako"
+                )
+                .into(),
+            );
+        }
+        label = if args.is_empty() {
+            vec![format!("\"{}\\n\"", text)]
+        } else {
+            vec![format!(
+                "\"{} = {}\\n\"",
+                text,
+                vec!["{}"; args.len()].join(" ")
+            )]
+        };
+        ("PRINTF", &label[..])
+    } else {
+        (name, texts)
+    };
     let ops: Vec<Vec<String>> = operands
         .iter()
         .map(|o| elements(regs, o))

@@ -294,9 +294,17 @@ fn quad_gives_the_same_bits_on_every_system() {
             _ => Gate::SX,
         };
         let controls = if k % 3 == 0 && c != q { 1 << c } else { 0 };
-        gates.push(QuadGate::Mat { q, m: quad::matrix(g), controls });
+        gates.push(QuadGate::Mat {
+            q,
+            m: quad::matrix(g),
+            controls,
+        });
         if k % 50 == 49 {
-            gates.push(QuadGate::Swap { a: q, b: (q + 4) % 13, controls: 0 });
+            gates.push(QuadGate::Swap {
+                a: q,
+                b: (q + 4) % 13,
+                controls: 0,
+            });
         }
     }
     s.apply(&gates);

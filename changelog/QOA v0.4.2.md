@@ -36,6 +36,9 @@
   through camera glow and ACES tone mapping. It renders 1080p by default and any size up to 4K60 and beyond,
   and new tests check the flux, the travel times, star brightness and the colours.
 
+* **Glyph syntax settled:** `;` stays required between statements, and `PR"x"%#3` prints a label and its
+  values (`x = 3`). See [docs/glyph.md](../docs/glyph.md).
+
 ## Changed
 
 * `qoa visual` no longer reads only `.wav` files, and its audio is no longer mixed to mono.
@@ -83,6 +86,9 @@
   atzeko galaxia bat eraztunetan. Irudiak kamera-distira eta ACES tonu-mapaketa ditu. 1080p-n errendatzen du
   lehenetsiz, eta edozein tamainatan 4K60 eta gehiago, eta proba berriek fluxua, bidaia-denborak, izarren
   distira eta koloreak egiaztatzen dituzte.
+
+* **Glifo-sintaxia finkatuta:** `;` beharrezkoa da adierazpenen artean, eta `PR"x"%#3`-k etiketa bat eta
+  haren balioak inprimatzen ditu (`x = 3`). Ikus [docs/glyph.eu.md](../docs/glyph.eu.md).
 
 ## Aldatua
 

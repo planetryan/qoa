@@ -199,6 +199,25 @@ fn classical_calls_follow_the_stack_convention() {
 }
 
 #[test]
+fn pr_prints_a_label_and_its_values() {
+    assert_eq!(expand("PR\"x\"%#3;"), "PRINTF \"x = {}\\n\" R3\n");
+    assert_eq!(
+        expand("#C{2}; PR\"bits\"%#C%#1;"),
+        "PACKBITS R31 c0 c1\nPRINTF \"bits = {} {}\\n\" R31 R1\n"
+    );
+    assert_eq!(expand("PR\"here\";"), "PRINTF \"here\\n\"\n");
+    let e = errors("PR\"a{}\"%#1;");
+    assert!(e[0].2.contains("cannot contain { or }"), "{:?}", e);
+    let e = errors("PR%#1;");
+    assert!(e[0].2.contains("one label"), "{:?}", e);
+    // exekuzioan
+    let prog = qoa::glyph::assemble("REGSET/#2,(1.5); PR\"R2\"%#2; END;", "pr.qg").unwrap();
+    let mut out = Vec::new();
+    vm::run(&prog, &RunConfig::default(), &mut out).unwrap();
+    assert_eq!(String::from_utf8(out).unwrap(), "R2 = 1.5\n");
+}
+
+#[test]
 fn runtime_messages_name_the_glyph_line() {
     // DUMPSTATE-k eta exekuzio-erroreek glifo-iturburuko lerroa aipatzen dute, ez QOA hedatuarena
     lang::set(Lang::En);
