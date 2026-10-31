@@ -252,3 +252,35 @@ fn distribute_explains_what_it_cannot_do() {
     let e = vm::run(&prog, &cfg, &mut std::io::sink()).unwrap_err();
     assert!(e.message.contains("needs --mpi"), "{}", e.message);
 }
+
+#[test]
+fn a_distributed_state_on_gpus_matches_one_process() {
+    // prozesu bakoitzaren tokiko ateak GPUan (OpenCL, CI-n POCL); gailurik ez badago, saltatu
+    let gpu = match qoa::gpu::Gpu::open_with(qoa::gpu::Api::OpenCl, 0) {
+        Ok(g) => Arc::new(g),
+        Err(why) => {
+            eprintln!("OpenCL gabe, proba saltatua: {why}");
+            return;
+        }
+    };
+    let src = mixed_circuit(12, 400, false);
+    let want = single(&src, &RunConfig::default());
+    for ranks in [2, 4] {
+        let cfg = RunConfig {
+            distribute: true,
+            gpu: Some(gpu.clone()),
+            ..RunConfig::default()
+        };
+        let got = spread(&src, &cfg, ranks);
+        let (out, _) = got[0].as_ref().unwrap();
+        let worst = out
+            .final_state
+            .amplitudes()
+            .iter()
+            .zip(want.final_state.amplitudes())
+            .map(|(a, b)| (a - b).norm())
+            .fold(0.0, f64::max);
+        assert!(worst < 1e-12, "{} ranks: {}", ranks, worst);
+    }
+    assert!(gpu.stats().batches > 0);
+}

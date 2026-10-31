@@ -86,6 +86,11 @@ enum Command {
             "qubit-ateak GPU batean aplikatu vulkan bidez (64 biteko koma higikorra); neurketak, optika eta zarata cpu-an geratzen dira. huts egiten du gailu erabilgarririk ez badago"
         ))]
         gpu: bool,
+        #[arg(long, value_enum, value_name = "API", help = ts!(
+            "which GPU interface --gpu uses: vulkan, opencl (AMD Instinct, NVIDIA, Intel, POCL), or auto (Vulkan, then OpenCL). Implies --gpu. Each MPI process on a node takes its own GPU (QOA_GPU_DEVICE overrides)",
+            "--gpu-k zein GPU interfaze erabiltzen duen: vulkan, opencl (AMD Instinct, NVIDIA, Intel, POCL), edo auto (vulkan, gero OpenCL). --gpu dakar. nodo bateko MPI prozesu bakoitzak bere GPUa hartzen du (QOA_GPU_DEVICE-k gainidazten du)"
+        ))]
+        gpu_api: Option<GpuApiArg>,
         #[arg(long, value_enum, default_value = "double", help = ts!(
             "number precision for the qubit state: double (64-bit floats) or quad (128-bit double-double, ~32 digits, qubit programs only)",
             "qubit-egoeraren zenbakien doitasuna: double (64 biteko koma higikorra) edo quad (128 biteko double-double, ~32 digitu, qubit-programak bakarrik)"
@@ -266,6 +271,13 @@ enum Command {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, ValueEnum)]
+enum GpuApiArg {
+    Auto,
+    Vulkan,
+    Opencl,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, ValueEnum)]
 enum PrecisionArg {
     Double,
     Quad,
@@ -404,6 +416,7 @@ fn main() -> ExitCode {
             json,
             max_steps,
             gpu,
+            gpu_api,
             precision,
             mpi,
             distribute,
@@ -418,7 +431,12 @@ fn main() -> ExitCode {
             top,
             json,
             max_steps,
-            gpu,
+            match (gpu, gpu_api) {
+                (_, Some(GpuApiArg::Vulkan)) => Some(qoa::gpu::Api::Vulkan),
+                (_, Some(GpuApiArg::Opencl)) => Some(qoa::gpu::Api::OpenCl),
+                (_, Some(GpuApiArg::Auto)) | (true, None) => Some(qoa::gpu::Api::Auto),
+                (false, None) => None,
+            },
             match precision {
                 PrecisionArg::Double => qoa::vm::Precision::Double,
                 PrecisionArg::Quad => qoa::vm::Precision::Quad,
@@ -605,7 +623,7 @@ fn cmd_run(
     top: usize,
     json: bool,
     max_steps: u64,
-    gpu: bool,
+    gpu: Option<qoa::gpu::Api>,
     precision: qoa::vm::Precision,
     mpi: bool,
     distribute: bool,
@@ -613,11 +631,13 @@ fn cmd_run(
     let team = join_team(mpi)?;
     let rank = team.as_ref().map_or(0, |t| t.rank());
     let program = load(file)?;
-    let gpu = if gpu {
-        let g = qoa::gpu::Gpu::open().map_err(|e| format!("--gpu: {e}"))?;
-        Some(std::sync::Arc::new(g))
-    } else {
-        None
+    let gpu = match gpu {
+        Some(api) => {
+            let g = qoa::gpu::Gpu::open_with(api, qoa::gpu::local_index())
+                .map_err(|e| format!("--gpu: {e}"))?;
+            Some(std::sync::Arc::new(g))
+        }
+        None => None,
     };
     let model = match noise_model {
         Some(path) => Some(std::sync::Arc::new(qoa::noise::NoiseModel::load(path)?)),

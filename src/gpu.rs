@@ -1,5 +1,5 @@
 // fitxategi honek qubit-ate sortak GPUan aplikatzen ditu, vulkan bidez (gailua src/vulkan.rs-en, kernela
-// src/shaders/tile.comp-en).
+// src/shaders/tile.comp-en) edo OpenCL bidez (src/opencl.rs, kernel bera OpenCL C-n).
 //
 // CPUan bezala (src/kernel.rs), egoera handietan muga memoriaren banda-zabalera da, eta neurria bera: ate-
 // segida bat "lauza" batean osorik aplikatu, egoera behin zeharkatuz segida osorako, ate bakoitzeko behin
@@ -359,30 +359,103 @@ pub struct Stats {
     pub compute_seconds: f64,
 }
 
-#[cfg(feature = "vulkan")]
-use crate::vulkan::Device;
+// zein API erabili: vulkan, OpenCL, edo lehen dabilena (vulkan lehenik)
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Api {
+    Auto,
+    Vulkan,
+    OpenCl,
+}
 
-// eraikuntza honetan ez dago gailurik: mota hutsa, ezin da sortu
-#[cfg(not(feature = "vulkan"))]
-enum Device {}
+// gailu bat, eraikuntza honetan dagoen API-rekin
+enum Device {
+    #[cfg(feature = "vulkan")]
+    Vulkan(Box<crate::vulkan::Device>),
+    #[cfg(feature = "opencl")]
+    OpenCl(Box<crate::opencl::Device>),
+    // API gabeko eraikuntzetan mota hutsik ez geratzeko; ezin da sortu
+    #[allow(dead_code)]
+    Never(std::convert::Infallible),
+}
 
-#[cfg(not(feature = "vulkan"))]
 impl Device {
-    fn open() -> Result<Device, String> {
-        Err(t!(
-            "this QOA was built without GPU support (cargo feature `vulkan`)",
-            "QOA hau GPU euskarririk gabe konpilatu da (cargo-ren `vulkan` ezaugarria)"
-        ))
+    fn open(api: Api, index: usize) -> Result<Device, String> {
+        let _ = index;
+        let vulkan = || -> Result<Device, String> {
+            #[cfg(feature = "vulkan")]
+            return crate::vulkan::Device::open(index).map(|d| Device::Vulkan(Box::new(d)));
+            #[cfg(not(feature = "vulkan"))]
+            Err(t!(
+                "this QOA was built without Vulkan (cargo feature `vulkan`)",
+                "QOA hau vulkan gabe konpilatu da (cargo-ren `vulkan` ezaugarria)"
+            ))
+        };
+        let opencl = || -> Result<Device, String> {
+            #[cfg(feature = "opencl")]
+            return crate::opencl::Device::open(index).map(|d| Device::OpenCl(Box::new(d)));
+            #[cfg(not(feature = "opencl"))]
+            Err(t!(
+                "this QOA was built without OpenCL (cargo feature `opencl`)",
+                "QOA hau OpenCL gabe konpilatu da (cargo-ren `opencl` ezaugarria)"
+            ))
+        };
+        match api {
+            Api::Vulkan => vulkan(),
+            Api::OpenCl => opencl(),
+            Api::Auto => {
+                vulkan().or_else(|v| opencl().map_err(|o| format!("Vulkan: {}. OpenCL: {}", v, o)))
+            }
+        }
     }
+
     fn name(&self) -> String {
-        match *self {}
+        match self {
+            #[cfg(feature = "vulkan")]
+            Device::Vulkan(d) => d.name(),
+            #[cfg(feature = "opencl")]
+            Device::OpenCl(d) => d.name(),
+            Device::Never(n) => match *n {},
+        }
     }
+
     fn kind(&self) -> &'static str {
-        match *self {}
+        match self {
+            #[cfg(feature = "vulkan")]
+            Device::Vulkan(d) => d.kind(),
+            #[cfg(feature = "opencl")]
+            Device::OpenCl(d) => d.kind(),
+            Device::Never(n) => match *n {},
+        }
     }
-    fn apply(&mut self, _: &mut [C], _: &[Stage]) -> Result<(f64, f64), String> {
-        match *self {}
+
+    // (APIrik gabe argumentuak ez dira erabiltzen)
+    #[allow(unused_variables)]
+    fn apply(&mut self, amps: &mut [C], stages: &[Stage]) -> Result<(f64, f64), String> {
+        match self {
+            #[cfg(feature = "vulkan")]
+            Device::Vulkan(d) => d.apply(amps, stages),
+            #[cfg(feature = "opencl")]
+            Device::OpenCl(d) => d.apply(amps, stages),
+            Device::Never(n) => match *n {},
+        }
     }
+}
+
+// prozesu honen GPU-zenbakia nodoan: QOA_GPU_DEVICE, bestela MPI abiarazlearen tokiko rank-a (openmpi, mpich,
+// slurm, mvapich, cray), bestela 0. nodo bateko prozesu bakoitzak bere GPUa hartzen du horrela
+pub fn local_index() -> usize {
+    [
+        "QOA_GPU_DEVICE",
+        "OMPI_COMM_WORLD_LOCAL_RANK",
+        "MPI_LOCALRANKID",
+        "SLURM_LOCALID",
+        "MV2_COMM_WORLD_LOCAL_RANK",
+        "PMI_LOCAL_RANK",
+        "PALS_LOCAL_RANKID",
+    ]
+    .iter()
+    .find_map(|v| std::env::var(v).ok()?.trim().parse().ok())
+    .unwrap_or(0)
 }
 
 // GPU bat, hari guztien artean partekatua (shot paraleloek txandaka erabiltzen dute)
@@ -400,7 +473,12 @@ impl std::fmt::Debug for Gpu {
 impl Gpu {
     // gailu egokiena ireki (diskretua > integratua > birtuala > cpu), edo zergatik ez dagoen esan
     pub fn open() -> Result<Gpu, String> {
-        let device = Device::open()?;
+        Self::open_with(Api::Auto, local_index())
+    }
+
+    // API jakin bat eta mota onenekoen artean zenbatgarren gailua
+    pub fn open_with(api: Api, index: usize) -> Result<Gpu, String> {
+        let device = Device::open(api, index)?;
         let stats = Stats {
             device: device.name(),
             device_type: device.kind().to_string(),

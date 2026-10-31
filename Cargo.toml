@@ -22,6 +22,7 @@ bincode = "1.3"
 
 # `qoa run --gpu`: vulkan, exekuzioan kargatua (libvulkan ez da konpilatzeko behar)
 ash = { version = "0.38", optional = true }
+libloading = { version = "0.8", optional = true }
 
 # `qoa visual` (audioa argitik, bideoa ffmpeg-ekin)
 indicatif = "0.18"
@@ -30,8 +31,10 @@ realfft = "2.0"
 rustfft = "6.4"
 
 [features]
-default = ["vulkan"]
+default = ["vulkan", "opencl"]
 vulkan = ["dep:ash"]
+# `qoa run --gpu` OpenCL bidez (AMD Instinct, NVIDIA, Intel, POCL): libOpenCL exekuzioan kargatzen da
+opencl = ["dep:libloading"]
 # `qoa run --mpi`: shot-ak MPI prozesuen artean (mpicc eta MPI liburutegi bat behar ditu)
 mpi = ["dep:cc"]
 

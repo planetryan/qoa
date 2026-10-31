@@ -38,6 +38,9 @@ pub struct DistState {
     n_qubits: usize,
     local_bits: usize,
     amps: Vec<C>,
+    // `--gpu`: prozesu bakoitzaren tokiko ate-sortak bere GPUan; huts egiten badu, errorea hemen
+    gpu: Option<Arc<crate::gpu::Gpu>>,
+    error: Option<String>,
 }
 
 fn as_bytes(xs: &[C]) -> &[u8] {
@@ -86,7 +89,11 @@ impl DistState {
         Ok(local_bits)
     }
 
-    pub fn new(n_qubits: usize, team: Arc<dyn Team>) -> Result<DistState, String> {
+    pub fn new(
+        n_qubits: usize,
+        team: Arc<dyn Team>,
+        gpu: Option<Arc<crate::gpu::Gpu>>,
+    ) -> Result<DistState, String> {
         let local_bits = Self::check(n_qubits, team.size())?;
         let len = 1usize << local_bits;
         let mut amps = vec![ZERO; len];
@@ -98,6 +105,8 @@ impl DistState {
             n_qubits,
             local_bits,
             amps,
+            gpu,
+            error: None,
         })
     }
 
@@ -187,10 +196,23 @@ impl DistState {
     }
 
     fn flush_local(&mut self, local: &mut Vec<QGate>) {
-        if !local.is_empty() {
-            kernel::apply_gates(&mut self.amps, self.local_bits, local);
-            local.clear();
+        if local.is_empty() {
+            return;
         }
+        match &self.gpu {
+            Some(g) => {
+                if let Err(e) = g.apply(&mut self.amps, self.local_bits, local) {
+                    self.error.get_or_insert(e);
+                }
+            }
+            None => kernel::apply_gates(&mut self.amps, self.local_bits, local),
+        }
+        local.clear();
+    }
+
+    // GPUaren errorea, izan bada (VM-k exekuzioa gelditzen du)
+    pub fn take_error(&mut self) -> Option<String> {
+        self.error.take()
     }
 
     // helburu globaleko 2x2 matrizea: diagonala bada, faktore bat; bestela bikotearekin trukatuta

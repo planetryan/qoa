@@ -1,9 +1,10 @@
-# QOA GPU batean (vulkan)
+# QOA GPU batean (vulkan eta OpenCL)
 
 [In English: gpu.md](gpu.md)
 
-**Erantzun laburra:** `qoa run --gpu`-k qubit-ateak 64 biteko koma higikorra duen edozein vulkan GPUtan
-aplikatzen ditu. Hemen zuzena dela egiaztatu da, lavapipe-n (mesa-ren software bidezko vulkan-a). **Ez** da
+**Erantzun laburra:** `qoa run --gpu`-k qubit-ateak 64 biteko koma higikorra duen edozein GPUtan aplikatzen
+ditu, vulkan edo OpenCL bidez. Hemen zuzena dela egiaztatu da lavapipe-n (mesa-ren software bidezko vulkan-a)
+eta POCL-en (CPUrako OpenCL bat). **Ez** da
 GPU erreal batean neurtu, eraiki den makinak ez duelako bat ere. Jarraian: nola dabilen, txartel errealetan
 zenbat irabazi beharko lukeen (argitaratutako zehaztapenetatik kalkulatua, ez neurtua), eta zurean nola
 neurtu.
@@ -38,6 +39,38 @@ higikorrik. Intel Arc-ek ere ez du 64 biteko hardwarerik, beraz bere driverrak 6
 eskaintzen duenean emulatua eta motela da. Gailu bat baino gehiago badago, GPU diskretua integratuaren
 aurretik dago, eta biak software bidezkoaren aurretik. Vulkan programa exekutatzean kargatzen da, beraz QOA
 konpilatzeko ez da vulkan SDK-rik behar; `--no-default-features`-ek GPU euskarririk gabe konpilatzen du.
+
+## OpenCL: AMD Instinct, NVIDIA, Intel
+
+f64 azeleragailu handienetako batzuek ez dute vulkan-ik eskaintzen, besteak beste AMD Instinct-ek
+(Frontier-eko MI250X, El Capitan-eko MI300A). Haientzat, eta OpenCL driverra duen edozein gailutarako,
+QOA-k kernel bera exekutatzen du OpenCL C-n idatzita:
+
+```sh
+qoa run zirkuitua.qoa --gpu-api opencl     # edo vulkan; --gpu bakarrik idatzita vulkan lehenik, gero OpenCL
+```
+
+- Gailuak 64 biteko koma higikorra (`cl_khr_fp64`) eta 16 KiB tokiko memoria behar ditu. GPUak
+  azeleragailuen gainetik nahiago dira, eta biak CPU inplementazio baten gainetik.
+- `libOpenCL` programa exekutatzean kargatzen da, beraz konpilatzeko ez da OpenCL SDK-rik behar. AMD-n
+  ROCm-ekin dator, NVIDIA-n driverrarekin, eta POCL-ek bat ematen du CPUetarako.
+- Egoera gailura gehienez 16 buffertan doa, OpenCL-k bakoitzaren tamaina mugatzen duelako.
+- `tests/gpu.rs`-k OpenCL gailua CPUaren aurka exekutatzen du 18 qubit arteko 80 ausazko sortatan. Anplitude
+  bakoitzak 1e-10-ren barruan bat etorri behar du. CI-k POCL-en exekutatzen du.
+
+## GPU batzuk
+
+Nodo bateko, edo nodo askotako, GPU guztiak erabiltzeko modua MPI prozesu bat GPU bakoitzeko da:
+
+```sh
+mpirun -n 8 qoa run handia.qoa --mpi --distribute --gpu       # 8 GPUk egoera bakar bat partekatzen dute
+mpirun -n 8 qoa run zaratatsua.qoa --mpi --gpu --shots 100000 # 8 GPUk shot-ak partekatzen dituzte
+```
+
+Prozesu bakoitzak nodoaren barruko bere rank-aren zenbakia duen GPUa hartzen du: Open MPI, MPICH, slurm,
+MVAPICH eta Cray abiarazleek esaten dute zein den, eta `QOA_GPU_DEVICE`-k gainidazten du. `--distribute`-rekin,
+prozesu bakoitzak egoeraren bere zatiko ateak bere GPUan aplikatzen ditu, eta prozesuek datuak trukatzen
+dituzte haiek zeharkatzen dituzten qubitetako ateetarako bakarrik ([hpc.eu.md](hpc.eu.md)).
 
 ## Nola dabilen: estutze bera
 

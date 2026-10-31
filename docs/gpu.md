@@ -1,9 +1,9 @@
-# QOA on a GPU (Vulkan)
+# QOA on a GPU (Vulkan and OpenCL)
 
 [Euskaraz: gpu.eu.md](gpu.eu.md)
 
-**Short answer:** `qoa run --gpu` applies qubit gates on any Vulkan GPU that has 64-bit floats. It is
-verified correct here, on lavapipe (Mesa's software Vulkan). It has **not** been timed on a real GPU,
+**Short answer:** `qoa run --gpu` applies qubit gates on any GPU that has 64-bit floats, through Vulkan or
+OpenCL. It is verified correct here on lavapipe (Mesa's software Vulkan) and on POCL (a CPU OpenCL). It has **not** been timed on a real GPU,
 because the machine it was built on has none. Below: how it works, what it should gain on real
 cards (worked out from published specifications, not measured), and how to measure it on yours.
 
@@ -36,6 +36,38 @@ hardware either, so where its driver offers 64-bit floats they are emulated and 
 devices, a discrete GPU is preferred over an integrated one, and either over a software one.
 Vulkan is loaded when the program runs, so building QOA needs no Vulkan SDK; `--no-default-features`
 builds it without GPU support.
+
+## OpenCL: AMD Instinct, NVIDIA, Intel
+
+Some of the largest fp64 accelerators offer no Vulkan at all, among them AMD Instinct (the MI250X in
+Frontier, the MI300A in El Capitan). For those, and for any device with an OpenCL driver, QOA runs the same
+kernel written in OpenCL C:
+
+```sh
+qoa run circuit.qoa --gpu-api opencl     # or vulkan; --gpu alone tries Vulkan first, then OpenCL
+```
+
+- The device needs 64-bit floats (`cl_khr_fp64`) and 16 KiB of local memory. GPUs are preferred over
+  accelerators, and either over a CPU implementation.
+- `libOpenCL` is loaded when the program runs, so building needs no OpenCL SDK. On AMD it comes with ROCm,
+  on NVIDIA with the driver, and POCL provides one for CPUs.
+- The state goes to the device in up to 16 buffers, because OpenCL limits the size of each one.
+- `tests/gpu.rs` runs the OpenCL device against the CPU on 80 random batches of up to 18 qubits. Every
+  amplitude must match within 1e-10. CI runs it on POCL.
+
+## Several GPUs
+
+The way to use every GPU in a node, or in many nodes, is one MPI process per GPU:
+
+```sh
+mpirun -n 8 qoa run big.qoa --mpi --distribute --gpu       # 8 GPUs share one state
+mpirun -n 8 qoa run noisy.qoa --mpi --gpu --shots 100000   # 8 GPUs share the shots
+```
+
+Each process takes the GPU numbered by its rank within the node: Open MPI, MPICH, Slurm, MVAPICH and
+Cray launchers say which that is, and `QOA_GPU_DEVICE` overrides it. With `--distribute`, every process
+applies the gates on its own part of the state on its own GPU, and the processes exchange data only for
+gates on the qubits that span them ([hpc.md](hpc.md)).
 
 ## How it works: the same squeeze
 

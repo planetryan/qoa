@@ -24,6 +24,8 @@ pub mod light; // audioa argi gisa zirkuitu optiko kuantiko batetik (`qoa visual
 #[cfg(feature = "mpi")]
 pub mod mpi; // MPI taldea (`qoa run --mpi`), src/mpi_shim.c bidez
 pub mod noise; // gailuen zarata-ereduak (kalibrazioak): ate-erroreak, T1/T2, irakurketa
+#[cfg(feature = "opencl")]
+pub mod opencl; // OpenCL gailua (AMD Instinct, NVIDIA, Intel, POCL), libOpenCL exekuzioan kargatuta
 pub mod program; // programa mihiztatua eta .qx formatua
 pub mod qasm; // openqasm inportazioa eta esportazioa
 pub mod quad; // 128 biteko qubit-motorra (double-double): `qoa run --precision quad`

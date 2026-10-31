@@ -5,7 +5,9 @@
 #     lavapipe-rekin (software bidezko vulkan), eta QOA_REQUIRE_GPU=1 saltatu ez daitezen
 #   - ARM64 eta RISC-V (RVV, bi bektore-luzera) qemu-n: SIMD, kernel, erreferentzia eta GPU-planaren probak, eta
 #     128 biteko motorrak bit berak ematen dituela arkitektura guztietan
-#   - MPI: `--features mpi` openmpi-rekin, eta 3 prozesuk prozesu batek bezalako zenbaketak ematen dituztela
+#   - MPI: `--features mpi` openmpi-rekin, eta 3 prozesuk prozesu batek bezalako zenbaketak ematen dituztela;
+#     egoera banatua (2 eta 4 prozesu, eta OpenCL gailuekin POCL-en)
+#   - OpenCL gailua (POCL) CPUaren aurka, QOA_REQUIRE_OPENCL=1
 #   - abiarazleak (run.sh, run.ps1, run.cmd)
 name: ci
 
@@ -61,7 +63,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: mpi
-      - run: sudo apt-get update && sudo apt-get install -y libopenmpi-dev openmpi-bin
+      - run: sudo apt-get update && sudo apt-get install -y libopenmpi-dev openmpi-bin pocl-opencl-icd ocl-icd-libopencl1
       - run: cargo clippy --release --locked --features mpi --all-targets -- -D warnings
       - run: cargo build --release --locked --features mpi
       - name: shots over 3 processes give the same counts as one
@@ -80,6 +82,11 @@ jobs:
               diff one.json many.json
             done
           done
+      - name: one state over 2 processes, each on an OpenCL device
+        run: |
+          ./target/release/qoa run examples/qpe.qoa --seed 3 --json | jq -c '.counts' > one.json
+          mpirun --oversubscribe -n 2 ./target/release/qoa run examples/qpe.qoa --mpi --distribute --gpu-api opencl --seed 3 --json | jq -c '.counts' > two.json
+          diff one.json two.json
       - name: input read by process 0 reaches every process
         run: |
           printf 'QINIT 2\nINPUT R1\nREGSET R2 0.5\nH q0\nMEASURE q0 -> c0\nIFGT R1 R2 flip\nJUMP done\nflip:\nX q1\ndone:\nMEASURE q1 -> c1\n' > input.qoa
@@ -98,13 +105,14 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - name: lavapipe (software vulkan) and ffmpeg
+      - name: lavapipe (software vulkan), pocl (cpu opencl) and ffmpeg
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y mesa-vulkan-drivers ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y mesa-vulkan-drivers pocl-opencl-icd ocl-icd-libopencl1 ffmpeg
       - name: test
         run: cargo test --release --locked
         env:
           QOA_REQUIRE_GPU: ${{ runner.os == 'Linux' && '1' || '0' }}
+          QOA_REQUIRE_OPENCL: ${{ runner.os == 'Linux' && '1' || '0' }}
       - name: run.sh
         if: runner.os != 'Windows'
         run: ./run.sh run examples/bell.qoa --seed 1

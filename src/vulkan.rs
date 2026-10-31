@@ -190,7 +190,8 @@ fn examine(instance: &ash::Instance, pd: vk::PhysicalDevice) -> Result<Candidate
 }
 
 impl Device {
-    pub fn open() -> Result<Device, String> {
+    // `index`: zenbatgarren gailua mota onenekoen artean (MPI prozesu bakoitzak berea)
+    pub fn open(index: usize) -> Result<Device, String> {
         // segurtasuna: sistemaren libvulkan kargatu; huts eginez gero errore bat
         let entry = unsafe { ash::Entry::load() }.map_err(|e| {
             t!(
@@ -215,7 +216,7 @@ impl Device {
             e => fail(ts!("creating the Vulkan instance", "vulkan instantzia sortzea"))(e),
         })?;
 
-        let chosen = Self::choose(&instance);
+        let chosen = Self::choose(&instance, index);
         let c = match chosen {
             Ok(c) => c,
             Err(e) => {
@@ -290,20 +291,26 @@ impl Device {
     }
 
     // gailurik onena, edo zergatik ez dagoen bat ere ez
-    fn choose(instance: &ash::Instance) -> Result<Candidate, String> {
+    fn choose(instance: &ash::Instance, index: usize) -> Result<Candidate, String> {
         // segurtasuna: instantzia baliozkoa da
         let devices = unsafe { instance.enumerate_physical_devices() }
             .map_err(fail(ts!("listing devices", "gailuak zerrendatzea")))?;
-        let mut best: Option<Candidate> = None;
+        let mut usable: Vec<Candidate> = Vec::new();
         let mut rejected = Vec::new();
         for pd in devices {
             match examine(instance, pd) {
-                Ok(c) if best.as_ref().is_none_or(|b| c.score > b.score) => best = Some(c),
-                Ok(_) => {}
+                Ok(c) => usable.push(c),
                 Err(why) => rejected.push(why),
             }
         }
-        best.ok_or_else(|| {
+        // mota onenekoen artean, `index`-en arabera txandaka (adib. nodo bateko GPU guztiak)
+        let top = usable.iter().map(|c| c.score).max();
+        let mut best: Vec<Candidate> = usable
+            .into_iter()
+            .filter(|c| Some(c.score) == top)
+            .collect();
+        let pick = (!best.is_empty()).then(|| best.swap_remove(index % best.len()));
+        pick.ok_or_else(|| {
             if rejected.is_empty() {
                 t!(
                     "the Vulkan loader found no devices; is a Vulkan driver installed?",

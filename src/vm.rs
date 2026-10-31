@@ -239,8 +239,6 @@ pub fn run(
                 "it runs in 64 bits, not with --precision quad",
                 "64 bitetan dabil, ez --precision quad-ekin"
             ))
-        } else if cfg.gpu.is_some() {
-            Some(ts!("it does not use --gpu", "ez du --gpu erabiltzen"))
         } else if cfg.model.is_some() {
             Some(ts!(
                 "device noise models are not distributed",
@@ -757,7 +755,9 @@ impl<'a> Machine<'a> {
                 .team
                 .clone()
                 .expect("--distribute --mpi-rekin egiaztatuta");
-            dist = Some(DistState::new(prog.n_qubits as usize, team).map_err(to_err)?);
+            dist = Some(
+                DistState::new(prog.n_qubits as usize, team, cfg.gpu.clone()).map_err(to_err)?,
+            );
             (State::new(0, 0, 2).map_err(to_err)?, None)
         } else {
             let state = State::new(
@@ -926,6 +926,9 @@ impl<'a> Machine<'a> {
         if let Some(d) = self.dist.as_mut() {
             d.apply(&self.pending);
             self.pending.clear();
+            if let Some(e) = d.take_error() {
+                self.gpu_error.get_or_insert(e);
+            }
             return;
         }
         if self.pending.is_empty() {

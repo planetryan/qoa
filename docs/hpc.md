@@ -86,7 +86,13 @@ Before it allocates anything, QOA checks that the state fits in the memory it ma
 A state that does not fit is an error that says how much it needs and how much there is. It does not crash
 the node. `qoa check` shows the same numbers without running anything.
 
+## GPUs
+
+`--gpu` works with both modes: one MPI process per GPU, each using the GPU its node rank points to. AMD
+Instinct accelerators, which have no Vulkan, are reached through OpenCL (`--gpu-api opencl`). See
+[gpu.md](gpu.md#several-gpus).
+
 ## Not done yet
 
-- **OpenCL.** The GPU path today uses Vulkan, which AMD Instinct accelerators (as in Frontier) do not offer.
-  An OpenCL backend in 64-bit floating point would cover them, along with NVIDIA and Intel GPUs.
+- **Measurements on the GPU.** A measurement still brings each process's part of the state back to the CPU.
+- **Optical modes across processes.** `--distribute` splits qubit programs only.

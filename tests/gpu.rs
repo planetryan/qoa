@@ -192,3 +192,39 @@ fn the_compiled_kernel_is_built_from_the_current_source() {
         "src/shaders/tile.comp aldatu da tile.spv konpilatu ondoren: exekutatu tools/shaders.sh"
     );
 }
+
+// OpenCL gailua (POCL CI-n), vulkan-en proba berekin: kernel berak emaitza berak eman behar ditu
+fn opencl() -> Option<&'static Gpu> {
+    static GPU: OnceLock<Result<Gpu, String>> = OnceLock::new();
+    match GPU.get_or_init(|| Gpu::open_with(qoa::gpu::Api::OpenCl, 0)) {
+        Ok(g) => Some(g),
+        Err(why) => {
+            if std::env::var("QOA_REQUIRE_OPENCL").is_ok_and(|v| v == "1") {
+                panic!("QOA_REQUIRE_OPENCL=1 baina OpenCL gailurik ez: {why}");
+            }
+            eprintln!("OpenCL proba saltatua, ez dago gailurik: {why}");
+            None
+        }
+    }
+}
+
+#[test]
+fn opencl_matches_the_cpu() {
+    let Some(gpu) = opencl() else { return };
+    let mut rng = StdRng::seed_from_u64(37);
+    for case in 0..80 {
+        let nq = 1 + case % 18;
+        let len = length(case, nq);
+        let gates: Vec<QGate> = (0..rng.random_range(1..80))
+            .map(|_| gate(&mut rng, nq))
+            .collect();
+        let start = random_state(&mut rng, len);
+        let mut want = start.clone();
+        kernel::apply_gates(&mut want, nq, &gates);
+        let mut got = start;
+        gpu.apply(&mut got, nq, &gates).unwrap();
+        assert!(max_diff(&got, &want) < 1e-10, "kasua {case} nq={nq}");
+    }
+    let s = gpu.stats();
+    assert!(s.device.contains("OpenCL"), "{}", s.device);
+}

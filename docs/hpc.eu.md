@@ -90,8 +90,13 @@ Ezer erreserbatu aurretik, QOA-k egiaztatzen du egoera erabil dezakeen memorian 
 Sartzen ez den egoera bat errore bat da, zenbat behar duen eta zenbat dagoen esaten duena. Ez du nodoa
 eroriarazten. `qoa check`-ek zenbaki berak erakusten ditu ezer exekutatu gabe.
 
+## GPUak
+
+`--gpu` bi moduekin dabil: MPI prozesu bat GPU bakoitzeko, bakoitzak bere nodo-rank-ak adierazten duen GPUa
+erabiliz. AMD Instinct azeleragailuetara, vulkan-ik ez dutenez, OpenCL bidez iristen da (`--gpu-api opencl`).
+Ikus [gpu.eu.md](gpu.eu.md#gpu-batzuk).
+
 ## Oraindik egin gabe
 
-- **OpenCL.** GPU bidea gaur vulkan-ekin dabil, eta AMD Instinct azeleragailuek (Frontier-en bezala) ez dute
-  eskaintzen. 64 biteko koma higikorreko OpenCL motor batek haiek estaliko lituzke, NVIDIA eta Intel-en
-  GPUekin batera.
+- **Neurketak GPUan.** Neurketa batek prozesu bakoitzaren egoera-zatia CPUra ekartzen du oraindik.
+- **Modu optikoak prozesuen artean.** `--distribute`-k qubit-programak bakarrik banatzen ditu.

@@ -269,9 +269,10 @@ qubitekin), eta 24 qubit eta 355 ateko zirkuitu batek 0.9 s behar ditu; Qiskit A
 (5.6 s bere ate-fusiorik gabe), eta QOA 0.3.5-ek 23 s. Xehetasunak, neurketak eta nola errepikatu:
 [docs/performance.eu.md](docs/performance.eu.md).
 
-`qoa run --gpu`-k qubit-ateak vulkan GPU batean aplikatzen ditu horren ordez, 64 biteko koma higikorrean,
-ideia berarekin (ate asko memoriaren gaineko pasaldi bakoitzean, memoria partekatuko lauzetan). CPUaren
-aurka egiaztatua dago software bidezko vulkan driver batean, baina oraindik ez da GPU erreal batean neurtu;
+`qoa run --gpu`-k qubit-ateak GPU batean aplikatzen ditu horren ordez, vulkan edo OpenCL bidez (AMD Instinct,
+NVIDIA, Intel), 64 biteko koma higikorrean, ideia berarekin (ate asko memoriaren gaineko pasaldi bakoitzean,
+memoria partekatuko lauzetan). MPI-rekin, prozesu bakoitzak bere GPUa erabiltzen du. CPUaren aurka egiaztatua
+dago software bidezko vulkan driver batean eta POCL-en, baina oraindik ez da GPU erreal batean neurtu;
 zer irabazi beharko lukeen, eta nola neurtu: [docs/gpu.eu.md](docs/gpu.eu.md).
 
 ## Historia

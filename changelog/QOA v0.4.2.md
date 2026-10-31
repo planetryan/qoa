@@ -44,6 +44,11 @@
   memory. With 2^g processes each holds 1/2^g of the state. Gates on its own qubits run with the usual
   kernels; diagonal gates on the shared top qubits need no communication; other gates on them exchange
   64 MiB chunks between pairs of processes. Results match one process.
+* **OpenCL GPUs** (`qoa run --gpu-api opencl`, or `--gpu`, which tries Vulkan first). This covers AMD
+  Instinct accelerators, which have no Vulkan, plus NVIDIA, Intel and POCL: the same kernel in OpenCL C,
+  64-bit floats, with `libOpenCL` loaded at run time. It is tested against the CPU on POCL in CI.
+* **Every GPU in a machine or cluster:** with MPI, each process takes the GPU of its node rank, both when
+  sharing shots and with `--distribute`. See [docs/gpu.md](../docs/gpu.md).
 * **Memory-aware size limit:** the fixed limit of 2^32 amplitudes is gone. A state may use 90% of the
   memory available, or of the job's cgroup limit, or `QOA_MAX_MEMORY`. A state that does not fit is a clear
   error before anything is allocated.
@@ -106,6 +111,11 @@
   diren egoeretarako. 2^g prozesurekin bakoitzak egoeraren 1/2^g du. Bere qubitetako ateak ohiko kernelekin
   doaz; partekatutako goiko qubitetako ate diagonalek ez dute komunikaziorik behar; haietako beste ateek
   64 MiB-eko zatiak trukatzen dituzte prozesu-bikoteen artean. Emaitzak prozesu batekoak bezalakoak dira.
+* **OpenCL GPUak** (`qoa run --gpu-api opencl`, edo `--gpu`, vulkan lehenik saiatzen dena). AMD Instinct
+  azeleragailuak hartzen ditu, vulkan-ik ez dutenak, eta NVIDIA, Intel eta POCL ere bai: kernel bera OpenCL
+  C-n, 64 biteko koma higikorrean, `libOpenCL` exekuzioan kargatuta. CPUaren aurka probatuta POCL-en CI-n.
+* **Makina edo kluster bateko GPU guztiak:** MPI-rekin, prozesu bakoitzak bere nodo-rank-aren GPUa hartzen
+  du, shot-ak partekatzean zein `--distribute`-rekin. Ikus [docs/gpu.eu.md](../docs/gpu.eu.md).
 * **Memoriaren araberako tamaina-muga:** 2^32 anplitudeko muga finkoa desagertu da. Egoera batek erabilgarri
   dagoen memoriaren % 90 erabil dezake, edo lanaren cgroup mugarena, edo `QOA_MAX_MEMORY`. Sartzen ez den
   egoera bat errore argi bat da, ezer erreserbatu aurretik.
