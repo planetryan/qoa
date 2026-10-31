@@ -2,7 +2,8 @@
 # (GitHub-ek argitaratutako argitalpen bat etiketarik gabeko zirriborro bihurtzen du haren etiketa ezabatzean,
 # eta zirriborroak zerrendaren goian erakusten ditu). etiketa jatorrizko commit-ean sortzen da berriz, eta
 # argitalpena zahar gisa argitaratzen da, "Latest" izan gabe: bertsio berrienak jarraitzen du "Latest"
-# izaten. fitxategiak argitalpenak lehendik dituenak dira; ez da ezer konpilatzen.
+# izaten. fitxategiak argitalpenak lehendik dituenak dira; ez da ezer konpilatzen. bertsio bat baino gehiago
+# berreskuratzean, zaharrenetik hasi.
 #
 # eskuz: Actions fitxa, "restore release", etiketa (adib. v0.4.1) eta haren commit-a.
 name: restore release
@@ -38,17 +39,23 @@ jobs:
           want="v$(git show "$sha:Cargo.toml" | grep -m1 '^version' | cut -d'"' -f2)"
           if [ "$want" != "$TAG" ]; then echo "$COMMIT is $want, not $TAG"; exit 1; fi
           echo "SHA=$sha" >> "$GITHUB_ENV"
+      # github-ek ez dio uzten ekintza honi git bidez etiketa bat bidaltzen, commit-aren workflow fitxategiak
+      # main-ekoak ez badira ("workflows" baimenik gabe); orduan argitalpenak berak sortzen du etiketa
+      # argitaratzean, commit horretan
       - name: tag it again
         run: |
           if git ls-remote --exit-code --tags origin "refs/tags/$TAG" > /dev/null; then
             echo "tag $TAG already exists"
+          elif git tag "$TAG" "$SHA" && git push origin "refs/tags/$TAG"; then
+            echo "tag $TAG pushed"
           else
-            git tag "$TAG" "$SHA"
-            git push origin "refs/tags/$TAG"
+            echo "the release will create tag $TAG at $SHA when it is published"
           fi
       - name: publish it as an older release, and keep the newest version as latest
         run: |
-          gh release edit "$TAG" --draft=false --latest=false --tag "$TAG"
+          gh release edit "$TAG" --draft=false --latest=false --tag "$TAG" --target "$SHA"
+          git fetch --force origin "refs/tags/$TAG:refs/tags/$TAG"
+          test "$(git rev-parse "$TAG^{commit}")" = "$SHA"
           newest=$(gh release list --exclude-drafts --exclude-pre-releases --limit 200 --json tagName --jq '.[].tagName' \
             | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1)
           gh release edit "$newest" --latest
