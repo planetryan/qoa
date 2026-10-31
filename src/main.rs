@@ -631,7 +631,10 @@ fn cmd_run(
     let team = join_team(mpi)?;
     let rank = team.as_ref().map_or(0, |t| t.rank());
     let program = load(file)?;
-    let gpu = match gpu {
+    // QOA_GPU_DEVICE=cpu: prozesu hau CPUan, --gpu-rekin ere (MPI lan misto batean, GPUak eta CPUak batera)
+    let cpu_here =
+        std::env::var("QOA_GPU_DEVICE").is_ok_and(|v| v.trim().eq_ignore_ascii_case("cpu"));
+    let gpu = match gpu.filter(|_| !cpu_here) {
         Some(api) => {
             let g = qoa::gpu::Gpu::open_with(api, qoa::gpu::local_index())
                 .map_err(|e| format!("--gpu: {e}"))?;

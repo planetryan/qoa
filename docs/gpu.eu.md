@@ -68,7 +68,10 @@ mpirun -n 8 qoa run zaratatsua.qoa --mpi --gpu --shots 100000 # 8 GPUk shot-ak p
 ```
 
 Prozesu bakoitzak nodoaren barruko bere rank-aren zenbakia duen GPUa hartzen du: Open MPI, MPICH, slurm,
-MVAPICH eta Cray abiarazleek esaten dute zein den, eta `QOA_GPU_DEVICE`-k gainidazten du. `--distribute`-rekin,
+MVAPICH eta Cray abiarazleek esaten dute zein den, eta `QOA_GPU_DEVICE`-k gainidazten du. `QOA_GPU_DEVICE=cpu`-k
+prozesu bat CPUan mantentzen du `--gpu`-rekin ere, beraz lan batek GPUak eta CPU nukleoak batera erabil
+ditzake abiarazlearen prozesu bakoitzeko ezarpenen bidez (Open MPI-rekin: `mpirun -n 4 -x QOA_GPU_DEVICE=0
+qoa ... : -n 4 -x QOA_GPU_DEVICE=cpu qoa ...`). `--distribute`-rekin,
 prozesu bakoitzak egoeraren bere zatiko ateak bere GPUan aplikatzen ditu, eta prozesuek datuak trukatzen
 dituzte haiek zeharkatzen dituzten qubitetako ateetarako bakarrik ([hpc.eu.md](hpc.eu.md)).
 

@@ -108,8 +108,9 @@ Ahaleginaren araberako balioaren ordenan:
    programak hardwarera irits daitezen.
 3. Quandela-ren Perceval-erako esportazioa, optika linealeko zatia hardware fotonikoan exekuta dadin.
 4. Euskarazko ikastaroetarako tutorialak.
-5. Glifo-sintaxi egonkor bat (finkatu gabeko puntuak [glyph.eu.md](glyph.eu.md)-n daude) eta JSON txosten
-   egonkor bat, beste programek emaitzak irakurtzeko erabiltzen duten "ABI klasikoa".
+5. JSON txosten egonkor bat, beste programek emaitzak irakurtzeko erabiltzen duten "ABI klasikoa".
 
 Eginda dagoeneko: bitar prestatuak eta CI publikoa (0.4.0, 0.4.1-en zabaldua), eta gailu errealen
-kalibrazioetatik ateratako zarata-ereduak (0.4.1).
+kalibrazioetatik ateratako zarata-ereduak (0.4.1). 0.4.2-n: glifo-sintaxiaren puntu irekiak finkatuta; MPI
+prozesu eta nodoen artean, egoera bakar bat prozesu askotan banatuta, eta OpenCL GPUak AMD Instinct barne
+([hpc.eu.md](hpc.eu.md)); eta 128 biteko doitasuna ([precision.eu.md](precision.eu.md)).

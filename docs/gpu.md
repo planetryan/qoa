@@ -65,7 +65,10 @@ mpirun -n 8 qoa run noisy.qoa --mpi --gpu --shots 100000   # 8 GPUs share the sh
 ```
 
 Each process takes the GPU numbered by its rank within the node: Open MPI, MPICH, Slurm, MVAPICH and
-Cray launchers say which that is, and `QOA_GPU_DEVICE` overrides it. With `--distribute`, every process
+Cray launchers say which that is, and `QOA_GPU_DEVICE` overrides it. `QOA_GPU_DEVICE=cpu` keeps a
+process on the CPU even with `--gpu`, so one job can use GPUs and CPU cores together through your
+launcher's per-process settings (with Open MPI: `mpirun -n 4 -x QOA_GPU_DEVICE=0 qoa ... : -n 4 -x
+QOA_GPU_DEVICE=cpu qoa ...`). With `--distribute`, every process
 applies the gates on its own part of the state on its own GPU, and the processes exchange data only for
 gates on the qubits that span them ([hpc.md](hpc.md)).
 

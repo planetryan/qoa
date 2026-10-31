@@ -1,6 +1,9 @@
 # QOA v0.4.2 Release Notes
 
-**Status:** in progress, not released yet (euskaraz behean)
+**Status:** released 2026-10-31 (euskaraz behean)
+
+Builds on [0.4.1](<QOA v0.4.1.md>): music through light and its quantum states on video, 128-bit
+precision, a physically based black hole, and QOA on clusters and on GPUs of every kind.
 
 ## New
 
@@ -24,7 +27,6 @@
   crescents and their negative regions. The result that was measured is marked on each one. Each pixel is
   the exact average over its area, so nothing aliases. Any resolution and frame rate work, including 4K60,
   and ffmpeg options after `--` set the encoding.
-
 * **128-bit precision** (`qoa run --precision quad`): qubit programs run with amplitudes, gate matrices,
   measurement and sums in double-double (about 32 significant digits) on every 64-bit system. Over 20,000
   gates on 10 qubits the norm stays within 4e-29, where 64-bit floats drift to 3e-13. Programs with optical
@@ -35,7 +37,6 @@
   lensed with their true magnification, and a galaxy behind the hole is lensed into rings. The image goes
   through camera glow and ACES tone mapping. It renders 1080p by default and any size up to 4K60 and beyond,
   and new tests check the flux, the travel times, star brightness and the colours.
-
 * **Shots over MPI** (`qoa run --mpi`, build with `--features mpi`): shots are split between MPI processes
   on one node or many, and process 0 collects the counts. The counts are the same for any number of
   processes, and an error on one process stops the job cleanly. The MPI layer is a few lines of C built with
@@ -58,12 +59,19 @@
 ## Changed
 
 * `qoa visual` no longer reads only `.wav` files, and its audio is no longer mixed to mono.
+* `qoa run --gpu` tries Vulkan first, then OpenCL, and names both reasons if neither works.
+* For library users: `RunConfig` has new fields (`precision`, `team`, `distribute`); code that fills it
+  with `..RunConfig::default()` is unaffected. `RunOutput` has `norm_error`, and `state::MAX_AMPLITUDES` is
+  replaced by `state::memory_limit()` and `State::check`.
 
 ---
 
 # QOA v0.4.2 bertsio-oharrak
 
-**Egoera:** lanean, oraindik argitaratu gabe
+**Egoera:** 2026-10-31n argitaratua
+
+[0.4.1](<QOA v0.4.1.md>)-en gainean eraikia: musika argitik eta haren egoera kuantikoak bideoan, 128 biteko
+doitasuna, fisikan oinarritutako zulo beltz bat, eta QOA klusterretan eta mota guztietako GPUetan.
 
 ## Berria
 
@@ -88,7 +96,6 @@
   estutuak, kerr ilargi-erdiak eta haien eskualde negatiboak. Bakoitzean neurtutako emaitza markatzen da.
   Pixel bakoitza bere azaleraren batez besteko zehatza da, beraz ez dago aliasing-ik. Edozein bereizmen eta
   irudi-abiadura erabil daiteke, 4K60 barne, eta `--` ondorengo ffmpeg aukerek kodeketa erabakitzen dute.
-
 * **128 biteko doitasuna** (`qoa run --precision quad`): qubit-programak anplitudeak, ateen matrizeak,
   neurketa eta baturak double-double-n dituztela exekutatzen dira (32 digitu esanguratsu inguru) 64 biteko
   sistema guztietan. 20.000 ate 10 qubitetan: araua 4e-29-ren barruan geratzen da, 64 biteko koma
@@ -102,7 +109,6 @@
   atzeko galaxia bat eraztunetan. Irudiak kamera-distira eta ACES tonu-mapaketa ditu. 1080p-n errendatzen du
   lehenetsiz, eta edozein tamainatan 4K60 eta gehiago, eta proba berriek fluxua, bidaia-denborak, izarren
   distira eta koloreak egiaztatzen dituzte.
-
 * **Shot-ak MPI-n** (`qoa run --mpi`, konpilatu `--features mpi`-rekin): shot-ak MPI prozesuen artean
   banatzen dira, nodo batean edo askotan, eta 0. prozesuak zenbaketak biltzen ditu. Zenbaketak berdinak dira
   prozesu-kopurua edozein dela ere, eta prozesu bateko errore batek lana garbi gelditzen du. MPI geruza C lerro
@@ -125,3 +131,8 @@
 ## Aldatua
 
 * `qoa visual`-ek ez ditu `.wav` fitxategiak bakarrik irakurtzen, eta bere audioa ez da monora nahasten.
+* `qoa run --gpu` vulkan lehenik saiatzen da, gero OpenCL, eta bien arrazoiak ematen ditu biek huts egiten
+  badute.
+* Liburutegiaren erabiltzaileentzat: `RunConfig`-ek eremu berriak ditu (`precision`, `team`, `distribute`);
+  `..RunConfig::default()`-rekin betetzen duen kodea ez da aldatzen. `RunOutput`-ek `norm_error` du, eta
+  `state::MAX_AMPLITUDES`-en ordez `state::memory_limit()` eta `State::check` daude.

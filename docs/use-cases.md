@@ -103,8 +103,9 @@ In order of value for the effort:
 2. OpenQASM 3 export, so programs with loops, registers and repeat-until-success reach hardware.
 3. Export to Quandela's Perceval, so the linear-optics part can run on photonic hardware.
 4. Tutorials for Basque-medium courses.
-5. A stable glyph syntax (its open points are in [glyph.md](glyph.md)) and a stable JSON report, the
-   "classical ABI" other programs read results through.
+5. A stable JSON report, the "classical ABI" other programs read results through.
 
 Already done: prebuilt binaries and public CI (0.4.0, extended in 0.4.1), and noise models from real
-devices' calibrations (0.4.1).
+devices' calibrations (0.4.1). In 0.4.2: the glyph syntax's open points settled; MPI across processes and
+nodes, one state split over many processes, and OpenCL GPUs including AMD Instinct
+([hpc.md](hpc.md)); and 128-bit precision ([precision.md](precision.md)).
