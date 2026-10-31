@@ -57,6 +57,16 @@ aritmetika gehiago daude horren atzean.
 
 ## POWER eta 128 biteko hardware-a
 
-POWER9-k eta ondorengoek IEEE binary128 aritmetika dute hardware-an (113 biteko esanguratsua). QOA-ren quad
-modua POWER-en dabil gaur, double-double-rekin POWER-en biderketa-batuketa fusionatuaren gainean. binary128
-aginduak zuzenean erabiltzea aurreikusita dago.
+POWER9-k eta ondorengoek IEEE binary128 aritmetika dute hardware-an: 113 biteko esanguratsua, zuzen
+biribildua. QOA-ren quad moduak double-double erabiltzen du POWER-en, POWER-en biderketa-batuketa
+fusionatuaren gainean, beste toki guztietan bezala. Arrazoiak:
+
+- **Erantzun bera toki guztietan.** Double-double zuzen biribildutako 64 biteko eragiketa berberekin
+  eraikitzen da sistema guztietan, beraz exekuzio batek bit berak ematen ditu POWER, x86-64, ARM eta RISC-V-n.
+  binary128 POWER-en bakarrik erabiltzeak POWER-en emaitzak besteenetatik desberdinduko lituzke azken
+  digituetan.
+- **POWER8-n ere bai.** POWER8-k ez du binary128 unitaterik; double-double han ere dabil.
+- **Aldea 7 bit da.** binary128-k 113 bit ditu eta double-double-k 106 inguru, biak 32 digitu esanguratsu
+  ingurukoak.
+
+POWER-erako binary128 motor bat aukera gisa gehi liteke, IEEE binary128 emaitza zehatzak nahi badira.

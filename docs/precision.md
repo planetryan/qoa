@@ -54,6 +54,15 @@ only for now, and QOA says so instead of silently mixing precisions.
 
 ## POWER and 128-bit hardware
 
-POWER9 and later have IEEE binary128 arithmetic in hardware (113-bit significand). QOA's quad mode runs on
-POWER today with double-double on POWER's fused multiply-add. Using the binary128 instructions directly is
-planned.
+POWER9 and later have IEEE binary128 arithmetic in hardware: a 113-bit significand, correctly rounded. QOA's
+quad mode runs on POWER with double-double instead, on POWER's fused multiply-add, like everywhere else. The
+reasons:
+
+- **The same answer everywhere.** Double-double is built from the same correctly rounded 64-bit operations
+  on every system, so a run gives the same bits on POWER, x86-64, ARM and RISC-V. Using binary128 on POWER
+  alone would make POWER results differ from all the others in their last digits.
+- **POWER8 too.** POWER8 has no binary128 unit; double-double runs there as well.
+- **The difference is 7 bits.** binary128 carries 113 bits and double-double about 106, both around 32
+  significant digits.
+
+A binary128 engine for POWER could be added as an option if exact IEEE binary128 results are wanted.
