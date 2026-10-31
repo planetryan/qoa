@@ -36,6 +36,8 @@ pub struct Report {
     // erabilitako kernelak (avx512, avx2, neon, rvv edo scalar) eta hari-kopurua
     pub kernels: String,
     pub threads: usize,
+    // MPI prozesuak (`--mpi`), shot-ak haien artean banatuta; 1 bestela
+    pub ranks: usize,
     // `--gpu`: gailua eta zer egin duen (bestela null)
     pub gpu: Option<crate::gpu::Stats>,
     pub steps_first_shot: u64,
@@ -155,6 +157,7 @@ pub fn build(input: ReportInput) -> Report {
         elapsed_ms: input.elapsed.as_secs_f64() * 1000.0,
         kernels: crate::simd::active().name().to_string(),
         threads: rayon::current_num_threads(),
+        ranks: input.config.team.as_ref().map_or(1, |t| t.size()),
         gpu: input.config.gpu.as_ref().map(|g| g.stats()),
         steps_first_shot: out.steps,
         counts,
@@ -430,20 +433,31 @@ pub fn render(r: &Report, style: &Style) -> String {
         format_bytes(r.memory_bytes)
     ));
     line(ts!("system", "sistema"), system);
+    let ranks = if r.ranks > 1 {
+        t!(
+            " in each of {} MPI processes (shots split between them)",
+            " {} MPI prozesu bakoitzean (shot-ak haien artean banatuta)",
+            r.ranks
+        )
+    } else {
+        String::new()
+    };
     line(
         ts!("cpu", "cpu"),
         if r.precision == crate::vm::Precision::Quad {
             t!(
-                "128-bit engine (double-double on fused multiply-add), {} thread(s)",
-                "128 biteko motorra (double-double biderketa-batuketa fusionatuaren gainean), {} hari",
-                r.threads
+                "128-bit engine (double-double on fused multiply-add), {} thread(s){}",
+                "128 biteko motorra (double-double biderketa-batuketa fusionatuaren gainean), {} hari{}",
+                r.threads,
+                ranks
             )
         } else {
             t!(
-                "{} kernels, {} thread(s)",
-                "{} kernelak, {} hari",
+                "{} kernels, {} thread(s){}",
+                "{} kernelak, {} hari{}",
                 r.kernels,
-                r.threads
+                r.threads,
+                ranks
             )
         },
     );

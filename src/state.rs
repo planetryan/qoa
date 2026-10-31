@@ -28,8 +28,106 @@ const ONE: C = C::new(1.0, 0.0);
 // zati paraleloen tamaina handiena (anplitudetan) xaflak zatitzean
 const PIECE: usize = 1 << 14;
 
-// simulagailuak erreserbatuko duen egoera-bektore handiena (2^32 anplitude = 64 GiB)
-pub const MAX_AMPLITUDES: u128 = 1 << 32;
+// memoria-mugarik ezagutzen ez denean (linux ez den sistemetan, QOA_MAX_MEMORY gabe): 2^32 anplitude = 64 GiB
+pub const DEFAULT_MEMORY: u128 = 1 << 36;
+
+// egoera-bektorearentzat erabil daitekeen memoria, bytetan, eta nondik datorren: QOA_MAX_MEMORY (adib. "512G",
+// "1.5T", byteak), bestela linux-en memoria erabilgarriaren % 90 (MemAvailable, eta cgroup-aren muga, slurm
+// bezalako lan-kudeatzaileek ezartzen dutena, txikiagoa bada), bestela DEFAULT_MEMORY. behin kalkulatzen da
+pub fn memory_limit() -> (u128, String) {
+    static LIMIT: std::sync::OnceLock<(u128, String)> = std::sync::OnceLock::new();
+    LIMIT.get_or_init(find_memory_limit).clone()
+}
+
+fn find_memory_limit() -> (u128, String) {
+    if let Ok(text) = std::env::var("QOA_MAX_MEMORY")
+        && let Some(b) = parse_bytes(&text)
+    {
+        return (b, "QOA_MAX_MEMORY".into());
+    }
+    let read = |p: &str| std::fs::read_to_string(p).ok();
+    let available = read("/proc/meminfo").and_then(|m| {
+        m.lines()
+            .find(|l| l.starts_with("MemAvailable:"))
+            .and_then(|l| l.split_whitespace().nth(1)?.parse::<u128>().ok())
+            .map(|kb| kb * 1024)
+    });
+    // cgroup v2 (memory.max - memory.current) edo v1 (memory.limit_in_bytes - memory.usage_in_bytes)
+    let num = |p: &str| read(p).and_then(|t| t.trim().parse::<u128>().ok());
+    let cgroup = num("/sys/fs/cgroup/memory.max")
+        .map(|m| m.saturating_sub(num("/sys/fs/cgroup/memory.current").unwrap_or(0)))
+        .or_else(|| {
+            num("/sys/fs/cgroup/memory/memory.limit_in_bytes")
+                .filter(|&m| m < 1 << 60)
+                .map(|m| {
+                    m.saturating_sub(
+                        num("/sys/fs/cgroup/memory/memory.usage_in_bytes").unwrap_or(0),
+                    )
+                })
+        });
+    match (available, cgroup) {
+        (Some(a), Some(c)) if c < a => (
+            c / 10 * 9,
+            crate::ts!(
+                "90% of this job's memory limit (cgroup)",
+                "lan honen memoria-mugaren % 90 (cgroup)"
+            )
+            .into(),
+        ),
+        (Some(a), _) => (
+            a / 10 * 9,
+            crate::ts!(
+                "90% of the memory available now",
+                "orain erabilgarri dagoen memoriaren % 90"
+            )
+            .into(),
+        ),
+        (None, Some(c)) => (
+            c / 10 * 9,
+            crate::ts!(
+                "90% of this job's memory limit (cgroup)",
+                "lan honen memoria-mugaren % 90 (cgroup)"
+            )
+            .into(),
+        ),
+        (None, None) => (
+            DEFAULT_MEMORY,
+            crate::ts!("the default", "lehenetsia").into(),
+        ),
+    }
+}
+
+// "512G", "1.5T", "64GiB", "4096M", "123456" -> byteak (bi-ren berreturak: K = 1024)
+pub fn parse_bytes(text: &str) -> Option<u128> {
+    let t = text.trim().to_ascii_uppercase();
+    let t = t.trim_end_matches('B').trim_end_matches('I');
+    let (num, mult) = match t.chars().last()? {
+        'K' => (&t[..t.len() - 1], 1u128 << 10),
+        'M' => (&t[..t.len() - 1], 1 << 20),
+        'G' => (&t[..t.len() - 1], 1 << 30),
+        'T' => (&t[..t.len() - 1], 1 << 40),
+        'P' => (&t[..t.len() - 1], 1 << 50),
+        _ => (t, 1),
+    };
+    let v: f64 = num.trim().parse().ok()?;
+    (v.is_finite() && v > 0.0).then_some((v * mult as f64) as u128)
+}
+
+// `bytes` sartzen den egiaztatu, bestela errore argi bat (zenbat behar den, muga eta nola aldatu)
+pub fn check_memory(what: &str, bytes: u128) -> Result<(), String> {
+    let (limit, source) = memory_limit();
+    if bytes <= limit {
+        return Ok(());
+    }
+    Err(t!(
+        "{} need {}, more than QOA may use here ({}: {}). On a machine with more memory, set QOA_MAX_MEMORY (e.g. QOA_MAX_MEMORY=512G)",
+        "{}-k {} behar dute, QOA-k hemen erabil dezakeena baino gehiago ({}: {}). memoria gehiagoko makina batean, ezarri QOA_MAX_MEMORY (adib. QOA_MAX_MEMORY=512G)",
+        what,
+        format_bytes(bytes),
+        source,
+        format_bytes(limit)
+    ))
+}
 
 #[derive(Clone, Debug)]
 pub struct State {
@@ -50,18 +148,17 @@ impl State {
                 "egoera handiegia da indexatzeko"
             )
         })?;
-        if dim > MAX_AMPLITUDES {
-            return Err(t!(
-                "{} qubits and {} modes (cutoff {}) need {} amplitudes ({}), more than the {} limit",
-                "{} qubit eta {} modu ({} muga) {} anplitude behar dituzte ({}), {} muga baino gehiago",
+        check_memory(
+            &t!(
+                "{} qubits and {} modes (cutoff {}): {} amplitudes",
+                "{} qubit eta {} modu ({} muga): {} anplitude",
                 n_qubits,
                 n_modes,
                 cutoff,
-                dim,
-                format_bytes(dim * 16),
-                format_bytes(MAX_AMPLITUDES * 16)
-            ));
-        }
+                dim
+            ),
+            dim.saturating_mul(16),
+        )?;
         if n_modes > 0 && cutoff < 2 {
             return Err(t!(
                 "a mode needs a cutoff of at least 2 (photon numbers 0 and 1)",

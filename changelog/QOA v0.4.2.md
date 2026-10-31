@@ -36,6 +36,13 @@
   through camera glow and ACES tone mapping. It renders 1080p by default and any size up to 4K60 and beyond,
   and new tests check the flux, the travel times, star brightness and the colours.
 
+* **Shots over MPI** (`qoa run --mpi`, build with `--features mpi`): shots are split between MPI processes
+  on one node or many, and process 0 collects the counts. The counts are the same for any number of
+  processes, and an error on one process stops the job cleanly. The MPI layer is a few lines of C built with
+  the machine's own MPI wrapper. See [docs/hpc.md](../docs/hpc.md).
+* **Memory-aware size limit:** the fixed limit of 2^32 amplitudes is gone. A state may use 90% of the
+  memory available, or of the job's cgroup limit, or `QOA_MAX_MEMORY`. A state that does not fit is a clear
+  error before anything is allocated.
 * **Glyph syntax settled:** `;` stays required between statements, and `PR"x"%#3` prints a label and its
   values (`x = 3`). See [docs/glyph.md](../docs/glyph.md).
 
@@ -87,6 +94,13 @@
   lehenetsiz, eta edozein tamainatan 4K60 eta gehiago, eta proba berriek fluxua, bidaia-denborak, izarren
   distira eta koloreak egiaztatzen dituzte.
 
+* **Shot-ak MPI-n** (`qoa run --mpi`, konpilatu `--features mpi`-rekin): shot-ak MPI prozesuen artean
+  banatzen dira, nodo batean edo askotan, eta 0. prozesuak zenbaketak biltzen ditu. Zenbaketak berdinak dira
+  prozesu-kopurua edozein dela ere, eta prozesu bateko errore batek lana garbi gelditzen du. MPI geruza C lerro
+  gutxi batzuk dira, makinaren MPI bilgarriarekin konpilatuak. Ikus [docs/hpc.eu.md](../docs/hpc.eu.md).
+* **Memoriaren araberako tamaina-muga:** 2^32 anplitudeko muga finkoa desagertu da. Egoera batek erabilgarri
+  dagoen memoriaren % 90 erabil dezake, edo lanaren cgroup mugarena, edo `QOA_MAX_MEMORY`. Sartzen ez den
+  egoera bat errore argi bat da, ezer erreserbatu aurretik.
 * **Glifo-sintaxia finkatuta:** `;` beharrezkoa da adierazpenen artean, eta `PR"x"%#3`-k etiketa bat eta
   haren balioak inprimatzen ditu (`x = 3`). Ikus [docs/glyph.eu.md](../docs/glyph.eu.md).
 

@@ -186,6 +186,12 @@ zenbat desbideratu den erakusten du. Gehiagorako, `qoa run --precision quad`-ek 
 doitasunean gordetzen ditu (double-double, 32 digitu esanguratsu inguru): anplitudeak, ateen matrizeak eta
 neurketa. 10 eta 20 aldiz artean motelagoa da. Xehetasunak: [docs/precision.eu.md](docs/precision.eu.md).
 
+### Klusterrak eta superkonputagailuak
+
+`qoa run --mpi`-k shot-ak MPI prozesuetan banatzen ditu (konpilatu `--features mpi`-rekin, abiarazi `mpirun`
+edo `srun`-ekin), prozesu batek bezalako zenbaketekin. QOA-k egiaztatzen du egoera bat erabil dezakeen
+memorian sartzen dela hasi aurretik (`QOA_MAX_MEMORY` aldatzeko). Ikus [docs/hpc.eu.md](docs/hpc.eu.md).
+
 ### Musika argitik
 
 `qoa visual abestia.mp3 irteera.mp4`-k audioa zirkuitu optiko kuantiko simulatu batetik pasatzen du: lagin

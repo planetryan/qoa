@@ -27,9 +27,6 @@ const PIECE: usize = 1 << 13;
 const BLOCK_BITS: usize = 13;
 const BLOCK: usize = 1 << BLOCK_BITS;
 
-// egoera handiena: 2^31 anplitude × 32 byte = 64 GiB (f64 motorraren muga bera, bytetan)
-pub const MAX_AMPLITUDES: u128 = 1 << 31;
-
 // ------------------------------------------------------------------ double-double
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -383,16 +380,15 @@ impl QuadState {
     // |0...0>
     pub fn new(n_qubits: usize) -> Result<QuadState, String> {
         let dim = 1u128.checked_shl(n_qubits as u32).unwrap_or(u128::MAX);
-        if dim > MAX_AMPLITUDES {
-            return Err(t!(
-                "{} qubits need {} amplitudes in 128-bit precision ({}), more than the {} limit",
-                "{} qubitek {} anplitude behar dituzte 128 biteko doitasunean ({}), {} muga baino gehiago",
+        crate::state::check_memory(
+            &t!(
+                "{} qubits in 128-bit precision: {} amplitudes",
+                "{} qubit 128 biteko doitasunean: {} anplitude",
                 n_qubits,
-                dim,
-                crate::state::format_bytes(dim.saturating_mul(32)),
-                crate::state::format_bytes(MAX_AMPLITUDES * 32)
-            ));
-        }
+                dim
+            ),
+            dim.saturating_mul(32),
+        )?;
         let mut amps = vec![Qc::ZERO; dim as usize];
         amps[0] = Qc::ONE;
         Ok(QuadState { n_qubits, amps })

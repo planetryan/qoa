@@ -180,6 +180,12 @@ norm drifted. For more, `qoa run --precision quad` keeps qubit programs in 128-b
 about 32 significant digits): amplitudes, gate matrices and measurement. It is 10 to 20 times slower. Details
 in [docs/precision.md](docs/precision.md).
 
+### Clusters and supercomputers
+
+`qoa run --mpi` spreads the shots over MPI processes (build with `--features mpi`, start with `mpirun` or
+`srun`), with the same counts as one process. QOA checks that a state fits in the memory it may use before
+it starts (`QOA_MAX_MEMORY` to change it). See [docs/hpc.md](docs/hpc.md).
+
 ### Music through light
 
 `qoa visual song.mp3 out.mp4` sends audio through a simulated quantum optical circuit: every sample becomes a

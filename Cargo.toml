@@ -6,8 +6,8 @@ rust-version = "1.89"
 authors = ["GitHub: @planetryan"]
 description = "QOA (Quantum Optical Assembly): an assembly language and simulator for qubits and optical modes"
 license-file = "LICENSE"
-# build.rs zaharrak inork deitzen ez zuen eskuzko mihiztadura konpilatzen zuen; v0.4-k ez du konpilazio-scriptik
-build = false
+# build.rs-k MPI-ren geruza konpilatzen du `mpi` ezaugarriarekin bakarrik (src/mpi_shim.c, mpicc-ekin)
+build = "build.rs"
 
 [dependencies]
 # nukleoa: mihiztatzailea, simulagailua, cli
@@ -32,6 +32,11 @@ rustfft = "6.4"
 [features]
 default = ["vulkan"]
 vulkan = ["dep:ash"]
+# `qoa run --mpi`: shot-ak MPI prozesuen artean (mpicc eta MPI liburutegi bat behar ditu)
+mpi = ["dep:cc"]
+
+[build-dependencies]
+cc = { version = "1", optional = true }
 
 [dev-dependencies]
 criterion = "0.5"

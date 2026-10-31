@@ -14,6 +14,7 @@ use crate::noise::{GateNoise, Native, NoiseModel, Relax};
 use crate::program::{Basis, BinOp, Cmp, Count, Dest, Gate, NUM_REGS, Op, Program, Source, UnOp};
 use crate::quad::{self, QuadGate, QuadState};
 use crate::state::State;
+use crate::team::{self, Team};
 use crate::{t, ts};
 use num_complex::Complex64 as C;
 use rand::rngs::StdRng;
@@ -40,6 +41,8 @@ pub struct RunConfig {
     pub model: Option<Arc<NoiseModel>>,
     // qubit-egoeraren doitasuna: 64 bit (lehenetsia) edo 128 bit (`--precision quad`, src/quad.rs)
     pub precision: Precision,
+    // prozesu-taldea (`--mpi`): shot-ak rank-en artean banatzen dira eta 0. rank-ean biltzen dira
+    pub team: Option<Arc<dyn Team>>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize)]
@@ -61,6 +64,7 @@ impl Default for RunConfig {
             gpu: None,
             model: None,
             precision: Precision::Double,
+            team: None,
         }
     }
 }
@@ -258,6 +262,25 @@ pub fn run(
     } else {
         Method::EveryShot
     };
+    // laginketak probabilitate-zerrenda bat behar du egoeraren ondoan (8 byte anplitude bakoitzeko)
+    if method == Method::Sampled
+        && let Some(dim) = prog.state_dim()
+    {
+        let per = if cfg.precision == Precision::Quad {
+            40
+        } else {
+            24
+        };
+        crate::state::check_memory(
+            &t!(
+                "sampling {} amplitudes (the state and its probabilities)",
+                "{} anplitude laginkatzeak (egoera eta haren probabilitateak)",
+                dim
+            ),
+            dim.saturating_mul(per),
+        )
+        .map_err(|message| RuntimeError { line: 0, message })?;
+    }
     let shots = if method == Method::StateOnly {
         1
     } else {
@@ -265,17 +288,43 @@ pub fn run(
     };
 
     // lehen shot-a: irteera erakusten du eta sarrerak gordetzen ditu
+    // taldean: rank guztiek lehen shot-a exekutatzen dute (egoera eta probabilitateak behar dituzte), baina
+    // 0.ak bakarrik idazten du irteera, eta haren sarrerak besteei zabaltzen zaizkie
+    let team = cfg.team.as_deref();
+    let (rank, ranks) = team.map_or((0, 1), |t| (t.rank(), t.size()));
     let mut recorded_inputs = Vec::new();
+    let mut replay = Vec::new();
+    if let Some(t) = team
+        && rank != 0
+    {
+        replay = f64s(&t.broadcast(Vec::new()));
+    }
+    let mut sink = std::io::sink();
+    let first_out: &mut dyn Write = if rank == 0 { out } else { &mut sink };
     let mut first = Machine::new(
         prog,
         cfg,
         &cache,
-        out,
-        Inputs::Record(&mut recorded_inputs),
+        first_out,
+        if rank == 0 {
+            Inputs::Record(&mut recorded_inputs)
+        } else {
+            Inputs::Replay(&replay, 0)
+        },
         shot_rng(cfg.seed, 0),
     )?;
     first.capture_at = split;
-    first.run()?;
+    let first_result = first.run();
+    if let Some(t) = team
+        && rank == 0
+    {
+        let inputs = match &first.inputs {
+            Inputs::Record(list) => list.iter().flat_map(|x| x.to_le_bytes()).collect(),
+            Inputs::Replay(..) => Vec::new(),
+        };
+        t.broadcast(inputs);
+    }
+    first_result?;
     let first_record = first.record();
     let first_leakage = first.state.leakage;
     let steps = first.steps;
@@ -292,8 +341,15 @@ pub fn run(
     drop(first);
 
     let mut counts: HashMap<Record, u64> = HashMap::new();
-    *counts.entry(first_record).or_insert(0) += 1;
+    if rank == 0 {
+        *counts.entry(first_record).or_insert(0) += 1;
+    }
     let mut leakage = first_leakage;
+    // rank honen shot-ak: [lo, hi), 1..shots tartea zati jarraituetan banatuta. shot bakoitzak bere hazia
+    // du, beraz emaitza ez dago rank-kopuruaren menpe
+    let lo = 1 + (shots - 1) * rank as u64 / ranks as u64;
+    let hi = 1 + (shots - 1) * (rank as u64 + 1) / ranks as u64;
+    let mut failed: Option<RuntimeError> = None;
 
     if shots > 1 {
         match method {
@@ -310,7 +366,7 @@ pub fn run(
                 }
                 let total = acc.value();
                 let tail = &prog.ops[split..];
-                let sampled: HashMap<Record, u64> = (1..shots)
+                let sampled: HashMap<Record, u64> = (lo..hi)
                     .into_par_iter()
                     .fold(HashMap::new, |mut m, shot| {
                         let mut rng = shot_rng(cfg.seed, shot);
@@ -326,7 +382,9 @@ pub fn run(
                 counts = merge_counts(counts, sampled);
             }
             Method::EveryShot => {
-                let results: Vec<Result<(Record, f64), RuntimeError>> = (1..shots)
+                // 0. rank-ak irakurritako sarrerak; besteek zabalkundetik jaso dituzte
+                let shared_inputs: &[f64] = if rank == 0 { &recorded_inputs } else { &replay };
+                let results: Vec<Result<(Record, f64), RuntimeError>> = (lo..hi)
                     .into_par_iter()
                     .map(|shot| {
                         let mut sink = std::io::sink();
@@ -335,7 +393,7 @@ pub fn run(
                             cfg,
                             &cache,
                             &mut sink,
-                            Inputs::Replay(&recorded_inputs, 0),
+                            Inputs::Replay(shared_inputs, 0),
                             shot_rng(cfg.seed, shot),
                         )?;
                         m.run()?;
@@ -343,15 +401,40 @@ pub fn run(
                     })
                     .collect();
                 for r in results {
-                    let (rec, leak) = r?;
-                    *counts.entry(rec).or_insert(0) += 1;
-                    leakage = leakage.max(leak);
+                    match r {
+                        Ok((rec, leak)) => {
+                            *counts.entry(rec).or_insert(0) += 1;
+                            leakage = leakage.max(leak);
+                        }
+                        Err(e) => {
+                            failed.get_or_insert(e);
+                        }
+                    }
                 }
             }
             Method::StateOnly => unreachable!(),
         }
     }
 
+    // taldean: rank guztiek beren zenbaketak (edo errorea) 0.ari bidaltzen dizkiote, beti, inor zain gera ez dadin
+    if let Some(t) = team
+        && ranks > 1
+    {
+        let mine = encode_part(&counts, leakage, failed.as_ref());
+        if let Some(all) = t.gather(mine) {
+            for part in &all[1..] {
+                let (c, leak, err) = decode_part(part);
+                if let Some(e) = err {
+                    failed.get_or_insert(e);
+                }
+                counts = merge_counts(counts, c);
+                leakage = leakage.max(leak);
+            }
+        }
+    }
+    if let Some(e) = failed {
+        return Err(e);
+    }
     let mut counts: Vec<(Record, u64)> = counts.into_iter().collect();
     counts.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
     Ok(RunOutput {
@@ -364,6 +447,71 @@ pub fn run(
         steps,
         norm_error,
     })
+}
+
+fn f64s(bytes: &[u8]) -> Vec<f64> {
+    bytes
+        .as_chunks::<8>()
+        .0
+        .iter()
+        .map(|c| f64::from_le_bytes(*c))
+        .collect()
+}
+
+// rank baten emaitza bytetan: ihesa, errorea (lerroa eta mezua, edo ezer ez) eta zenbaketak (bitak:
+// 0, 1 edo 255 idatzi gabe; irakurketak: u32, u32::MAX idatzi gabe)
+fn encode_part(counts: &HashMap<Record, u64>, leakage: f64, err: Option<&RuntimeError>) -> Vec<u8> {
+    let mut out = Vec::new();
+    out.extend(leakage.to_le_bytes());
+    let msg = err.map(|e| (e.line, e.message.as_bytes().to_vec()));
+    out.push(msg.is_some() as u8);
+    if let Some((line, m)) = &msg {
+        out.extend((*line as u64).to_le_bytes());
+        out.extend(team::encode_list(std::slice::from_ref(m)));
+    }
+    for (rec, n) in counts {
+        let mut item = Vec::new();
+        item.extend((rec.bits.len() as u32).to_le_bytes());
+        item.extend(rec.bits.iter().map(|b| b.unwrap_or(255)));
+        item.extend((rec.readouts.len() as u32).to_le_bytes());
+        for r in &rec.readouts {
+            item.extend(r.unwrap_or(u32::MAX).to_le_bytes());
+        }
+        item.extend(n.to_le_bytes());
+        out.extend(team::encode_list(std::slice::from_ref(&item)));
+    }
+    out
+}
+
+fn decode_part(bytes: &[u8]) -> (HashMap<Record, u64>, f64, Option<RuntimeError>) {
+    let leakage = f64::from_le_bytes(bytes[..8].try_into().unwrap());
+    let mut rest = &bytes[9..];
+    let mut err = None;
+    if bytes[8] == 1 {
+        let line = u64::from_le_bytes(rest[..8].try_into().unwrap()) as u32;
+        let n = u64::from_le_bytes(rest[8..16].try_into().unwrap()) as usize;
+        let message = String::from_utf8_lossy(&rest[16..16 + n]).into_owned();
+        err = Some(RuntimeError { line, message });
+        rest = &rest[16 + n..];
+    }
+    let mut counts = HashMap::new();
+    for item in team::decode_list(rest) {
+        let u32_at = |i: usize| u32::from_le_bytes(item[i..i + 4].try_into().unwrap());
+        let nb = u32_at(0) as usize;
+        let bits = item[4..4 + nb]
+            .iter()
+            .map(|&b| (b != 255).then_some(b))
+            .collect();
+        let nr = u32_at(4 + nb) as usize;
+        let readouts = (0..nr)
+            .map(|k| u32_at(8 + nb + 4 * k))
+            .map(|v| (v != u32::MAX).then_some(v))
+            .collect();
+        let at = 8 + nb + 4 * nr;
+        let n = u64::from_le_bytes(item[at..at + 8].try_into().unwrap());
+        *counts.entry(Record { bits, readouts }).or_insert(0) += n;
+    }
+    (counts, leakage, err)
 }
 
 fn merge_counts(mut a: HashMap<Record, u64>, b: HashMap<Record, u64>) -> HashMap<Record, u64> {

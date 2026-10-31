@@ -91,6 +91,11 @@ enum Command {
             "qubit-egoeraren zenbakien doitasuna: double (64 biteko koma higikorra) edo quad (128 biteko double-double, ~32 digitu, qubit-programak bakarrik)"
         ))]
         precision: PrecisionArg,
+        #[arg(long, help = ts!(
+            "spread the shots over MPI processes (start with mpirun or srun); needs a QOA built with --features mpi. Rank 0 prints the result",
+            "shot-ak MPI prozesuen artean banatu (mpirun edo srun-ekin abiarazi); --features mpi-rekin konpilatutako QOA behar du. 0. rank-ak inprimatzen du emaitza"
+        ))]
+        mpi: bool,
     },
     #[command(about = ts!("Assemble a program and report what it needs, without running it", "Programa bat mihiztatu eta zer behar duen esan, exekutatu gabe"))]
     Check {
@@ -395,6 +400,7 @@ fn main() -> ExitCode {
             max_steps,
             gpu,
             precision,
+            mpi,
         } => cmd_run(
             &file,
             shots,
@@ -411,6 +417,7 @@ fn main() -> ExitCode {
                 PrecisionArg::Double => qoa::vm::Precision::Double,
                 PrecisionArg::Quad => qoa::vm::Precision::Quad,
             },
+            mpi,
         ),
         Command::Check { file } => cmd_check(&file),
         Command::Compile { file, output } => cmd_compile(&file, output),
@@ -593,7 +600,10 @@ fn cmd_run(
     max_steps: u64,
     gpu: bool,
     precision: qoa::vm::Precision,
+    mpi: bool,
 ) -> Result<(), String> {
+    let team = join_team(mpi)?;
+    let rank = team.as_ref().map_or(0, |t| t.rank());
     let program = load(file)?;
     let gpu = if gpu {
         let g = qoa::gpu::Gpu::open().map_err(|e| format!("--gpu: {e}"))?;
@@ -614,6 +624,7 @@ fn cmd_run(
         gpu,
         model,
         precision,
+        team: team.clone(),
     };
     let start = Instant::now();
     // json moduan programaren irteera bildu egiten da; testu moduan zuzenean ateratzen da
@@ -627,6 +638,10 @@ fn cmd_run(
     } else {
         vm::run(&program, &config, &mut printed)
     };
+    // taldean, 0. rank-ak bakarrik du emaitza osoa (eta errorea jakinarazten du)
+    if rank != 0 {
+        return Ok(());
+    }
     let output = output.map_err(|e| format!("{}: {}", file.display(), e))?;
     let elapsed = start.elapsed();
     let rep = report::build(ReportInput {
@@ -655,6 +670,28 @@ fn cmd_run(
         print!("{}", report::render(&rep, &Style::detect()));
     }
     Ok(())
+}
+
+// `--mpi`: MPI taldean sartu (ezaugarriarekin konpilatuta), bestela zer egin azaldu
+#[cfg(feature = "mpi")]
+fn join_team(mpi: bool) -> Result<Option<std::sync::Arc<dyn qoa::team::Team>>, String> {
+    if !mpi {
+        return Ok(None);
+    }
+    let world = qoa::mpi::World::init()?;
+    Ok(Some(std::sync::Arc::new(world)))
+}
+
+#[cfg(not(feature = "mpi"))]
+fn join_team(mpi: bool) -> Result<Option<std::sync::Arc<dyn qoa::team::Team>>, String> {
+    if mpi {
+        return Err(ts!(
+            "--mpi: this QOA was built without MPI. Build it with `cargo build --release --features mpi` (needs an MPI library and its mpicc), then start it with mpirun or srun",
+            "--mpi: QOA hau MPI gabe konpilatu da. konpilatu `cargo build --release --features mpi`-rekin (MPI liburutegi bat eta bere mpicc behar ditu), eta abiarazi mpirun edo srun-ekin"
+        )
+        .into());
+    }
+    Ok(None)
 }
 
 // idatzitako byteak zenbatzen dituen idazlea (programak zerbait inprimatu duen jakiteko)
@@ -738,14 +775,16 @@ fn cmd_check(file: &Path) -> Result<(), String> {
         format_bytes(dim * 16)
     ));
     println!("{}  {}", label(ts!("system", "sistema")), system);
-    if dim > qoa::state::MAX_AMPLITUDES {
+    let (limit, source) = qoa::state::memory_limit();
+    if dim * 16 > limit {
         println!(
             "{}  {}",
             label(""),
             t!(
-                "too large to simulate (the limit is {})",
-                "handiegia simulatzeko ({} da muga)",
-                format_bytes(qoa::state::MAX_AMPLITUDES * 16)
+                "too large to simulate here ({}: {}; QOA_MAX_MEMORY changes it)",
+                "handiegia hemen simulatzeko ({}: {}; QOA_MAX_MEMORY-k aldatzen du)",
+                source,
+                format_bytes(limit)
             )
         );
     }
