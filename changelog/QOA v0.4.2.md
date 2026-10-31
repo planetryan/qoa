@@ -25,6 +25,13 @@
   the exact average over its area, so nothing aliases. Any resolution and frame rate work, including 4K60,
   and ffmpeg options after `--` set the encoding.
 
+* **Kerr black hole, rendered properly** (`examples/kerr.rs`). The disk is a Page-Thorne relativistic thin
+  disk, each ray shows the exact blackbody colour at its Doppler and gravitationally shifted temperature
+  (CIE 1931), and each ray carries its travel time, so the disk's second image is an older view. Stars are
+  lensed with their true magnification, and a galaxy behind the hole is lensed into rings. The image goes
+  through camera glow and ACES tone mapping. It renders 1080p by default and any size up to 4K60 and beyond,
+  and new tests check the flux, the travel times, star brightness and the colours.
+
 ## Changed
 
 * `qoa visual` no longer reads only `.wav` files, and its audio is no longer mixed to mono.
@@ -58,6 +65,14 @@
   estutuak, kerr ilargi-erdiak eta haien eskualde negatiboak. Bakoitzean neurtutako emaitza markatzen da.
   Pixel bakoitza bere azaleraren batez besteko zehatza da, beraz ez dago aliasing-ik. Edozein bereizmen eta
   irudi-abiadura erabil daiteke, 4K60 barne, eta `--` ondorengo ffmpeg aukerek kodeketa erabakitzen dute.
+
+* **Kerr zulo beltza, behar bezala errendatua** (`examples/kerr.rs`). Diskoa page-thorne disko mehe
+  erlatibista da, izpi bakoitzak gorputz beltzaren kolore zehatza erakusten du bere tenperatura doppler eta
+  grabitazioz desplazatuan (CIE 1931), eta izpi bakoitzak bere bidaia-denbora dakar, beraz diskoaren bigarren
+  irudia ikuspegi zaharrago bat da. Izarrak beren benetako handitzearekin desbideratzen dira, eta zuloaren
+  atzeko galaxia bat eraztunetan. Irudiak kamera-distira eta ACES tonu-mapaketa ditu. 1080p-n errendatzen du
+  lehenetsiz, eta edozein tamainatan 4K60 eta gehiago, eta proba berriek fluxua, bidaia-denborak, izarren
+  distira eta koloreak egiaztatzen dituzte.
 
 ## Aldatua
 

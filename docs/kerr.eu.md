@@ -2,7 +2,7 @@
 
 [In English: kerr.md](kerr.md)
 
-![0.99 biraketako kerr zulo beltz bat, 80 gradutik ikusita, examples/kerr.rs-ek errendatua](images/kerr.png)
+![0.99 biraketako kerr zulo beltz bat, 80 gradutik ikusita, examples/kerr.rs-ek errendatua](images/kerr.jpg)
 
 `examples/kerr.rs`-ek argia errendatzen du zulo beltz txiki eta azkar biraka dabilen baten inguruan (a =
 0.99 M biraketa), eta QOA erabiltzen du zulo horrek bere horizontean hutsetik sortzen dituen bikoteen
@@ -10,33 +10,45 @@ estatistika kuantikoak kalkulatzeko.
 
 ```sh
 cargo run --release --example kerr -- --still kerr.png --out kerr.mp4
-cargo run --release --example kerr -- --help      # biraketa, inklinazioa, tamaina, iraupena, hazia
+cargo run --release --example kerr -- --size 3840x2160 --fps 60 --out kerr-4k.mp4 -- -c:v libx265 -crf 16
+cargo run --release --example kerr -- --help      # biraketa, inklinazioa, distantzia, ikus-eremua, diskoa, iraupena...
 ```
 
 Bi zati ditu, eta fisika mota desberdinak dira.
 
 ## 1. Argia nora doan: erlatibitate orokorra (klasikoa)
 
-Fotoiek kerr metrikaren geodesiko nuluak jarraitzen dituzte. Pixel bakoitzeko (lehenetsita lau pixel
-bakoitzeko) programak bat trazatzen du kameratik atzera:
+Fotoiek kerr metrikaren geodesiko nuluak jarraitzen dituzte. Pixel bakoitzeko (lehenetsita bederatzi pixel
+bakoitzeko, bakoitza pixelaren bederatziren baten barruko ausazko puntu finko batean) programak bat
+trazatzen du kameratik atzera:
 
 - **Ekuazioak.** H = ½ g^μν p_μ p_ν hamiltondarra boyer-lindquist koordenatuetan, bere deribatuak modu
-  analitikoan idatzita, cash-karp runge-kutta metodo moldakor batekin integratua. E energia eta L momentu
-  angeluarra konstanteak dira; r, θ, p_r eta p_θ eboluzionatzen dute.
-- **Kamera.** Momentu angeluar zeroko behatzaile bat r = 40 M-n (markoaren arrastearekin batera biratzen
-  den behatzailea, beraz ez du bere biraketarik ikusten).
-- **Diskoa.** Disko mehe bat barneko orbita zirkular egonkorretik (r = 1.45 M a = 0.99-rekin) 14 M-raino,
-  bere gasa Ω = 1/(r^{3/2} + a) orbita zirkular keplertarretan. Kolorea g = 1/(u^t (E - Ω L)) maiztasun-
-  erlaziotik dator, doppler efektua eta gorriranzko desplazamendu grabitazionala batzen dituena: kamerarantz
-  mugitzen den aldea distiratsuagoa eta urdinagoa da (intentsitatea ∝ g⁴). Tenperatura-profila eta
-  zurrunbiloak eredu artistiko bat dira.
-- **Zerua.** Izarrak eta 15 graduko sare ahul bat, atzealdearen lenteo-efektua ikusteko.
+  analitikoan idatzita, 64 biteko koma higikorrean cash-karp runge-kutta metodo moldakor batekin integratua.
+  E energia eta L momentu angeluarra konstanteak dira; r, θ, p_r eta p_θ eboluzionatzen dute, baita t
+  koordenatu-denbora ere, izpi bakoitzaren bidaia-denbora ematen duena.
+- **Kamera.** Momentu angeluar zeroko behatzaile bat r = 40 M-n (`--distance`), 36 graduko ikus-eremu
+  bertikalarekin (`--fov`). Markoaren arrastearekin batera biratzen da, beraz ez du bere biraketarik ikusten.
+- **Amaierak.** Izpi bat diskoan, zuloan edo zeruan amaitzen da, 5000 M-ra, non geratzen zaion makurdura
+  4e-4 radian ingurukoa den.
 
-Ekuazioetatik ateratzen dena, ez marrazketatik: itzala, bere forma zapaldua eta desplazatua (zuloaren
-biraketak argia arrastatzen du alde batean), diskoaren urruneko aldearen irudia goitik altxatuta, eta bere
-azpiko aldearen bigarren irudia behean.
+Izpiak behin trazatzen dira; gero irudi bakoitzak diskoa bere unean margotzen du. 1080p-ko irudi batek, 9
+izpirekin pixel bakoitzeko, 3 minutu inguruko trazaketa behar du 4 nukleotan, eta gero 1,5 segundo inguru
+irudi bakoitzeko.
 
-Integratzailea probatuta dago (`cargo test --release --example kerr`):
+### Irudiak zer erakusten duen
+
+| zatia | nola kalkulatzen den | fisika ala aukera |
+|---|---|---|
+| itzala, fotoi-eraztuna, urruneko aldea goitik altxatuta, azpiko aldearen irudia | geodesikoak | fisika |
+| diskoaren tenperatura | page-thorne disko mehea: fluxu erlatibista, barneko orbita egonkorrean momenturik gabe; gasa beroena r ≈ 2 M-n dago | fisika; gailurra (`--temperature`, 25.000 K) eszenaren aukera da |
+| diskoaren kolorea eta distira | g·T-ko gorputz beltza, zehazki: I_ν/ν³ izpi batean kontserbatzen da, beraz gorputz beltz bat gorputz beltz geratzen da tenperatura desplazatuan. g-k doppler efektua eta gorriranzko desplazamendu grabitazionala batzen ditu. Espektroa CIE 1931 kolore-funtzioekin integratzen da sRGB-ra | fisika |
+| zati bakoitza noiz ikusten den | izpi bakoitzak bere bidaia-denbora dakar, beraz diskoa argi hori irten zenean zegoen bezala marrazten da; bigarren irudia lehena baino zaharragoa da | fisika |
+| izarrak | kokapenak eta distira lenteo-efektuarekin: pixel bakoitzaren aztarnak zeruan handitzea ematen du, beraz izar baten argia kontserbatzen da, distiratsuago lenteak handitzen duen tokian eta ahulago estutzen duen tokian | lenteo-efektua fisika da; izar-eremua eszena bat |
+| galaxia | izar eta gas banda bat hauts-ildoekin, zuloaren atzean, lenteo-efektuz eraztunetan | eszena |
+| diskoaren ehundura | distira-aldaketa log-normalak, orbitan dabilen gasak eramanak eta biraketa diferentzialak luzatuak | artistikoa |
+| distira eta tonua | argi osoa gordetzen duen bi eskalako kamera-distira bat, ACES tonu-mapaketa, sRGB, dithering-a | kamera |
+
+Fisika probatuta dago (`cargo test --release --example kerr`):
 
 | egiaztapena | emaitza |
 |---|---|
@@ -44,6 +56,10 @@ Integratzailea probatuta dago (`cargo test --release --example kerr`):
 | eremu ahula: desbideratzea 4M/b + 15π/4 (M/b)² b = 300 M-n | % 1-en barruan |
 | biraka dagoen zuloa (a = 0.9): ekuatoreko harrapatze-mugak b = 2.8444 M-n (biraketaren alde) eta 6.8323 M-n (aurka), potentzial erradialetik modu independentean kalkulatuak | 0.01 M-ren barruan |
 | H = 0 eta carter-en konstantea konstante geratzen dira ekuatoretik kanpoko izpietan | 1e-6-raino |
+| page-thorne fluxua datorren integral erlatibistaren aurka, 0, 0.5 eta 0.99 biraketekin | 1e-6-raino |
+| izpi erradial baten bidaia-denbora schwarzschild-en Δr + 2M ln((r - 2M)/(r0 - 2M))-ren aurka | 1e-7-raino |
+| izar baten argia estaltzen dituen pixel guztietan batuta | bere fluxua, 1e-3-raino |
+| koloreak: 6500 K zuria, 3000 K gorria, 30.000 K urdina; distira T-rekin hazten da eta T-ren proportzionala bihurtzen da (rayleigh-jeans) | bai |
 
 ## 2. Energia sortzen eta desagertzen: hawking bikoteak (kuantikoa, QOA-rekin)
 
@@ -87,6 +103,11 @@ Bideoan, irudi bakoitzeko bikote-kopurua QOA-k kalkulatutako banaketetatik lagin
 (itzalaren ertzean) eta nola mugitzen diren (bat kanpora, bestea barrura) irudikapena da.
 
 ## Eskala, zintzotasunez
+
+Diskoaren 25.000 K-eko gailur lehenetsiak bere koloreak ikusgai mantentzen ditu. Benetako diskoak beroagoak
+dira: 10^5 K inguru zulo supermasibo baten inguruan eta 10^7 K (X izpiak) izar-zulo baten inguruan. 10^5 K
+ingurutik gora gorputz beltz baten kolore ikusgaia ia ez da aldatzen (rayleigh-jeans-en isatsean dago),
+beraz disko hori urdin-zuri bera ikusiko litzateke, distiratsuago bakarrik.
 
 Hawking-en tenperatura 1.2e23 K da gutxi gorabehera zuloaren masarekin (kilogramotan) zatituta. Eguzkiaren
 masako zulo bat 6e-8 K inguruan dago, mikrouhin-hondo kosmikoa baino askoz hotzago; oso zulo arin bat

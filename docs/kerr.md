@@ -2,39 +2,50 @@
 
 [Euskaraz: kerr.eu.md](kerr.eu.md)
 
-![A Kerr black hole with spin 0.99, seen from 80 degrees, rendered by examples/kerr.rs](images/kerr.png)
+![A Kerr black hole with spin 0.99, seen from 80 degrees, rendered by examples/kerr.rs](images/kerr.jpg)
 
 `examples/kerr.rs` renders light bending around a small, fast-spinning black hole (spin a = 0.99 M), and
 uses QOA to compute the quantum statistics of the pairs such a hole creates from the vacuum at its horizon.
 
 ```sh
 cargo run --release --example kerr -- --still kerr.png --out kerr.mp4
-cargo run --release --example kerr -- --help      # spin, inclination, size, length, seed
+cargo run --release --example kerr -- --size 3840x2160 --fps 60 --out kerr-4k.mp4 -- -c:v libx265 -crf 16
+cargo run --release --example kerr -- --help      # spin, inclination, distance, field of view, disk, length...
 ```
 
 It has two parts, and they are different kinds of physics.
 
 ## 1. Where the light goes: general relativity (classical)
 
-Photons follow null geodesics of the Kerr metric. For every pixel (four per pixel by default) the
-program traces one backwards from the camera:
+Photons follow null geodesics of the Kerr metric. For every pixel (nine per pixel by default, each at a
+fixed random spot inside its ninth of the pixel) the program traces one backwards from the camera:
 
 - **Equations.** The Hamiltonian H = ½ g^μν p_μ p_ν in Boyer-Lindquist coordinates, with its derivatives
-  written out analytically, integrated with an adaptive Cash-Karp Runge-Kutta method. The energy E and
-  the angular momentum L are constants; r, θ, p_r and p_θ evolve.
-- **Camera.** A zero-angular-momentum observer at r = 40 M (an observer that turns with the frame dragging,
-  so it sees no rotation of its own).
-- **Disk.** A thin disk from the innermost stable circular orbit (r = 1.45 M for a = 0.99) to 14 M, its gas
-  on circular Keplerian orbits Ω = 1/(r^{3/2} + a). The colour comes from the frequency ratio g = 1/(u^t (E -
-  Ω L)), which combines the Doppler shift and the gravitational redshift: the side moving towards the camera
-  is brighter and bluer (intensity ∝ g⁴). The temperature profile and the swirls are an artistic model.
-- **Sky.** Stars and a faint 15-degree grid, so the lensing of the background is visible.
+  written out analytically, integrated in 64-bit floating point with an adaptive Cash-Karp Runge-Kutta
+  method. The energy E and the angular momentum L are constants; r, θ, p_r and p_θ evolve, and so does the
+  coordinate time t, which gives each ray's travel time.
+- **Camera.** A zero-angular-momentum observer at r = 40 M (`--distance`), with a 36-degree vertical field
+  of view (`--fov`). It turns with the frame dragging, so it sees no rotation of its own.
+- **Ends.** A ray ends on the disk, in the hole, or at 5000 M in the sky, where what is left of its bending
+  is about 4e-4 radians.
 
-What comes out of the equations, not from drawing: the shadow, its flattened and shifted shape (the hole's
-spin drags light on one side), the image of the far side of the disk lifted over the top, and the second
-image of its underside below.
+The rays are traced once; every frame then paints the disk at its own moment. A 1080p frame with 9 rays per
+pixel takes about 3 minutes of tracing on 4 cores, then about 1.5 seconds per frame.
 
-The integrator is tested (`cargo test --release --example kerr`):
+### What the picture shows
+
+| part | how it is computed | physics or choice |
+|---|---|---|
+| shadow, photon ring, the far side lifted over the top, the image of the underside | the geodesics | physics |
+| disk temperature | Page-Thorne thin disk: the relativistic flux with no torque at the innermost stable orbit; the gas is hottest at r ≈ 2 M | physics; the peak (`--temperature`, 25,000 K) is the scene's choice |
+| disk colour and brightness | a blackbody at g·T, exactly: I_ν/ν³ is conserved along a ray, so a blackbody stays a blackbody at the shifted temperature. g combines the Doppler shift and the gravitational redshift. The spectrum is integrated over the CIE 1931 colour matching functions into sRGB | physics |
+| when you see each part | each ray carries its travel time, so the disk is drawn as it was when that light left it; the second image is older than the first | physics |
+| stars | positions and brightness lensed: each pixel's footprint on the sky gives the magnification, so a star's light is conserved, brighter where the lens magnifies and fainter where it squeezes | the lensing is physics; the star field is a scene |
+| galaxy | a band of stars and gas with dust lanes, behind the hole, lensed into rings | scene |
+| disk texture | log-normal brightness changes carried by the orbiting gas and sheared by differential rotation | artistic |
+| glow and tone | a two-scale camera glow that keeps the total light, ACES tone mapping, sRGB, dithering | camera |
+
+The physics is tested (`cargo test --release --example kerr`):
 
 | check | result |
 |---|---|
@@ -42,6 +53,10 @@ The integrator is tested (`cargo test --release --example kerr`):
 | weak field: deflection 4M/b + 15π/4 (M/b)² at b = 300 M | within 1% |
 | spinning hole (a = 0.9): equatorial capture edges at b = 2.8444 M (with the spin) and 6.8323 M (against it), computed independently from the radial potential | within 0.01 M |
 | H = 0 and the Carter constant stay constant along off-equator rays | to 1e-6 |
+| Page-Thorne flux against the relativistic integral it comes from, for spins 0, 0.5 and 0.99 | to 1e-6 |
+| travel time of a radial ray against Schwarzschild's Δr + 2M ln((r - 2M)/(r0 - 2M)) | to 1e-7 |
+| a star's light summed over the pixels it covers | its flux, to 1e-3 |
+| colours: 6500 K is white, 3000 K red, 30,000 K blue; brightness rises with T and becomes ∝ T (Rayleigh-Jeans) | yes |
 
 ## 2. Energy in and out of existence: Hawking pairs (quantum, computed with QOA)
 
@@ -83,6 +98,11 @@ In the video, the number of pairs in each frame is drawn from the distributions 
 appear (on the edge of the shadow) and how they move (one outwards, one inwards) is illustration.
 
 ## Scale, honestly
+
+The disk's default peak of 25,000 K keeps its colours visible. Real disks are hotter: about 10^5 K around a
+supermassive hole and 10^7 K (X-rays) around a stellar one. Above about 10^5 K a blackbody's visible colour
+hardly changes (it is in its Rayleigh-Jeans tail), so such a disk would look the same blue-white, only
+brighter.
 
 Hawking's temperature is about 1.2e23 K divided by the hole's mass in kilograms. A hole of the Sun's mass
 sits at about 6e-8 K, far colder than the cosmic microwave background; only a very light hole (1e11 kg, the
