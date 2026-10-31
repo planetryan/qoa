@@ -44,6 +44,8 @@ pub struct Report {
     pub truncation_leakage: f64,
     // |1 - ‖ψ‖²| lehen shot-aren amaieran: biribiltzeak metatutako errorearen behe-muga
     pub norm_error: f64,
+    // qubit-egoeraren doitasuna: "double" (64 bit) edo "quad" (128 bit, double-double)
+    pub precision: crate::vm::Precision,
     pub registers_first_shot: Vec<f64>,
     pub state: Option<Vec<AmpEntry>>,
     pub warnings: Vec<String>,
@@ -157,7 +159,8 @@ pub fn build(input: ReportInput) -> Report {
         steps_first_shot: out.steps,
         counts,
         truncation_leakage: out.leakage,
-        norm_error: out.final_state.norm_error(),
+        norm_error: out.norm_error,
+        precision: input.config.precision,
         registers_first_shot: out.regs.to_vec(),
         state,
         warnings,
@@ -429,12 +432,20 @@ pub fn render(r: &Report, style: &Style) -> String {
     line(ts!("system", "sistema"), system);
     line(
         ts!("cpu", "cpu"),
-        t!(
-            "{} kernels, {} thread(s)",
-            "{} kernelak, {} hari",
-            r.kernels,
-            r.threads
-        ),
+        if r.precision == crate::vm::Precision::Quad {
+            t!(
+                "128-bit engine (double-double on fused multiply-add), {} thread(s)",
+                "128 biteko motorra (double-double biderketa-batuketa fusionatuaren gainean), {} hari",
+                r.threads
+            )
+        } else {
+            t!(
+                "{} kernels, {} thread(s)",
+                "{} kernelak, {} hari",
+                r.kernels,
+                r.threads
+            )
+        },
     );
     // zenbakiak: ateak f64-n (FMA-rekin simd kerneletan), baturak double-double-n
     let fma = if r.kernels == "scalar" {
@@ -447,12 +458,20 @@ pub fn render(r: &Report, style: &Style) -> String {
     };
     line(
         ts!("numerics", "zenbakiak"),
-        t!(
-            "64-bit floats{}; sums over the state in double-double (~106 bits); norm off by {:.1e} at the end",
-            "64 biteko koma higikorra{}; egoeraren gaineko baturak double-double-n (~106 bit); araua {:.1e} desbideratuta amaieran",
-            fma,
-            r.norm_error
-        ),
+        if r.precision == crate::vm::Precision::Quad {
+            t!(
+                "128-bit (double-double, ~32 digits): amplitudes, gate matrices, measurement and sums; the program's angles are its 64-bit values, taken as exact; norm off by {:.1e} at the end",
+                "128 bit (double-double, ~32 digitu): anplitudeak, ateen matrizeak, neurketa eta baturak; programaren angeluak bere 64 biteko balioak dira, zehatz gisa hartuta; araua {:.1e} desbideratuta amaieran",
+                r.norm_error
+            )
+        } else {
+            t!(
+                "64-bit floats{}; sums over the state in double-double (~106 bits); norm off by {:.1e} at the end",
+                "64 biteko koma higikorra{}; egoeraren gaineko baturak double-double-n (~106 bit); araua {:.1e} desbideratuta amaieran",
+                fma,
+                r.norm_error
+            )
+        },
     );
     if let Some(g) = &r.gpu {
         line(

@@ -841,3 +841,51 @@ fn visual_carries_audio_through_light() {
     );
     assert!(!o.status.success());
 }
+
+#[test]
+fn run_in_128_bits() {
+    let o = qoa(
+        "en",
+        &[
+            "run",
+            "examples/ghz.qoa",
+            "--precision",
+            "quad",
+            "--seed",
+            "4",
+        ],
+    );
+    assert!(o.status.success(), "{}", stderr(&o));
+    let out = stdout(&o);
+    assert!(
+        out.contains("128-bit (double-double, ~32 digits)"),
+        "{}",
+        out
+    );
+    assert!(out.contains("00000") && out.contains("11111"), "{}", out);
+    let o = qoa(
+        "en",
+        &[
+            "run",
+            "examples/ghz.qoa",
+            "--precision",
+            "quad",
+            "--json",
+            "--seed",
+            "4",
+        ],
+    );
+    let v: serde_json::Value = serde_json::from_slice(&o.stdout).unwrap();
+    assert_eq!(v["precision"], "quad");
+    // modu optikoak 64 bitetan bakarrik
+    let o = qoa(
+        "eu",
+        &["run", "examples/coherent.qoa", "--precision", "quad"],
+    );
+    assert!(!o.status.success());
+    assert!(
+        stderr(&o).contains("qubit-programak bakarrik"),
+        "{}",
+        stderr(&o)
+    );
+}

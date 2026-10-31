@@ -178,6 +178,14 @@ Modu batek 0tik muga-1era arteko fotoi-kopuruak gordetzen ditu (`QMODE moduak mu
 sortzen dituzten eragiketek probabilitatea mugaz kanpora bultza dezakete. QOA-k galera hori neurtu eta
 jakinarazten du, ezkutatu ordez; arbuiagarria ez denean, abisu bat ematen du eta muga handiago bat iradokitzen du.
 
+### Zenbakiak eta doitasuna
+
+Qubit-egoera 64 biteko koma higikorrean gordetzen da, eta egoeraren gaineko batura guztiak (arauak,
+neurketa-probabilitateak, laginketa) double-double-n, 106 bit inguru. Txostenaren `zenbakiak` lerroak araua
+zenbat desbideratu den erakusten du. Gehiagorako, `qoa run --precision quad`-ek qubit-programak 128 biteko
+doitasunean gordetzen ditu (double-double, 32 digitu esanguratsu inguru): anplitudeak, ateen matrizeak eta
+neurketa. 10 eta 20 aldiz artean motelagoa da. Xehetasunak: [docs/precision.eu.md](docs/precision.eu.md).
+
 ### Musika argitik
 
 `qoa visual abestia.mp3 irteera.mp4`-k audioa zirkuitu optiko kuantiko simulatu batetik pasatzen du: lagin

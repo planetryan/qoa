@@ -12,6 +12,7 @@ use crate::gpu::Gpu;
 use crate::kernel::QGate;
 use crate::noise::{GateNoise, Native, NoiseModel, Relax};
 use crate::program::{Basis, BinOp, Cmp, Count, Dest, Gate, NUM_REGS, Op, Program, Source, UnOp};
+use crate::quad::{self, QuadGate, QuadState};
 use crate::state::State;
 use crate::{t, ts};
 use num_complex::Complex64 as C;
@@ -37,6 +38,16 @@ pub struct RunConfig {
     // benetako gailu baten zarata-eredua (`qoa run --noise-model`, ikus src/noise.rs): ate natiboak
     // bakarrik, bakoitza bere errore, erlaxazio eta irakurketa-errorearekin
     pub model: Option<Arc<NoiseModel>>,
+    // qubit-egoeraren doitasuna: 64 bit (lehenetsia) edo 128 bit (`--precision quad`, src/quad.rs)
+    pub precision: Precision,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Precision {
+    #[default]
+    Double,
+    Quad,
 }
 
 impl Default for RunConfig {
@@ -49,6 +60,7 @@ impl Default for RunConfig {
             max_steps: 100_000_000,
             gpu: None,
             model: None,
+            precision: Precision::Double,
         }
     }
 }
@@ -82,6 +94,8 @@ pub struct RunOutput {
     pub leakage: f64,
     // lehen shot-ak exekutatutako urratsak
     pub steps: u64,
+    // |1 - ‖ψ‖²| lehen shot-aren amaieran, egoeraren doitasun osoan (128 bitekoa quad moduan)
+    pub norm_error: f64,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -158,6 +172,9 @@ struct Machine<'a> {
     // `state` ez da zuzenean erabiltzen: `st()`-k lehenik sorta aplikatzen du
     state: State,
     pending: Vec<QGate>,
+    // 128 biteko modua: qubit-egoera eta haren ate-sorta (orduan `state` hutsik dago)
+    quad: Option<QuadState>,
+    pending_quad: Vec<QuadGate>,
     regs: [f64; NUM_REGS],
     bits: Vec<Option<u8>>,
     readouts: Vec<Option<u32>>,
@@ -197,6 +214,36 @@ pub fn run(
             ),
         });
     }
+    if cfg.precision == Precision::Quad {
+        let why = if prog.n_modes > 0 {
+            Some(ts!(
+                "the program uses optical modes",
+                "programak modu optikoak erabiltzen ditu"
+            ))
+        } else if cfg.gpu.is_some() {
+            Some(ts!(
+                "--gpu computes in 64 bits",
+                "--gpu-k 64 bitetan kalkulatzen du"
+            ))
+        } else if cfg.model.is_some() {
+            Some(ts!(
+                "device noise models run in 64 bits",
+                "gailuen zarata-ereduak 64 bitetan dabiltza"
+            ))
+        } else {
+            None
+        };
+        if let Some(why) = why {
+            return Err(RuntimeError {
+                line: 0,
+                message: t!(
+                    "--precision quad (128-bit) runs qubit programs only: {}",
+                    "--precision quad-ek (128 bit) qubit-programak bakarrik exekutatzen ditu: {}",
+                    why
+                ),
+            });
+        }
+    }
     let has_readout = prog.has_readout();
     let ideal = cfg.noise == 0.0 && cfg.loss == 0.0 && cfg.model.is_none();
     let split = if has_readout && ideal {
@@ -234,7 +281,14 @@ pub fn run(
     let steps = first.steps;
     let captured = first.captured.take();
     let regs = first.regs;
-    let final_state = std::mem::replace(&mut first.state, State::new(0, 0, 2).unwrap());
+    let (final_state, norm_error) = match first.quad.take() {
+        Some(q) => (q.to_state(), q.norm_error()),
+        None => {
+            let s = std::mem::replace(&mut first.state, State::new(0, 0, 2).unwrap());
+            let e = s.norm_error();
+            (s, e)
+        }
+    };
     drop(first);
 
     let mut counts: HashMap<Record, u64> = HashMap::new();
@@ -308,6 +362,7 @@ pub fn run(
         regs,
         leakage,
         steps,
+        norm_error,
     })
 }
 
@@ -377,16 +432,27 @@ impl<'a> Machine<'a> {
         inputs: Inputs<'a>,
         rng: StdRng,
     ) -> Result<Machine<'a>, RuntimeError> {
-        let state = State::new(
-            prog.n_qubits as usize,
-            prog.n_modes as usize,
-            prog.cutoff as usize,
-        )
-        .map_err(|message| RuntimeError { line: 0, message })?;
+        let to_err = |message| RuntimeError { line: 0, message };
+        let (state, quad) = if cfg.precision == Precision::Quad {
+            (
+                State::new(0, 0, 2).map_err(to_err)?,
+                Some(QuadState::new(prog.n_qubits as usize).map_err(to_err)?),
+            )
+        } else {
+            let state = State::new(
+                prog.n_qubits as usize,
+                prog.n_modes as usize,
+                prog.cutoff as usize,
+            )
+            .map_err(to_err)?;
+            (state, None)
+        };
         Ok(Machine {
             prog,
             state,
             pending: Vec::new(),
+            quad,
+            pending_quad: Vec::new(),
             regs: [0.0; NUM_REGS],
             bits: vec![None; prog.n_bits as usize],
             readouts: vec![None; prog.n_modes as usize],
@@ -416,7 +482,10 @@ impl<'a> Machine<'a> {
         let mut pc = 0usize;
         while pc < self.prog.ops.len() {
             if Some(pc) == self.capture_at && self.captured.is_none() {
-                self.captured = Some(self.st().probabilities());
+                self.captured = Some(match self.qd() {
+                    Some(q) => q.probabilities(),
+                    None => self.st().probabilities(),
+                });
             }
             self.steps += 1;
             if self.steps > self.cfg.max_steps {
@@ -468,6 +537,14 @@ impl<'a> Machine<'a> {
     // ------------------------------------------------------------------ qubitak
 
     fn gate(&mut self, q: u32, gate: Gate, controls: usize) {
+        if self.quad.is_some() {
+            self.queue_quad(QuadGate::Mat {
+                q: q as usize,
+                m: quad::matrix(gate),
+                controls,
+            });
+            return;
+        }
         if gate == Gate::X {
             self.queue(QGate::Mat {
                 q: q as usize,
@@ -483,15 +560,39 @@ impl<'a> Machine<'a> {
         }
     }
 
-    // qubit-ate bat sortara; sorta luzeegia bada, aplikatu
+    // qubit-ate bat sortara; sorta luzeegia bada, aplikatu. 128 biteko moduan, f64 sarrerak zehatz gisa
     fn queue(&mut self, g: QGate) {
+        if self.quad.is_some() {
+            self.queue_quad(QuadGate::from_f64(&g));
+            return;
+        }
         self.pending.push(g);
         if self.pending.len() >= MAX_PENDING {
             self.flush();
         }
     }
 
+    fn queue_quad(&mut self, g: QuadGate) {
+        self.pending_quad.push(g);
+        if self.pending_quad.len() >= MAX_PENDING {
+            self.flush();
+        }
+    }
+
+    // `mask`-eko qubit guztiak 1 direnean e^{iθ} fasea (128 bitetan quad moduan)
+    fn phase(&mut self, mask: usize, theta: f64) {
+        if self.quad.is_some() {
+            self.queue_quad(QuadGate::phase(mask, theta));
+        } else {
+            self.queue(QGate::phase(mask, theta));
+        }
+    }
+
     fn flush(&mut self) {
+        if let Some(q) = self.quad.as_mut() {
+            q.apply(&self.pending_quad);
+            self.pending_quad.clear();
+        }
         if self.pending.is_empty() {
             return;
         }
@@ -512,13 +613,22 @@ impl<'a> Machine<'a> {
         &mut self.state
     }
 
+    // 128 biteko egoera (quad moduan), zain dauden ateak aplikatu ondoren
+    fn qd(&mut self) -> Option<&mut QuadState> {
+        self.flush();
+        self.quad.as_mut()
+    }
+
     fn mask(qs: &[u32]) -> usize {
         qs.iter().fold(0usize, |m, q| m | (1usize << q))
     }
 
     fn measure_z(&mut self, q: u32) -> u8 {
         let r = self.uniform();
-        self.st().measure_qubit(q as usize, r)
+        match self.qd() {
+            Some(s) => s.measure_qubit(q as usize, r),
+            None => self.st().measure_qubit(q as usize, r),
+        }
     }
 
     // neurketa X edo Y oinarrian: z-ra biratu, neurtu, itzuli
@@ -730,7 +840,7 @@ impl<'a> Machine<'a> {
                 self.depolarize(&op.gate_qubits());
             }
             Op::PhaseAll { qubits, theta } => {
-                self.queue(QGate::phase(Self::mask(qubits), *theta));
+                self.phase(Self::mask(qubits), *theta);
                 self.depolarize(qubits);
             }
             Op::Swap { a, b, controls } => {
@@ -759,7 +869,7 @@ impl<'a> Machine<'a> {
                     self.gate(q, Gate::H, 0);
                 }
                 for w in qubits.windows(2) {
-                    self.queue(QGate::phase(Self::mask(w), std::f64::consts::PI));
+                    self.phase(Self::mask(w), std::f64::consts::PI);
                 }
                 self.depolarize(qubits);
             }
@@ -799,6 +909,10 @@ impl<'a> Machine<'a> {
             Op::ResetAll => {
                 // zain dauden ateak ez dira aplikatu behar: egoera osoa berrezartzen da
                 self.pending.clear();
+                self.pending_quad.clear();
+                if let Some(q) = self.quad.as_mut() {
+                    *q = QuadState::new(q.n_qubits()).expect("lehengo tamaina bera");
+                }
                 let leak = self.state.leakage;
                 self.state = State::new(self.state.n_qubits(), self.state.n_modes(), self.state.cutoff())
                     .expect("lehengo tamaina bera");
@@ -933,7 +1047,11 @@ impl<'a> Machine<'a> {
             }
 
             Op::DumpState => {
-                let text = crate::report::state_table(self.st(), 16);
+                let snapshot = self.qd().map(|q| q.to_state());
+                let text = match &snapshot {
+                    Some(s) => crate::report::state_table(s, 16),
+                    None => crate::report::state_table(self.st(), 16),
+                };
                 self.print(&t!("state at line {}:\n{}", "egoera {}. lerroan:\n{}", self.prog.line_of(pc), text));
             }
             Op::DumpRegs => {
@@ -950,7 +1068,10 @@ impl<'a> Machine<'a> {
                 self.print(&s);
             }
             Op::Expect { q, basis, dest } => {
-                let b = self.st().bloch(*q as usize);
+                let b = match self.qd() {
+                    Some(s) => s.bloch(*q as usize),
+                    None => self.st().bloch(*q as usize),
+                };
                 let v = match basis {
                     Basis::X => b[0],
                     Basis::Y => b[1],
@@ -962,7 +1083,10 @@ impl<'a> Machine<'a> {
                 }
             }
             Op::BellCheck { a, b, dest } => {
-                let f = self.st().bell_fidelity(*a as usize, *b as usize);
+                let f = match self.qd() {
+                    Some(s) => s.bell_fidelity(*a as usize, *b as usize),
+                    None => self.st().bell_fidelity(*a as usize, *b as usize),
+                };
                 match dest {
                     Some(r) => self.regs[*r as usize] = f,
                     None => self.print(&t!("Bell fidelity of q{} q{} = {:.6}\n", "q{} q{} qubiten bell-fideltasuna = {:.6}\n", a, b, f)),

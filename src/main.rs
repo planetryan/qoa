@@ -86,6 +86,11 @@ enum Command {
             "qubit-ateak GPU batean aplikatu vulkan bidez (64 biteko koma higikorra); neurketak, optika eta zarata cpu-an geratzen dira. huts egiten du gailu erabilgarririk ez badago"
         ))]
         gpu: bool,
+        #[arg(long, value_enum, default_value = "double", help = ts!(
+            "number precision for the qubit state: double (64-bit floats) or quad (128-bit double-double, ~32 digits, qubit programs only)",
+            "qubit-egoeraren zenbakien doitasuna: double (64 biteko koma higikorra) edo quad (128 biteko double-double, ~32 digitu, qubit-programak bakarrik)"
+        ))]
+        precision: PrecisionArg,
     },
     #[command(about = ts!("Assemble a program and report what it needs, without running it", "Programa bat mihiztatu eta zer behar duen esan, exekutatu gabe"))]
     Check {
@@ -251,6 +256,12 @@ enum Command {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, ValueEnum)]
+enum PrecisionArg {
+    Double,
+    Quad,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, ValueEnum)]
 enum PhaseSpaceArg {
     Row,
     Full,
@@ -383,6 +394,7 @@ fn main() -> ExitCode {
             json,
             max_steps,
             gpu,
+            precision,
         } => cmd_run(
             &file,
             shots,
@@ -395,6 +407,10 @@ fn main() -> ExitCode {
             json,
             max_steps,
             gpu,
+            match precision {
+                PrecisionArg::Double => qoa::vm::Precision::Double,
+                PrecisionArg::Quad => qoa::vm::Precision::Quad,
+            },
         ),
         Command::Check { file } => cmd_check(&file),
         Command::Compile { file, output } => cmd_compile(&file, output),
@@ -576,6 +592,7 @@ fn cmd_run(
     json: bool,
     max_steps: u64,
     gpu: bool,
+    precision: qoa::vm::Precision,
 ) -> Result<(), String> {
     let program = load(file)?;
     let gpu = if gpu {
@@ -596,6 +613,7 @@ fn cmd_run(
         max_steps,
         gpu,
         model,
+        precision,
     };
     let start = Instant::now();
     // json moduan programaren irteera bildu egiten da; testu moduan zuzenean ateratzen da

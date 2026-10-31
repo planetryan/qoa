@@ -172,6 +172,14 @@ A mode stores photon numbers 0 to cutoff-1 (`QMODE modes cutoff`, default 8). Op
 can push probability past the cutoff. QOA measures that loss and reports it instead of hiding it; when it is
 not negligible, the run warns and suggests a larger cutoff.
 
+### Numbers and precision
+
+The qubit state is kept in 64-bit floating point, and every sum over the state (norms, measurement
+probabilities, sampling) in double-double, about 106 bits. The report's `numerics` line shows how far the
+norm drifted. For more, `qoa run --precision quad` keeps qubit programs in 128-bit precision (double-double,
+about 32 significant digits): amplitudes, gate matrices and measurement. It is 10 to 20 times slower. Details
+in [docs/precision.md](docs/precision.md).
+
 ### Music through light
 
 `qoa visual song.mp3 out.mp4` sends audio through a simulated quantum optical circuit: every sample becomes a

@@ -25,6 +25,10 @@
   the exact average over its area, so nothing aliases. Any resolution and frame rate work, including 4K60,
   and ffmpeg options after `--` set the encoding.
 
+* **128-bit precision** (`qoa run --precision quad`): qubit programs run with amplitudes, gate matrices,
+  measurement and sums in double-double (about 32 significant digits) on every 64-bit system. Over 20,000
+  gates on 10 qubits the norm stays within 4e-29, where 64-bit floats drift to 3e-13. Programs with optical
+  modes, `--gpu` and device noise models stay 64-bit and say so. See [docs/precision.md](../docs/precision.md).
 * **Kerr black hole, rendered properly** (`examples/kerr.rs`). The disk is a Page-Thorne relativistic thin
   disk, each ray shows the exact blackbody colour at its Doppler and gravitationally shifted temperature
   (CIE 1931), and each ray carries its travel time, so the disk's second image is an older view. Stars are
@@ -66,6 +70,12 @@
   Pixel bakoitza bere azaleraren batez besteko zehatza da, beraz ez dago aliasing-ik. Edozein bereizmen eta
   irudi-abiadura erabil daiteke, 4K60 barne, eta `--` ondorengo ffmpeg aukerek kodeketa erabakitzen dute.
 
+* **128 biteko doitasuna** (`qoa run --precision quad`): qubit-programak anplitudeak, ateen matrizeak,
+  neurketa eta baturak double-double-n dituztela exekutatzen dira (32 digitu esanguratsu inguru) 64 biteko
+  sistema guztietan. 20.000 ate 10 qubitetan: araua 4e-29-ren barruan geratzen da, 64 biteko koma
+  higikorrarekin 3e-13 desbideratzen den bitartean. Modu optikoak dituzten programak, `--gpu` eta gailuen
+  zarata-ereduak 64 bitekoak dira oraindik, eta hala esaten dute. Ikus
+  [docs/precision.eu.md](../docs/precision.eu.md).
 * **Kerr zulo beltza, behar bezala errendatua** (`examples/kerr.rs`). Diskoa page-thorne disko mehe
   erlatibista da, izpi bakoitzak gorputz beltzaren kolore zehatza erakusten du bere tenperatura doppler eta
   grabitazioz desplazatuan (CIE 1931), eta izpi bakoitzak bere bidaia-denbora dakar, beraz diskoaren bigarren

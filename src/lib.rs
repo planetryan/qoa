@@ -23,6 +23,7 @@ pub mod light; // audioa argi gisa zirkuitu optiko kuantiko batetik (`qoa visual
 pub mod noise; // gailuen zarata-ereduak (kalibrazioak): ate-erroreak, T1/T2, irakurketa
 pub mod program; // programa mihiztatua eta .qx formatua
 pub mod qasm; // openqasm inportazioa eta esportazioa
+pub mod quad; // 128 biteko qubit-motorra (double-double): `qoa run --precision quad`
 pub mod report; // emaitzen txostena (testua eta json)
 pub mod simd; // kernel beroak mihiztaduran: avx-512, avx2, neon, rvv
 pub mod state; // egoera-bektorea: qubitak eta modu optikoak
