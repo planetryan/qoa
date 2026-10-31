@@ -549,15 +549,23 @@ fn glyph_files_run_import_and_point_errors_at_the_glyph() {
 // txostenak zer egin duen esaten du
 #[test]
 fn gpu_runs_match_the_cpu_or_fail_saying_why() {
+    // vulkan eta OpenCL driverrak ezkutatuta: --gpu-k bien arrazoiak ematen ditu
     let o = Command::new(env!("CARGO_BIN_EXE_qoa"))
         .args(["run", "examples/bell.qoa", "--gpu"])
         .env("QOA_LANG", "en")
         .env("VK_ICD_FILENAMES", "/nonexistent/qoa-test.json")
+        .env("OCL_ICD_VENDORS", "/nonexistent/qoa-test")
+        .env("OCL_ICD_FILENAMES", "/nonexistent/qoa-test.so")
         .current_dir(env!("CARGO_MANIFEST_DIR"))
         .output()
         .unwrap();
     assert!(!o.status.success());
-    assert!(stderr(&o).contains("--gpu:"), "{}", stderr(&o));
+    let e = stderr(&o);
+    assert!(
+        e.contains("--gpu:") && e.contains("Vulkan") && e.contains("OpenCL"),
+        "{}",
+        e
+    );
 
     let args = ["run", "examples/ghz.qoa", "--seed", "4", "--json"];
     let cpu = qoa("en", &args);
