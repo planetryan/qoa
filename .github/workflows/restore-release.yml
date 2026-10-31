@@ -1,22 +1,30 @@
-# fitxategi honek argitalpen zahar bat berreskuratzen du, bere etiketa galdu zuelako zirriborro bihurtu bada
+# fitxategi honek argitalpen zaharrak berreskuratzen ditu, beren etiketa galdu zutelako zirriborro bihurtu badira
 # (GitHub-ek argitaratutako argitalpen bat etiketarik gabeko zirriborro bihurtzen du haren etiketa ezabatzean,
-# eta zirriborroak zerrendaren goian erakusten ditu). etiketa jatorrizko commit-ean sortzen da berriz, eta
-# argitalpena zahar gisa argitaratzen da, "Latest" izan gabe: bertsio berrienak jarraitzen du "Latest"
-# izaten. fitxategiak argitalpenak lehendik dituenak dira; ez da ezer konpilatzen. bertsio bat baino gehiago
-# berreskuratzean, zaharrenetik hasi.
+# eta zirriborroak zerrendaren goian erakusten ditu). argitalpenak zahar gisa argitaratzen dira, "Latest" izan
+# gabe, zaharrenetik hasita: bertsio berrienak jarraitzen du "Latest" izaten. fitxategiak argitalpenak lehendik
+# dituenak dira; ez da ezer konpilatzen.
 #
-# eskuz: Actions fitxa, "restore release", etiketa (adib. v0.4.1) eta haren commit-a.
+# github-ek ez dio uzten ekintza honi etiketa bat sortzen workflow fitxategiak main-ekoak ez dituen commit
+# batean ("workflows" baimenik gabe, ez git bidez ez argitalpenaren bidez). orduan etiketa behin eskuz bidali
+# behar da, eta gero hau exekutatu:
+#
+#   git push origin <commit>:refs/tags/<etiketa>
+#
+# eskuz: Actions fitxa, "restore release". etiketarik gabe, etiketa duten zirriborro guztiak berreskuratzen
+# ditu; etiketa eta commit-arekin, hori bakarrik (eta etiketa sortzen saiatzen da).
 name: restore release
 
 on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "version tag of the draft release, e.g. v0.4.1"
-        required: true
+        description: "version tag of one draft release, e.g. v0.4.1 (empty = every draft whose tag exists)"
+        required: false
+        default: ""
       commit:
-        description: "commit the release was built from"
-        required: true
+        description: "commit that release was built from (only with a tag)"
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -32,35 +40,51 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: the commit is that version
+      - name: the releases to restore
         run: |
-          if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then echo "'$TAG' is not a version tag like v0.4.1"; exit 1; fi
-          sha=$(git rev-parse --verify "$COMMIT^{commit}")
-          want="v$(git show "$sha:Cargo.toml" | grep -m1 '^version' | cut -d'"' -f2)"
-          if [ "$want" != "$TAG" ]; then echo "$COMMIT is $want, not $TAG"; exit 1; fi
-          echo "SHA=$sha" >> "$GITHUB_ENV"
-      # github-ek ez dio uzten ekintza honi git bidez etiketa bat bidaltzen, commit-aren workflow fitxategiak
-      # main-ekoak ez badira ("workflows" baimenik gabe); orduan argitalpenak berak sortzen du etiketa
-      # argitaratzean, commit horretan
-      - name: tag it again
-        run: |
-          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" > /dev/null; then
-            echo "tag $TAG already exists"
-          elif git tag "$TAG" "$SHA" && git push origin "refs/tags/$TAG"; then
-            echo "tag $TAG pushed"
+          # bertsio bakoitzaren commit-a: etiketarena, Cargo.toml-en bertsioarekin bat etorri behar duena
+          version_of() { echo "v$(git show "$1:Cargo.toml" | grep -m1 '^version' | cut -d'"' -f2)"; }
+          if [ -n "$TAG" ]; then
+            if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then echo "'$TAG' is not a version tag like v0.4.1"; exit 1; fi
+            if [ -z "$COMMIT" ]; then COMMIT="$TAG"; fi
+            sha=$(git rev-parse --verify "$COMMIT^{commit}")
+            if [ "$(version_of "$sha")" != "$TAG" ]; then echo "$COMMIT is $(version_of "$sha"), not $TAG"; exit 1; fi
+            if git ls-remote --exit-code --tags origin "refs/tags/$TAG" > /dev/null; then
+              test "$(git rev-parse "$TAG^{commit}")" = "$sha" || { echo "tag $TAG points elsewhere"; exit 1; }
+            elif ! { git tag "$TAG" "$sha" && git push origin "refs/tags/$TAG"; }; then
+              echo "GitHub does not let this workflow create tag $TAG at an older commit."
+              echo "Push it once with your own account, then run this workflow again:"
+              echo "  git push origin $sha:refs/tags/$TAG"
+              exit 1
+            fi
+            echo "$TAG" > restore.txt
           else
-            echo "the release will create tag $TAG at $SHA when it is published"
+            : > restore.txt
+            missing=0
+            for t in $(gh release list --limit 200 --json tagName,isDraft --jq '.[] | select(.isDraft) | .tagName' \
+                | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V); do
+              if git rev-parse --verify -q "refs/tags/$t^{commit}" > /dev/null; then
+                if [ "$(version_of "$t")" != "$t" ]; then echo "tag $t is at $(version_of "$t"); skipped"; continue; fi
+                echo "$t" >> restore.txt
+              else
+                echo "draft $t has no tag; push it once with your own account, then run this again:"
+                echo "  git push origin <commit of $t>:refs/tags/$t"
+                missing=1
+              fi
+            done
+            if [ ! -s restore.txt ]; then echo "nothing to restore"; exit "$missing"; fi
           fi
-      - name: publish it as an older release, and keep the newest version as latest
+          echo "restoring: $(tr '\n' ' ' < restore.txt)"
+      - name: publish them as older releases, and keep the newest version as latest
         run: |
-          gh release edit "$TAG" --draft=false --latest=false --tag "$TAG" --target "$SHA"
-          git fetch --force origin "refs/tags/$TAG:refs/tags/$TAG"
-          test "$(git rev-parse "$TAG^{commit}")" = "$SHA"
+          for t in $(cat restore.txt); do
+            gh release edit "$t" --draft=false --latest=false --tag "$t"
+            test "$(gh release view "$t" --json isDraft --jq .isDraft)" = "false"
+            gh release view "$t" --json tagName,isDraft,assets --jq '"\(.tagName) draft=\(.isDraft) assets=\(.assets | length)"'
+          done
           newest=$(gh release list --exclude-drafts --exclude-pre-releases --limit 200 --json tagName --jq '.[].tagName' \
             | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1)
           gh release edit "$newest" --latest
-          gh release view "$TAG" --json tagName,isDraft,assets --jq '"\(.tagName) draft=\(.isDraft) assets=\(.assets | length)"'
-          test "$(gh release view "$TAG" --json isDraft --jq .isDraft)" = "false"
           latest=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)
           echo "latest: $latest"
           test "$latest" = "$newest"
