@@ -1,6 +1,9 @@
 # QOA v0.4.3 Release Notes
 
-**Status:** in progress, not released yet (euskaraz behean)
+**Status:** released 2026-10-31 (euskaraz behean)
+
+Builds on [0.4.2](<QOA v0.4.2.md>): QOA's assembler written in QOA, which rebuilds itself identically, the
+classical instructions that made it possible, and a benchmark of every part of QOA.
 
 ## New
 
@@ -29,6 +32,10 @@
 * `LOADMEM`, `STOREMEM`, `LOADCLASSICAL`, `STORECLASSICAL`, `ALLOC` and `FREE` (removed in 0.4) now point at
   `LOAD` and `STORE` in their error message. `POW`, `EXIT`, `STREAM`, `GETC` and the other new names can no
   longer name a register (`QREG exit 2`).
+* For library users: `RunConfig` has `args` and `input` (code that fills it with `..RunConfig::default()` is
+  unaffected), `RunOutput` has `exit_status`, `Op`, `UnOp` and `BinOp` have new variants at the end,
+  `Program::FORMAT_VERSION` is 2 with `Program::format_version()` choosing per program, and `isa::Group` has
+  `Memory`. `Spec::usage_in` gives the usage line in a chosen language.
 
 ## Fixed
 
@@ -39,7 +46,10 @@
 
 # QOA v0.4.3 bertsio-oharrak
 
-**Egoera:** lanean, oraindik argitaratu gabe
+**Egoera:** 2026-10-31n argitaratua
+
+[0.4.2](<QOA v0.4.2.md>)-ren gainean: QOAn idatzitako QOA-ren mihiztatzailea, bere burua berdin eraikitzen
+duena, hori posible egin zuten agindu klasikoak, eta QOA-ren zati guztien errendimendu-proba.
 
 ## Berria
 
@@ -70,6 +80,11 @@
 * `LOADMEM`, `STOREMEM`, `LOADCLASSICAL`, `STORECLASSICAL`, `ALLOC` eta `FREE` (0.4-n kenduak) `LOAD` eta
   `STORE`-ra bideratzen dute orain beren errore-mezuan. `POW`, `EXIT`, `STREAM`, `GETC` eta beste izen berriak
   ezin dira erregistro-izen izan (`QREG exit 2`).
+* Liburutegiaren erabiltzaileentzat: `RunConfig`-ek `args` eta `input` ditu (`..RunConfig::default()`-rekin
+  betetzen duen kodeari ez dio eragiten), `RunOutput`-ek `exit_status` du, `Op`, `UnOp` eta `BinOp`-ek aldaera
+  berriak dituzte amaieran, `Program::FORMAT_VERSION` 2 da eta `Program::format_version()`-ek programa
+  bakoitzarentzat aukeratzen du, eta `isa::Group`-ek `Memory` du. `Spec::usage_in`-ek erabilera-lerroa
+  hizkuntza jakin batean ematen du.
 
 ## Konponduta
 
