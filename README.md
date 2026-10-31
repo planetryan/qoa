@@ -157,6 +157,21 @@ arguments on the stack. It is experimental and may still change: see [docs/glyph
 Every text export is reassembled and compared with the original before it is written, so a wrong export
 is an error, never a silently different program.
 
+### QOA builds QOA
+
+QOA's assembler also exists written in QOA: [tools/asm.qoa](tools/asm.qoa) runs on the QOA machine and turns
+a `.qoa` program into the same `.qx` bytes as `qoa compile`, with the same error messages word for word, in
+both languages. It assembles itself, and the copy it builds is identical to the one Rust builds.
+
+```sh
+qoa compile --assembler tools/asm.qoa program.qoa
+```
+
+It is about 19 times slower than the Rust assembler (27,000 lines per second instead of 500,000), still
+under half a second for its own 10,000 lines. The instructions it needed (memory with `LOAD`/`STORE`, bytes
+with `GETC`/`PUTC`, arguments, standard error, exit status) work in any QOA program, and `qoa run --quiet`
+runs a program as a tool. What is in QOA, what stays in Rust and why: [docs/self-hosting.md](docs/self-hosting.md).
+
 ### How shots are computed
 
 - If every measurement comes at the end, QOA simulates once and samples all shots from that state.
@@ -242,6 +257,8 @@ cargo test --release -- --ignored          # also the limits: 28 qubits (4 GiB),
 - `tests/stress.rs` runs deep random circuits forward and backward, and checks boson sampling against
   matrix permanents.
 - `tests/qasm.rs` compares every native OpenQASM gate with its official definition.
+- `tests/selfhost.rs` assembles every program, and thousands of generated ones, with both the Rust assembler
+  and the one written in QOA, and checks that QOA rebuilds itself identically.
 
 ## Performance
 

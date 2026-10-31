@@ -113,4 +113,6 @@ Ahaleginaren araberako balioaren ordenan:
 Eginda dagoeneko: bitar prestatuak eta CI publikoa (0.4.0, 0.4.1-en zabaldua), eta gailu errealen
 kalibrazioetatik ateratako zarata-ereduak (0.4.1). 0.4.2-n: glifo-sintaxiaren puntu irekiak finkatuta; MPI
 prozesu eta nodoen artean, egoera bakar bat prozesu askotan banatuta, eta OpenCL GPUak AMD Instinct barne
-([hpc.eu.md](hpc.eu.md)); eta 128 biteko doitasuna ([precision.eu.md](precision.eu.md)).
+([hpc.eu.md](hpc.eu.md)); eta 128 biteko doitasuna ([precision.eu.md](precision.eu.md)). 0.4.3-n:
+`qoa --benchmark`, eta QOAn idatzitako QOA-ren mihiztatzailea, bere burua berdin eraikitzen duena
+([self-hosting.eu.md](self-hosting.eu.md)).

@@ -163,6 +163,23 @@ konpilatutako `.qx` batetik:
 Testu-esportazio bakoitza berriz mihiztatu eta jatorrizkoarekin konparatzen da idatzi aurretik, beraz
 esportazio oker bat errore bat da, inoiz ez isilean desberdina den programa bat.
 
+### QOA-k QOA eraikitzen du
+
+QOA-ren mihiztatzailea QOAn idatzita ere badago: [tools/asm.qoa](tools/asm.qoa) QOA makinan exekutatzen da
+eta `.qoa` programa bat `qoa compile`-ren `.qx` byte berberak bihurtzen du, errore-mezu berberekin hitzez
+hitz, bi hizkuntzetan. Bere burua mihiztatzen du, eta eraikitzen duen kopia rust-ek eraikitzen duenaren
+berdina da.
+
+```sh
+qoa compile --assembler tools/asm.qoa programa.qoa
+```
+
+Rust-en mihiztatzailea baino 19 aldiz motelagoa da gutxi gorabehera (segundoko 27.000 lerro 500.000-ren
+ordez), eta hala ere segundo erdi baino gutxiago behar du bere 10.000 lerroetarako. Behar izan zituen aginduak
+(memoria `LOAD`/`STORE`-rekin, byteak `GETC`/`PUTC`-rekin, argumentuak, errore-irteera, irteera-egoera)
+edozein QOA programatan dabiltza, eta `qoa run --quiet`-ek programa bat tresna gisa exekutatzen du. Zer
+dagoen QOAn, zer geratzen den rust-en eta zergatik: [docs/self-hosting.eu.md](docs/self-hosting.eu.md).
+
 ### Nola kalkulatzen diren shot-ak
 
 - Neurketa guztiak amaieran badaude, QOA-k behin simulatzen du eta shot guztiak egoera horretatik lagintzen ditu.
@@ -250,6 +267,8 @@ cargo test --release -- --ignored          # mugak ere bai: 28 qubit (4 GiB), fo
 - `tests/stress.rs`-k ausazko zirkuitu sakonak aurrera eta atzera exekutatzen ditu, eta boson-laginketa
   matrize-permanenteen aurka egiaztatzen du.
 - `tests/qasm.rs`-k OpenQASM ate berezko bakoitza bere definizio ofizialarekin konparatzen du.
+- `tests/selfhost.rs`-k programa guztiak, eta sortutako milaka, rust-en mihiztatzailearekin eta QOAn
+  idatzitakoarekin mihiztatzen ditu, eta QOA-k bere burua berdin eraikitzen duela egiaztatzen du.
 
 ## Errendimendua
 
