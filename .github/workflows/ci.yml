@@ -3,7 +3,8 @@
 #   - rust 1.89 (Cargo.toml-eko rust-version) konpilatzen dela
 #   - proba guztiak linux, windows eta macos-en (macos: arm64, NEON kernelak natiboan); linux-en GPU probak
 #     lavapipe-rekin (software bidezko vulkan), eta QOA_REQUIRE_GPU=1 saltatu ez daitezen
-#   - ARM64 eta RISC-V (RVV, bi bektore-luzera) qemu-n: SIMD, kernel, erreferentzia eta GPU-planaren probak
+#   - ARM64 eta RISC-V (RVV, bi bektore-luzera) qemu-n: SIMD, kernel, erreferentzia eta GPU-planaren probak, eta
+#     128 biteko motorrak bit berak ematen dituela arkitektura guztietan
 #   - abiarazleak (run.sh, run.ps1, run.cmd)
 name: ci
 
@@ -117,7 +118,7 @@ jobs:
       - name: test
         run: >
           cargo test --release --locked --target ${{ matrix.target }}
-          --test simd --test kernel --test reference --test optics --test gpu --test dd --test noise
+          --test simd --test kernel --test reference --test optics --test gpu --test dd --test noise --test quad
         env:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUNNER: qemu-aarch64 -cpu max -L /usr/aarch64-linux-gnu

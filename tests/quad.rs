@@ -259,3 +259,53 @@ fn cache_blocked_gates_match_double() {
     assert!(worst < 1e-12, "{}", worst);
     assert!(q.norm_error < 1e-28, "{}", q.norm_error);
 }
+
+// egoeraren bit guztien hash bat (fnv-1a, hi eta lo), arkitektura guztietan berdina izan behar duena
+fn fingerprint(s: &QuadState) -> u64 {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for a in s.amplitudes() {
+        for v in [a.re.hi, a.re.lo, a.im.hi, a.im.lo] {
+            for byte in v.to_bits().to_le_bytes() {
+                h = (h ^ byte as u64).wrapping_mul(0x0100_0000_01b3);
+            }
+        }
+    }
+    h
+}
+
+#[test]
+fn quad_gives_the_same_bits_on_every_system() {
+    // ate guztiak, angelu askorekin (sin/cos), kontrolekin eta trukaketekin, eta neurketa bat: CI-k
+    // x86-64, ARM64, RISC-V, POWER10 eta IBM Z-n exekutatzen du, eta hatz-marka bera eman behar dute
+    let mut s = QuadState::new(13).unwrap();
+    let mut gates = Vec::new();
+    for k in 0..600u32 {
+        let q = (k * 7 + 3) as usize % 13;
+        let c = (k * 5 + 1) as usize % 13;
+        let a = (k as f64 + 0.5) * 0.731;
+        let g = match k % 8 {
+            0 => Gate::H,
+            1 => Gate::RX(a),
+            2 => Gate::RY(-a),
+            3 => Gate::RZ(a * 3.0),
+            4 => Gate::U(a, a * 0.5, -a * 0.25),
+            5 => Gate::P(a),
+            6 => Gate::T,
+            _ => Gate::SX,
+        };
+        let controls = if k % 3 == 0 && c != q { 1 << c } else { 0 };
+        gates.push(QuadGate::Mat { q, m: quad::matrix(g), controls });
+        if k % 50 == 49 {
+            gates.push(QuadGate::Swap { a: q, b: (q + 4) % 13, controls: 0 });
+        }
+    }
+    s.apply(&gates);
+    let bit = s.measure_qubit(5, 0.3);
+    let fp = fingerprint(&s);
+    println!("measured {} fingerprint {:#018x}", bit, fp);
+    assert_eq!((bit, fp), (EXPECT_BIT, EXPECT_FP));
+}
+
+// x86-64-n kalkulatuak (AVX2 + FMA bidea); beste arkitektura guztiek berdin eman behar dute
+const EXPECT_BIT: u8 = 1;
+const EXPECT_FP: u64 = 0x420f_9e13_75ea_46bc;
