@@ -1507,8 +1507,8 @@ pub enum Repeat {
 }
 
 // eragigaien izenak euskaraz (erabilera-lerroetarako)
-fn operand_name(name: &'static str) -> &'static str {
-    if !is_eu() {
+fn operand_name(name: &'static str, eu: bool) -> &'static str {
+    if !eu {
         return name;
     }
     match name {
@@ -1590,9 +1590,14 @@ impl Spec {
 
     // erabiltzaileari erakusteko sinadura, adib. `CNOT control target` edo `MEASURE qubit [-> to]`
     pub fn usage(&self) -> String {
+        self.usage_in(is_eu())
+    }
+
+    // sinadura hizkuntza jakin batean (tools/asm.qoa-ren taula biak behar ditu)
+    pub fn usage_in(&self, eu: bool) -> String {
         let mut s = self.name.to_string();
         for op in self.operand_specs() {
-            let name = operand_name(op.name);
+            let name = operand_name(op.name, eu);
             let base = match op.kind {
                 'd' => format!("-> {}", name),
                 _ => name.to_string(),
