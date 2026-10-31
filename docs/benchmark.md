@@ -36,6 +36,7 @@ run's. Compare full runs with full runs.
 |---|---|---|
 | memory bandwidth | STREAM triad over three arrays: the limit of every large simulation | GB/s |
 | assembler | parses, checks and assembles a 100,000-line generated program | thousands of lines per second |
+| QOA machine | runs QOA's assembler written in QOA ([tools/asm.qoa](../tools/asm.qoa)) on its own 10,000-line source: the speed of the QOA machine's classical instructions. It also checks that the result is byte for byte what `qoa compile` writes | millions of QOA instructions per second |
 | qubit gates, 20 and 24 qubits | a random circuit through the SIMD kernels, with fusion and cache blocking | billions of gate × amplitude updates per second |
 | sampling | simulates a 20-qubit state once, then samples a million shots with exact cumulative sums | millions of shots per second |
 | shots one by one | a program with a mid-circuit measurement, a branch and 1% noise, every shot from the start | thousands of shots per second |

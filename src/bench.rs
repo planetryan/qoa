@@ -1,5 +1,5 @@
 // fitxategi honek QOA-ren errendimendu-proba osoa egiten du (`qoa --benchmark`, `--bm`): makinaren memoria,
-// mihiztatzailea, qubit-ateak, laginketa, shot-ak, modu optikoak, 128 biteko motorra, batura zehatzak, argia
+// mihiztatzailea, QOA makina bera (QOAn idatzitako mihiztatzailea exekutatzen), qubit-ateak, laginketa, shot-ak, modu optikoak, 128 biteko motorra, batura zehatzak, argia
 // (`qoa visual`-en fisika), wigner panelak eta, badago, GPUa.
 //
 // atal bakoitzak lan finko bat egiten du (hazi finkoekin, beraz lan bera makina guztietan), hainbat aldiz, eta
@@ -220,6 +220,62 @@ fn assembler(quick: bool, runs: usize) -> Item {
             lines,
             n_ops
         )],
+    )
+}
+
+// QOA makina: tools/asm.qoa (QOAn idatzitako mihiztatzailea) bere iturburua mihiztatzen, agindu klasikoak
+// segundoko. irteerak `qoa compile`-renaren berdina izan behar du
+fn machine(runs: usize) -> Item {
+    const SOURCE: &str = include_str!("../tools/asm.qoa");
+    let tool = crate::asm::assemble(SOURCE, "tools/asm.qoa").expect("tools/asm.qoa mihiztatzen da");
+    let want = tool.to_bytes();
+    let cfg = RunConfig {
+        shots: 1,
+        max_steps: u64::MAX,
+        args: vec!["tools/asm.qoa".to_string()],
+        input: Some(std::sync::Arc::new(SOURCE.as_bytes().to_vec())),
+        ..RunConfig::default()
+    };
+    let mut steps = 0;
+    let mut same = true;
+    let times = time(runs, || {
+        let mut out = Vec::new();
+        let r = vm::run(&tool, &cfg, &mut out).expect("tools/asm.qoa exekutatzen da");
+        steps = r.steps;
+        same &= out == want;
+    });
+    item(
+        Spec {
+            key: "machine",
+            name: ts!("QOA machine", "QOA makina").into(),
+            what: ts!(
+                "classical instructions: QOA's assembler written in QOA (tools/asm.qoa) assembling its own source",
+                "agindu klasikoak: QOAn idatzitako QOA-ren mihiztatzailea (tools/asm.qoa) bere iturburua mihiztatzen"
+            )
+            .into(),
+            unit: "M instr/s",
+            reference: 95.0,
+        },
+        steps as f64 / 1e6,
+        times,
+        runs,
+        vec![
+            t!(
+                "{} lines, {} instructions run",
+                "{} lerro, {} agindu exekutatuta",
+                SOURCE.lines().count(),
+                steps
+            ),
+            if same {
+                ts!("same bytes as qoa compile", "qoa compile-ren byte berberak").to_string()
+            } else {
+                ts!(
+                    "DIFFERENT bytes from qoa compile (a QOA bug, please report it)",
+                    "qoa compile-ren byteez BESTELAKOAK (QOA-ren akats bat, jakinarazi mesedez)"
+                )
+                .to_string()
+            },
+        ],
     )
 }
 
@@ -599,6 +655,7 @@ pub fn run(quick: bool, gpu: bool, mut progress: impl FnMut(&str)) -> Report {
     };
     step("memory", &|| memory(quick, runs), &mut items);
     step("assembler", &|| assembler(quick, runs), &mut items);
+    step("machine", &|| machine(runs), &mut items);
     step(
         "gates 20",
         &|| gates(20, if quick { 100 } else { 400 }, runs, 8.0, "gates20"),

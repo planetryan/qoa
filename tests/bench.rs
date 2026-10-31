@@ -14,6 +14,7 @@ fn the_quick_benchmark_measures_every_part() {
     for want in [
         "memory",
         "assembler",
+        "machine",
         "gates20",
         "sampling",
         "shots",
@@ -26,6 +27,16 @@ fn the_quick_benchmark_measures_every_part() {
         assert!(keys.contains(&want), "{} falta da: {:?}", want, keys);
     }
     assert_eq!(seen.len(), r.items.len());
+    // QOA makinak QOAn idatzitako mihiztatzailea exekutatzen du, eta haren irteerak rust-enaren berdina izan behar du
+    let machine = r.items.iter().find(|i| i.key == "machine").unwrap();
+    assert!(
+        machine
+            .details
+            .iter()
+            .any(|d| d == "same bytes as qoa compile"),
+        "{:?}",
+        machine.details
+    );
     for i in &r.items {
         assert!(
             i.score.is_finite() && i.score > 0.0,

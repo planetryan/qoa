@@ -38,6 +38,7 @@ dira proba osoarenekin konparagarriak. Konparatu proba osoak proba osoekin.
 |---|---|---|
 | memoriaren banda-zabalera | STREAM triad hiru array-tan: simulazio handi guztien muga | GB/s |
 | mihiztatzailea | 100.000 lerroko programa sortu bat analizatu, egiaztatu eta mihiztatzen du | milaka lerro segundoko |
+| QOA makina | QOAn idatzitako QOA-ren mihiztatzailea ([tools/asm.qoa](../tools/asm.qoa)) exekutatzen du bere 10.000 lerroko iturburuarekin: QOA makinaren agindu klasikoen abiadura. Emaitza `qoa compile`-k idazten duena bytez byte dela ere egiaztatzen du | milioi QOA agindu segundoko |
 | qubit-ateak, 20 eta 24 qubit | zirkuitu ausazko bat SIMD kernelen bidez, fusio eta cache-blokeekin | mila milioika ate × anplitude eguneraketa segundoko |
 | laginketa | 20 qubiteko egoera bat behin simulatzen du, gero milioi bat shot laginkatzen ditu batura metatu zehatzekin | milioika shot segundoko |
 | shot-ak banan-banan | erdiko neurketa, adarkatze bat eta % 1 zarata dituen programa bat, shot bakoitza hasieratik | milaka shot segundoko |
