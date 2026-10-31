@@ -71,6 +71,15 @@ jobs:
             mpirun --oversubscribe -n 3 ./target/release/qoa run $args --mpi --seed 3 --json | jq -c '.counts' > three.json
             diff one.json three.json
           done
+      - name: one state split over 2 and 4 processes gives the same counts
+        run: |
+          for n in 2 4; do
+            for args in "examples/grover.qoa --shots 5000" "examples/qpe.qoa --shots 2000" "examples/teleport.qoa --noise 0.02 --shots 400"; do
+              ./target/release/qoa run $args --seed 3 --json | jq -c '.counts' > one.json
+              mpirun --oversubscribe -n $n ./target/release/qoa run $args --mpi --distribute --seed 3 --json | jq -c '.counts' > many.json
+              diff one.json many.json
+            done
+          done
       - name: input read by process 0 reaches every process
         run: |
           printf 'QINIT 2\nINPUT R1\nREGSET R2 0.5\nH q0\nMEASURE q0 -> c0\nIFGT R1 R2 flip\nJUMP done\nflip:\nX q1\ndone:\nMEASURE q1 -> c1\n' > input.qoa

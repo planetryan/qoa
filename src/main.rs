@@ -96,6 +96,11 @@ enum Command {
             "shot-ak MPI prozesuen artean banatu (mpirun edo srun-ekin abiarazi); --features mpi-rekin konpilatutako QOA behar du. 0. rank-ak inprimatzen du emaitza"
         ))]
         mpi: bool,
+        #[arg(long, requires = "mpi", help = ts!(
+            "with --mpi: split one state over the processes (their number a power of two) instead of giving each a copy, for states larger than one node's memory. Qubit programs only",
+            "--mpi-rekin: egoera bakar bat prozesuen artean banatu (haien kopurua bi-ren berretura) bakoitzari kopia bat eman ordez, nodo baten memoria baino handiagoak diren egoeretarako. qubit-programak bakarrik"
+        ))]
+        distribute: bool,
     },
     #[command(about = ts!("Assemble a program and report what it needs, without running it", "Programa bat mihiztatu eta zer behar duen esan, exekutatu gabe"))]
     Check {
@@ -401,6 +406,7 @@ fn main() -> ExitCode {
             gpu,
             precision,
             mpi,
+            distribute,
         } => cmd_run(
             &file,
             shots,
@@ -418,6 +424,7 @@ fn main() -> ExitCode {
                 PrecisionArg::Quad => qoa::vm::Precision::Quad,
             },
             mpi,
+            distribute,
         ),
         Command::Check { file } => cmd_check(&file),
         Command::Compile { file, output } => cmd_compile(&file, output),
@@ -601,6 +608,7 @@ fn cmd_run(
     gpu: bool,
     precision: qoa::vm::Precision,
     mpi: bool,
+    distribute: bool,
 ) -> Result<(), String> {
     let team = join_team(mpi)?;
     let rank = team.as_ref().map_or(0, |t| t.rank());
@@ -625,6 +633,7 @@ fn cmd_run(
         model,
         precision,
         team: team.clone(),
+        distribute,
     };
     let start = Instant::now();
     // json moduan programaren irteera bildu egiten da; testu moduan zuzenean ateratzen da

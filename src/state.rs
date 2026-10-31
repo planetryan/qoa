@@ -142,6 +142,20 @@ pub struct State {
 impl State {
     // |0...0> qubitetan, hutsa modu guztietan
     pub fn new(n_qubits: usize, n_modes: usize, cutoff: usize) -> Result<State, String> {
+        let dim = Self::check(n_qubits, n_modes, cutoff)?;
+        let mut amps = vec![C::new(0.0, 0.0); dim as usize];
+        amps[0] = C::new(1.0, 0.0);
+        Ok(State {
+            n_qubits,
+            n_modes,
+            cutoff,
+            amps,
+            leakage: 0.0,
+        })
+    }
+
+    // egoera bat sor daitekeen, ezer erreserbatu gabe: tamaina (anplitudeak) edo zergatik ez
+    pub fn check(n_qubits: usize, n_modes: usize, cutoff: usize) -> Result<u128, String> {
         let dim = Self::dim_for(n_qubits, n_modes, cutoff).ok_or_else(|| {
             t!(
                 "the state is too large to index",
@@ -165,15 +179,7 @@ impl State {
                 "modu batek gutxienez 2ko muga behar du (0 eta 1 fotoi)"
             ));
         }
-        let mut amps = vec![C::new(0.0, 0.0); dim as usize];
-        amps[0] = C::new(1.0, 0.0);
-        Ok(State {
-            n_qubits,
-            n_modes,
-            cutoff,
-            amps,
-            leakage: 0.0,
-        })
+        Ok(dim)
     }
 
     pub fn dim_for(n_qubits: usize, n_modes: usize, cutoff: usize) -> Option<u128> {

@@ -27,8 +27,36 @@ srun -n 64 ./target/release/qoa run circuit.qoa --mpi --shots 1000000      # und
   use your launcher's binding options to give it the whole node (for example `srun --cpus-per-task`).
 
 Every process holds the whole state, so this helps when there are many shots: noisy runs, runs with
-measurements in the middle, or millions of samples. Splitting one large state over many nodes is the next
-step (see below).
+measurements in the middle, or millions of samples. For a state too large for one node, see the next
+section.
+
+## One state over many processes
+
+```sh
+mpirun -n 64 ./target/release/qoa run big.qoa --mpi --distribute
+```
+
+With `--distribute` the processes share one state instead of each holding a copy. With 2^g processes, the
+top g qubits choose the process, and each process holds 2^(n-g) amplitudes: 64 processes give each 1/64 of
+the state. The number of processes must be a power of two.
+
+- **Gates on the other qubits** run inside each process with the usual kernels (fusion, cache blocking,
+  SIMD), on the process's own part.
+- **Diagonal gates on the top qubits** (RZ, phases, CZ, T) need no communication: each process applies its
+  own factor.
+- **Other gates on the top qubits** exchange data between pairs of processes, 64 MiB at a time, so the extra
+  memory is one chunk, not a second copy of the state.
+- **Measurement** adds up partial sums in process order, and every process draws the same random numbers,
+  so they all see the same outcome.
+- **Sampling** finds which process holds each sampled amplitude, and only that process reads it.
+- `EXPECT`, `BELLCHECK` and `DUMPSTATE` read the whole state. `DUMPSTATE` and the report's state table
+  gather it to process 0 when it is up to 2^24 amplitudes; a larger state is reported as too large to show.
+
+It gives the same results as one process: the tests check 1, 2, 4 and 8 processes for the final state
+(within 1e-12), the counts, and the printed expectation values, and CI checks 2 and 4 OpenMPI processes.
+Qubit programs only; optical modes, `--precision quad`, `--gpu` and device noise models say so instead of
+running. Every shot runs on all processes together, so here more processes buy memory, not more shots at
+once.
 
 ### Building against your system's MPI
 
@@ -60,8 +88,5 @@ the node. `qoa check` shows the same numbers without running anything.
 
 ## Not done yet
 
-- **One state over many nodes.** The state's top qubits would map to processes; gates on those qubits
-  exchange halves of the state between pairs of processes. This is what simulations above one node's memory
-  need (about 34 qubits on a 512 GiB node).
 - **OpenCL.** The GPU path today uses Vulkan, which AMD Instinct accelerators (as in Frontier) do not offer.
   An OpenCL backend in 64-bit floating point would cover them, along with NVIDIA and Intel GPUs.

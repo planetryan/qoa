@@ -29,8 +29,37 @@ srun -n 64 ./target/release/qoa run zirkuitua.qoa --mpi --shots 1000000      # s
   `srun --cpus-per-task`).
 
 Prozesu bakoitzak egoera osoa du, beraz honek shot asko daudenean laguntzen du: exekuzio zaratatsuak, erdian
-neurketak dituztenak, edo milioika lagin. Egoera handi bakar bat nodo askotan banatzea hurrengo urratsa da
-(ikus behean).
+neurketak dituztenak, edo milioika lagin. Nodo baterako handiegia den egoera baterako, ikus hurrengo atala.
+
+## Egoera bakar bat prozesu askotan
+
+```sh
+mpirun -n 64 ./target/release/qoa run handia.qoa --mpi --distribute
+```
+
+`--distribute`-rekin prozesuek egoera bakar bat partekatzen dute, bakoitzak kopia bat izan ordez. 2^g
+prozesurekin, goiko g qubitek prozesua aukeratzen dute, eta prozesu bakoitzak 2^(n-g) anplitude ditu: 64
+prozesuk bakoitzari egoeraren 1/64 ematen diote. Prozesu-kopurua bi-ren berretura izan behar da.
+
+- **Beste qubitetako ateak** prozesu bakoitzaren barruan doaz ohiko kernelekin (fusioa, cache-blokeak,
+  SIMD), prozesuaren zatiaren gainean.
+- **Goiko qubitetako ate diagonalek** (RZ, faseak, CZ, T) ez dute komunikaziorik behar: prozesu bakoitzak
+  bere faktorea aplikatzen du.
+- **Goiko qubitetako beste ateek** datuak trukatzen dituzte prozesu-bikoteen artean, 64 MiB aldi bakoitzean,
+  beraz memoria gehigarria zati bat da, ez egoeraren bigarren kopia bat.
+- **Neurketak** batura partzialak prozesuen ordenan batzen ditu, eta prozesu guztiek ausazko zenbaki berak
+  ateratzen dituzte, beraz denek emaitza bera ikusten dute.
+- **Laginketak** lagindutako anplitude bakoitza zein prozesuk duen aurkitzen du, eta prozesu horrek bakarrik
+  irakurtzen du.
+- `EXPECT`, `BELLCHECK` eta `DUMPSTATE`-k egoera osoa irakurtzen dute. `DUMPSTATE`-k eta txostenaren
+  egoera-taulak 0. prozesuan biltzen dute 2^24 anplitude artekoa denean; handiagoa erakusteko handiegia dela
+  esaten da.
+
+Prozesu batek bezalako emaitzak ematen ditu: probek 1, 2, 4 eta 8 prozesu egiaztatzen dituzte amaierako
+egoerarako (1e-12-ren barruan), zenbaketetarako eta inprimatutako itxarondako balioetarako, eta CI-k 2 eta 4
+OpenMPI prozesu egiaztatzen ditu. qubit-programak bakarrik; modu optikoek, `--precision quad`-ek, `--gpu`-k
+eta gailuen zarata-ereduek hala esaten dute exekutatu ordez. Shot bakoitza prozesu guztietan batera doa, beraz
+hemen prozesu gehiagok memoria ematen dute, ez shot gehiago aldi berean.
 
 ### Zure sistemaren MPI-aren aurka konpilatzea
 
@@ -63,9 +92,6 @@ eroriarazten. `qoa check`-ek zenbaki berak erakusten ditu ezer exekutatu gabe.
 
 ## Oraindik egin gabe
 
-- **Egoera bakar bat nodo askotan.** Egoeraren goiko qubitak prozesuei lotuko litzaizkieke; qubit horietako
-  ateek egoeraren erdiak trukatuko lituzkete prozesu-bikoteen artean. Hori behar dute nodo baten memoria
-  gainditzen duten simulazioek (34 qubit inguru 512 GiB-eko nodo batean).
 - **OpenCL.** GPU bidea gaur vulkan-ekin dabil, eta AMD Instinct azeleragailuek (Frontier-en bezala) ez dute
   eskaintzen. 64 biteko koma higikorreko OpenCL motor batek haiek estaliko lituzke, NVIDIA eta Intel-en
   GPUekin batera.

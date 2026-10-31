@@ -7,6 +7,7 @@
 //   - every shot: bestela, shot bakoitza hasieratik exekutatzen da (zarata edo gailu-eredu batekin beti)
 //   - state only: programak ez badu ezer neurtzen, behin exekutatzen da eta egoera zehatza erakusten da
 
+use crate::dist::DistState;
 use crate::fock::{self, Mat};
 use crate::gpu::Gpu;
 use crate::kernel::QGate;
@@ -43,6 +44,8 @@ pub struct RunConfig {
     pub precision: Precision,
     // prozesu-taldea (`--mpi`): shot-ak rank-en artean banatzen dira eta 0. rank-ean biltzen dira
     pub team: Option<Arc<dyn Team>>,
+    // `--distribute`: egoera bakarra taldeko prozesuen artean banatuta (src/dist.rs), shot-ak denek batera
+    pub distribute: bool,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize)]
@@ -65,6 +68,7 @@ impl Default for RunConfig {
             model: None,
             precision: Precision::Double,
             team: None,
+            distribute: false,
         }
     }
 }
@@ -178,6 +182,10 @@ struct Machine<'a> {
     pending: Vec<QGate>,
     // 128 biteko modua: qubit-egoera eta haren ate-sorta (orduan `state` hutsik dago)
     quad: Option<QuadState>,
+    // egoera banatua (`--distribute`): ateak `pending`-etik, orduan `state` hutsik dago
+    dist: Option<DistState>,
+    // laginketarako egoera banatuan: rank bakoitzaren probabilitate-batura
+    captured_totals: Option<Vec<f64>>,
     pending_quad: Vec<QuadGate>,
     regs: [f64; NUM_REGS],
     bits: Vec<Option<u8>>,
@@ -218,6 +226,40 @@ pub fn run(
             ),
         });
     }
+    if cfg.distribute {
+        let why = if cfg.team.is_none() {
+            Some(ts!("it needs --mpi", "--mpi behar du"))
+        } else if prog.n_modes > 0 {
+            Some(ts!(
+                "the program uses optical modes",
+                "programak modu optikoak erabiltzen ditu"
+            ))
+        } else if cfg.precision == Precision::Quad {
+            Some(ts!(
+                "it runs in 64 bits, not with --precision quad",
+                "64 bitetan dabil, ez --precision quad-ekin"
+            ))
+        } else if cfg.gpu.is_some() {
+            Some(ts!("it does not use --gpu", "ez du --gpu erabiltzen"))
+        } else if cfg.model.is_some() {
+            Some(ts!(
+                "device noise models are not distributed",
+                "gailuen zarata-ereduak ez daude banatuta"
+            ))
+        } else {
+            None
+        };
+        if let Some(why) = why {
+            return Err(RuntimeError {
+                line: 0,
+                message: t!(
+                    "--distribute runs qubit programs over MPI processes: {}",
+                    "--distribute-k qubit-programak MPI prozesuetan exekutatzen ditu: {}",
+                    why
+                ),
+            });
+        }
+    }
     if cfg.precision == Precision::Quad {
         let why = if prog.n_modes > 0 {
             Some(ts!(
@@ -248,6 +290,34 @@ pub fn run(
             });
         }
     }
+    // egoera sortzean huts egin dezakeena orain, edozein komunikazioren aurretik: rank guztiek berdin kalkulatzen
+    // dute, beraz denek huts egiten dute batera eta inor ez da zain geratzen
+    let precheck = if cfg.precision == Precision::Quad {
+        let dim = 1u128.checked_shl(prog.n_qubits).unwrap_or(u128::MAX);
+        crate::state::check_memory(
+            &t!(
+                "{} qubits in 128-bit precision: {} amplitudes",
+                "{} qubit 128 biteko doitasunean: {} anplitude",
+                prog.n_qubits,
+                dim
+            ),
+            dim.saturating_mul(32),
+        )
+    } else if cfg.distribute {
+        DistState::check(
+            prog.n_qubits as usize,
+            cfg.team.as_ref().map_or(1, |t| t.size()),
+        )
+        .map(|_| ())
+    } else {
+        State::check(
+            prog.n_qubits as usize,
+            prog.n_modes as usize,
+            prog.cutoff as usize,
+        )
+        .map(|_| ())
+    };
+    precheck.map_err(|message| RuntimeError { line: 0, message })?;
     let has_readout = prog.has_readout();
     let ideal = cfg.noise == 0.0 && cfg.loss == 0.0 && cfg.model.is_none();
     let split = if has_readout && ideal {
@@ -271,6 +341,11 @@ pub fn run(
         } else {
             24
         };
+        let dim = if cfg.distribute {
+            dim / cfg.team.as_ref().map_or(1, |t| t.size() as u128)
+        } else {
+            dim
+        };
         crate::state::check_memory(
             &t!(
                 "sampling {} amplitudes (the state and its probabilities)",
@@ -293,8 +368,12 @@ pub fn run(
     let team = cfg.team.as_deref();
     let (rank, ranks) = team.map_or((0, 1), |t| (t.rank(), t.size()));
     let mut recorded_inputs = Vec::new();
+    // shot-ak banatuta: 0.ak lehen shot-a amaitzean zabaltzen ditu sarrerak. egoera banatuan, berriz, prozesu
+    // guztiak batera exekutatzen dira, eta INPUT bakoitza unean bertan zabaltzen da (ikus Op::Input)
+    let spread_inputs = team.is_some() && !cfg.distribute;
     let mut replay = Vec::new();
     if let Some(t) = team
+        && spread_inputs
         && rank != 0
     {
         replay = f64s(&t.broadcast(Vec::new()));
@@ -306,7 +385,7 @@ pub fn run(
         cfg,
         &cache,
         first_out,
-        if rank == 0 {
+        if rank == 0 || cfg.distribute {
             Inputs::Record(&mut recorded_inputs)
         } else {
             Inputs::Replay(&replay, 0)
@@ -316,6 +395,7 @@ pub fn run(
     first.capture_at = split;
     let first_result = first.run();
     if let Some(t) = team
+        && spread_inputs
         && rank == 0
     {
         let inputs = match &first.inputs {
@@ -330,9 +410,18 @@ pub fn run(
     let steps = first.steps;
     let captured = first.captured.take();
     let regs = first.regs;
-    let (final_state, norm_error) = match first.quad.take() {
-        Some(q) => (q.to_state(), q.norm_error()),
-        None => {
+    let captured_totals = first.captured_totals.take();
+    let local_bits = first.dist.as_ref().map_or(0, |d| d.local_bits());
+    let (final_state, norm_error) = match (first.quad.take(), first.dist.take()) {
+        (Some(q), _) => (q.to_state(), q.norm_error()),
+        (None, Some(d)) => {
+            let e = d.norm_error();
+            (
+                d.gather().unwrap_or_else(|| State::new(0, 0, 2).unwrap()),
+                e,
+            )
+        }
+        (None, None) => {
             let s = std::mem::replace(&mut first.state, State::new(0, 0, 2).unwrap());
             let e = s.norm_error();
             (s, e)
@@ -347,12 +436,85 @@ pub fn run(
     let mut leakage = first_leakage;
     // rank honen shot-ak: [lo, hi), 1..shots tartea zati jarraituetan banatuta. shot bakoitzak bere hazia
     // du, beraz emaitza ez dago rank-kopuruaren menpe
-    let lo = 1 + (shots - 1) * rank as u64 / ranks as u64;
-    let hi = 1 + (shots - 1) * (rank as u64 + 1) / ranks as u64;
+    // (egoera banatuan, prozesu guztiek shot guztiak egiten dituzte batera)
+    let (lo, hi) = if cfg.distribute {
+        (1, shots)
+    } else {
+        (
+            1 + (shots - 1) * rank as u64 / ranks as u64,
+            1 + (shots - 1) * (rank as u64 + 1) / ranks as u64,
+        )
+    };
     let mut failed: Option<RuntimeError> = None;
 
     if shots > 1 {
         match method {
+            Method::Sampled if cfg.distribute => {
+                // egoera banatua: r rank bakoitzaren tartean bilatzen da (rank-en baturak ordenan); jabeak
+                // bakarrik kalkulatzen du emaitza, eta zenbaketak 0.ean biltzen dira
+                let probs = captured.expect("probabilitateak lehen irakurketan gorde dira");
+                let totals = captured_totals.expect("rank-en baturak");
+                let mut offsets = Vec::with_capacity(totals.len() + 1);
+                let mut acc = crate::dd::Dd::ZERO;
+                offsets.push(0.0);
+                for t in &totals {
+                    acc.add(*t);
+                    offsets.push(acc.value());
+                }
+                let total = acc.value();
+                let mut cumulative = probs;
+                let mut run = crate::dd::Dd::ZERO;
+                for p in cumulative.iter_mut() {
+                    run.add(*p);
+                    *p = run.value();
+                }
+                let tail = &prog.ops[split.unwrap()..];
+                let sampled: HashMap<Record, u64> = (lo..hi)
+                    .into_par_iter()
+                    .fold(HashMap::new, |mut m, shot| {
+                        let mut rng = shot_rng(cfg.seed, shot);
+                        let r: f64 = rng.random::<f64>() * total;
+                        let owner = offsets[1..].partition_point(|&o| o <= r).min(ranks - 1);
+                        if owner == rank {
+                            let idx = cumulative
+                                .partition_point(|&c| c <= r - offsets[rank])
+                                .min(cumulative.len() - 1);
+                            let global = (rank << local_bits) | idx;
+                            *m.entry(record_from_index(prog, &final_state, tail, global))
+                                .or_insert(0) += 1;
+                        }
+                        m
+                    })
+                    .reduce(HashMap::new, merge_counts);
+                counts = merge_counts(counts, sampled);
+            }
+            Method::EveryShot if cfg.distribute => {
+                // shot bakoitza prozesu guztien artean, bata bestearen atzetik (sarrerak prozesu guztiek
+                // gorde dituzte lehen shot-ean)
+                let shared_inputs: &[f64] = &recorded_inputs;
+                for shot in lo..hi {
+                    let mut sink = std::io::sink();
+                    let r = Machine::new(
+                        prog,
+                        cfg,
+                        &cache,
+                        &mut sink,
+                        Inputs::Replay(shared_inputs, 0),
+                        shot_rng(cfg.seed, shot),
+                    )
+                    .and_then(|mut m| {
+                        m.run()?;
+                        Ok(m.record())
+                    });
+                    match r {
+                        Ok(rec) => *counts.entry(rec).or_insert(0) += 1,
+                        Err(e) => {
+                            failed.get_or_insert(e);
+                            break;
+                        }
+                    }
+                }
+            }
             Method::Sampled => {
                 let probs = captured.expect("probabilitateak lehen irakurketan gorde dira");
                 let split = split.unwrap();
@@ -417,8 +579,11 @@ pub fn run(
     }
 
     // taldean: rank guztiek beren zenbaketak (edo errorea) 0.ari bidaltzen dizkiote, beti, inor zain gera ez dadin
+    // (egoera banatuan shot bakoitza prozesu guztiek egiten dute, eta 0.ak ditu zenbaketa guztiak, laginketan izan ezik)
+    let gathered = !cfg.distribute || method == Method::Sampled;
     if let Some(t) = team
         && ranks > 1
+        && gathered
     {
         let mine = encode_part(&counts, leakage, failed.as_ref());
         if let Some(all) = t.gather(mine) {
@@ -581,11 +746,19 @@ impl<'a> Machine<'a> {
         rng: StdRng,
     ) -> Result<Machine<'a>, RuntimeError> {
         let to_err = |message| RuntimeError { line: 0, message };
+        let mut dist = None;
         let (state, quad) = if cfg.precision == Precision::Quad {
             (
                 State::new(0, 0, 2).map_err(to_err)?,
                 Some(QuadState::new(prog.n_qubits as usize).map_err(to_err)?),
             )
+        } else if cfg.distribute {
+            let team = cfg
+                .team
+                .clone()
+                .expect("--distribute --mpi-rekin egiaztatuta");
+            dist = Some(DistState::new(prog.n_qubits as usize, team).map_err(to_err)?);
+            (State::new(0, 0, 2).map_err(to_err)?, None)
         } else {
             let state = State::new(
                 prog.n_qubits as usize,
@@ -601,6 +774,8 @@ impl<'a> Machine<'a> {
             pending: Vec::new(),
             quad,
             pending_quad: Vec::new(),
+            dist,
+            captured_totals: None,
             regs: [0.0; NUM_REGS],
             bits: vec![None; prog.n_bits as usize],
             readouts: vec![None; prog.n_modes as usize],
@@ -630,10 +805,17 @@ impl<'a> Machine<'a> {
         let mut pc = 0usize;
         while pc < self.prog.ops.len() {
             if Some(pc) == self.capture_at && self.captured.is_none() {
-                self.captured = Some(match self.qd() {
-                    Some(q) => q.probabilities(),
-                    None => self.st().probabilities(),
-                });
+                self.flush();
+                if let Some(d) = &self.dist {
+                    let (local, totals) = d.local_probabilities();
+                    self.captured = Some(local);
+                    self.captured_totals = Some(totals);
+                } else {
+                    self.captured = Some(match self.qd() {
+                        Some(q) => q.probabilities(),
+                        None => self.st().probabilities(),
+                    });
+                }
             }
             self.steps += 1;
             if self.steps > self.cfg.max_steps {
@@ -741,6 +923,11 @@ impl<'a> Machine<'a> {
             q.apply(&self.pending_quad);
             self.pending_quad.clear();
         }
+        if let Some(d) = self.dist.as_mut() {
+            d.apply(&self.pending);
+            self.pending.clear();
+            return;
+        }
         if self.pending.is_empty() {
             return;
         }
@@ -773,6 +960,10 @@ impl<'a> Machine<'a> {
 
     fn measure_z(&mut self, q: u32) -> u8 {
         let r = self.uniform();
+        self.flush();
+        if let Some(d) = self.dist.as_mut() {
+            return d.measure_qubit(q as usize, r);
+        }
         match self.qd() {
             Some(s) => s.measure_qubit(q as usize, r),
             None => self.st().measure_qubit(q as usize, r),
@@ -1061,6 +1252,9 @@ impl<'a> Machine<'a> {
                 if let Some(q) = self.quad.as_mut() {
                     *q = QuadState::new(q.n_qubits()).expect("lehengo tamaina bera");
                 }
+                if let Some(d) = self.dist.as_mut() {
+                    d.reset();
+                }
                 let leak = self.state.leakage;
                 self.state = State::new(self.state.n_qubits(), self.state.n_modes(), self.state.cutoff())
                     .expect("lehengo tamaina bera");
@@ -1195,10 +1389,24 @@ impl<'a> Machine<'a> {
             }
 
             Op::DumpState => {
-                let snapshot = self.qd().map(|q| q.to_state());
-                let text = match &snapshot {
-                    Some(s) => crate::report::state_table(s, 16),
-                    None => crate::report::state_table(self.st(), 16),
+                self.flush();
+                let text = if let Some(d) = &self.dist {
+                    match d.gather() {
+                        Some(s) => crate::report::state_table(&s, 16),
+                        // (0.ak bakarrik inprimatzen du; hor, None egoera handiegia delako da)
+                        None => t!(
+                            "  ({} amplitudes spread over {} processes: too large to show)\n",
+                            "  ({} anplitude {} prozesutan banatuta: handiegia erakusteko)\n",
+                            1u128 << d.n_qubits(),
+                            d.ranks()
+                        ),
+                    }
+                } else {
+                    let snapshot = self.qd().map(|q| q.to_state());
+                    match &snapshot {
+                        Some(s) => crate::report::state_table(s, 16),
+                        None => crate::report::state_table(self.st(), 16),
+                    }
                 };
                 self.print(&t!("state at line {}:\n{}", "egoera {}. lerroan:\n{}", self.prog.line_of(pc), text));
             }
@@ -1216,9 +1424,11 @@ impl<'a> Machine<'a> {
                 self.print(&s);
             }
             Op::Expect { q, basis, dest } => {
-                let b = match self.qd() {
-                    Some(s) => s.bloch(*q as usize),
-                    None => self.st().bloch(*q as usize),
+                self.flush();
+                let b = match (&self.dist, self.quad.as_ref()) {
+                    (Some(d), _) => d.bloch(*q as usize),
+                    (None, Some(s)) => s.bloch(*q as usize),
+                    (None, None) => self.st().bloch(*q as usize),
                 };
                 let v = match basis {
                     Basis::X => b[0],
@@ -1231,9 +1441,11 @@ impl<'a> Machine<'a> {
                 }
             }
             Op::BellCheck { a, b, dest } => {
-                let f = match self.qd() {
-                    Some(s) => s.bell_fidelity(*a as usize, *b as usize),
-                    None => self.st().bell_fidelity(*a as usize, *b as usize),
+                self.flush();
+                let f = match (&self.dist, self.quad.as_ref()) {
+                    (Some(d), _) => d.bell_fidelity(*a as usize, *b as usize),
+                    (None, Some(s)) => s.bell_fidelity(*a as usize, *b as usize),
+                    (None, None) => self.st().bell_fidelity(*a as usize, *b as usize),
                 };
                 match dest {
                     Some(r) => self.regs[*r as usize] = f,
@@ -1293,7 +1505,21 @@ impl<'a> Machine<'a> {
             Op::Rand { r } => self.regs[*r as usize] = self.uniform(),
             Op::Seed { seed } => self.rng = StdRng::seed_from_u64(*seed),
             Op::Input { r } => {
+                // egoera banatuan, 0. prozesuak irakurtzen du eta besteei bidaltzen die unean bertan
+                let distributed = self.dist.is_some();
+                let team = self.cfg.team.clone();
                 let v = match &mut self.inputs {
+                    Inputs::Record(list)
+                        if distributed && team.as_ref().is_some_and(|t| t.rank() != 0) =>
+                    {
+                        let t = team.as_ref().unwrap();
+                        let v = f64s(&t.broadcast(Vec::new()))
+                            .first()
+                            .copied()
+                            .unwrap_or(0.0);
+                        list.push(v);
+                        v
+                    }
                     Inputs::Record(list) => {
                         let mut line = String::new();
                         let _ = self.out.flush();
@@ -1303,6 +1529,9 @@ impl<'a> Machine<'a> {
                             message: t!("INPUT expected a number, got '{}'", "INPUT-ek zenbaki bat espero zuen, baina '{}' jaso du", line.trim()),
                         })?;
                         list.push(v);
+                        if distributed && let Some(t) = &team {
+                            t.broadcast(v.to_le_bytes().to_vec());
+                        }
                         v
                     }
                     Inputs::Replay(list, i) => {

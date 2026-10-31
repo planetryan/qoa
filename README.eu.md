@@ -189,7 +189,8 @@ neurketa. 10 eta 20 aldiz artean motelagoa da. Xehetasunak: [docs/precision.eu.m
 ### Klusterrak eta superkonputagailuak
 
 `qoa run --mpi`-k shot-ak MPI prozesuetan banatzen ditu (konpilatu `--features mpi`-rekin, abiarazi `mpirun`
-edo `srun`-ekin), prozesu batek bezalako zenbaketekin. QOA-k egiaztatzen du egoera bat erabil dezakeen
+edo `srun`-ekin), prozesu batek bezalako zenbaketekin, eta `--mpi --distribute`-k nodo bakarrerako handiegia den
+egoera bat haien artean banatzen du. QOA-k egiaztatzen du egoera bat erabil dezakeen
 memorian sartzen dela hasi aurretik (`QOA_MAX_MEMORY` aldatzeko). Ikus [docs/hpc.eu.md](docs/hpc.eu.md).
 
 ### Musika argitik

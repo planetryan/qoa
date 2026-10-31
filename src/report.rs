@@ -38,6 +38,8 @@ pub struct Report {
     pub threads: usize,
     // MPI prozesuak (`--mpi`), shot-ak haien artean banatuta; 1 bestela
     pub ranks: usize,
+    // egoera bera prozesuen artean banatuta (`--distribute`)
+    pub distributed: bool,
     // `--gpu`: gailua eta zer egin duen (bestela null)
     pub gpu: Option<crate::gpu::Stats>,
     pub steps_first_shot: u64,
@@ -125,7 +127,16 @@ pub fn build(input: ReportInput) -> Report {
     // qubit edo modurik ez badago, ez dago egoerarik erakusteko
     let has_system = p.n_qubits > 0 || p.n_modes > 0;
     let want_state = has_system && (input.show_state || out.method == Method::StateOnly);
-    let state = want_state.then(|| amp_entries(&out.final_state, input.top).0);
+    // egoera banatu handi bat ez da biltzen (src/dist.rs): orduan ez dago erakusteko
+    let whole = p.state_dim() == Some(out.final_state.len() as u128);
+    if want_state && !whole {
+        warnings.push(t!(
+            "the final state is spread over {} processes and too large to gather and show",
+            "amaierako egoera {} prozesutan banatuta dago eta handiegia da bildu eta erakusteko",
+            input.config.team.as_ref().map_or(1, |t| t.size())
+        ));
+    }
+    let state = (want_state && whole).then(|| amp_entries(&out.final_state, input.top).0);
     Report {
         qoa_version: env!("CARGO_PKG_VERSION").to_string(),
         program: p.name.clone(),
@@ -158,6 +169,7 @@ pub fn build(input: ReportInput) -> Report {
         kernels: crate::simd::active().name().to_string(),
         threads: rayon::current_num_threads(),
         ranks: input.config.team.as_ref().map_or(1, |t| t.size()),
+        distributed: input.config.distribute,
         gpu: input.config.gpu.as_ref().map(|g| g.stats()),
         steps_first_shot: out.steps,
         counts,
@@ -433,7 +445,13 @@ pub fn render(r: &Report, style: &Style) -> String {
         format_bytes(r.memory_bytes)
     ));
     line(ts!("system", "sistema"), system);
-    let ranks = if r.ranks > 1 {
+    let ranks = if r.distributed {
+        t!(
+            " in each of {} MPI processes, the state split between them",
+            " {} MPI prozesu bakoitzean, egoera haien artean banatuta",
+            r.ranks
+        )
+    } else if r.ranks > 1 {
         t!(
             " in each of {} MPI processes (shots split between them)",
             " {} MPI prozesu bakoitzean (shot-ak haien artean banatuta)",

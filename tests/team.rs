@@ -114,3 +114,141 @@ fn memory_sizes_parse_and_limits_explain_themselves() {
     assert!(e.contains("QOA_MAX_MEMORY"), "{}", e);
     assert!(check_memory("a little", 1024).is_ok());
 }
+
+// ---------------------------------------------------------------- egoera banatua (`--distribute`)
+
+// zirkuitu bat ate mota guztiekin, qubit altuetan ere (prozesuen arteko qubitak)
+fn mixed_circuit(n: u32, depth: usize, measure: bool) -> String {
+    let mut s = format!("QINIT {}\n", n);
+    let mut x: u64 = 99;
+    let mut next = |m: u64| {
+        x = x
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+        (x >> 33) % m
+    };
+    for _ in 0..depth {
+        let q = next(n as u64);
+        let r = (q + 1 + next(n as u64 - 1)) % n as u64;
+        let a = next(1000) as f64 / 159.0;
+        s.push_str(&match next(11) {
+            0 => format!("H q{}\n", q),
+            1 => format!("RX q{} {}\n", q, a),
+            2 => format!("RZ q{} {}\n", q, a),
+            3 => format!("CNOT q{} q{}\n", q, r),
+            4 => format!("CZ q{} q{}\n", q, r),
+            5 => format!("SWAP q{} q{}\n", q, r),
+            6 => format!("CRX q{} q{} {}\n", q, r, a),
+            7 => format!("T q{}\n", q),
+            8 => format!("RY q{} {}\n", q, a),
+            9 => format!("SX q{}\n", q),
+            _ => {
+                let mut t = (r + 1 + next(n as u64)) % n as u64;
+                while t == q || t == r {
+                    t = (t + 1) % n as u64;
+                }
+                format!("CSWAP q{} q{} q{}\n", q, r, t)
+            }
+        });
+    }
+    if measure {
+        s.push_str("MEASUREALL\n");
+    }
+    s
+}
+
+#[test]
+fn a_distributed_state_matches_one_process() {
+    let src = mixed_circuit(9, 600, false);
+    let cfg = RunConfig::default();
+    let want = single(&src, &cfg);
+    for ranks in [1, 2, 4, 8] {
+        let cfg = RunConfig {
+            distribute: true,
+            ..cfg.clone()
+        };
+        let got = spread(&src, &cfg, ranks);
+        let (out, _) = got[0].as_ref().unwrap();
+        let worst = out
+            .final_state
+            .amplitudes()
+            .iter()
+            .zip(want.final_state.amplitudes())
+            .map(|(a, b)| (a - b).norm())
+            .fold(0.0, f64::max);
+        assert!(worst < 1e-12, "{} ranks: {}", ranks, worst);
+        assert!(out.norm_error < 1e-12, "{}", out.norm_error);
+    }
+}
+
+#[test]
+fn distributed_shots_measure_and_sample_like_one_process() {
+    for (src, shots) in [
+        (mixed_circuit(8, 300, true), 3000),
+        (
+            EVERY_SHOT.replace("QINIT 2", "QINIT 4\nH q3\nCNOT q3 q2"),
+            400,
+        ),
+    ] {
+        let cfg = RunConfig {
+            shots,
+            seed: 5,
+            ..RunConfig::default()
+        };
+        let want = single(&src, &cfg);
+        for ranks in [2, 4] {
+            let cfg = RunConfig {
+                distribute: true,
+                ..cfg.clone()
+            };
+            let got = spread(&src, &cfg, ranks);
+            let (out, _) = got[0].as_ref().unwrap();
+            assert_eq!(out.method, want.method);
+            assert_eq!(out.counts, want.counts, "{} ranks", ranks);
+        }
+    }
+}
+
+#[test]
+fn distributed_inspection_reads_the_whole_state() {
+    // EXPECT eta BELLCHECK qubit lokal eta globaletan, eta DUMPSTATE
+    let mut src = mixed_circuit(6, 120, false);
+    src.push_str("EXPECT q0 X\nEXPECT q5 X\nEXPECT q5 Y\nEXPECT q4 Z\nBELLCHECK q0 q5\nBELLCHECK q4 q5\nBELLCHECK q1 q2\nDUMPSTATE\n");
+    let cfg = RunConfig::default();
+    lang::set(Lang::En);
+    let prog = qoa::asm::assemble(&src, "team.qoa").unwrap();
+    let mut want = Vec::new();
+    vm::run(&prog, &cfg, &mut want).unwrap();
+    for ranks in [2, 4] {
+        let cfg = RunConfig {
+            distribute: true,
+            ..cfg.clone()
+        };
+        let got = spread(&src, &cfg, ranks);
+        let (_, out) = got[0].as_ref().unwrap();
+        assert_eq!(
+            String::from_utf8_lossy(out),
+            String::from_utf8_lossy(&want),
+            "{} ranks",
+            ranks
+        );
+    }
+}
+
+#[test]
+fn distribute_explains_what_it_cannot_do() {
+    let cfg = RunConfig {
+        distribute: true,
+        ..RunConfig::default()
+    };
+    let got = spread("QINIT 3\nH q0\n", &cfg, 3);
+    assert!(got[0].as_ref().unwrap_err().contains("power-of-two"));
+    let got = spread("QINIT 1\nH q0\n", &cfg, 4);
+    assert!(got[0].as_ref().unwrap_err().contains("at least one qubit"));
+    let got = spread("QMODE 1 4\nDISPLACE o0 0.5\n", &cfg, 2);
+    assert!(got[0].as_ref().unwrap_err().contains("optical modes"));
+    lang::set(Lang::En);
+    let prog = qoa::asm::assemble("QINIT 2\nH q0\n", "team.qoa").unwrap();
+    let e = vm::run(&prog, &cfg, &mut std::io::sink()).unwrap_err();
+    assert!(e.message.contains("needs --mpi"), "{}", e.message);
+}

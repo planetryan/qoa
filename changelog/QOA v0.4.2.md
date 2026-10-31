@@ -40,6 +40,10 @@
   on one node or many, and process 0 collects the counts. The counts are the same for any number of
   processes, and an error on one process stops the job cleanly. The MPI layer is a few lines of C built with
   the machine's own MPI wrapper. See [docs/hpc.md](../docs/hpc.md).
+* **One state over many processes** (`qoa run --mpi --distribute`): for states larger than one node's
+  memory. With 2^g processes each holds 1/2^g of the state. Gates on its own qubits run with the usual
+  kernels; diagonal gates on the shared top qubits need no communication; other gates on them exchange
+  64 MiB chunks between pairs of processes. Results match one process.
 * **Memory-aware size limit:** the fixed limit of 2^32 amplitudes is gone. A state may use 90% of the
   memory available, or of the job's cgroup limit, or `QOA_MAX_MEMORY`. A state that does not fit is a clear
   error before anything is allocated.
@@ -98,6 +102,10 @@
   banatzen dira, nodo batean edo askotan, eta 0. prozesuak zenbaketak biltzen ditu. Zenbaketak berdinak dira
   prozesu-kopurua edozein dela ere, eta prozesu bateko errore batek lana garbi gelditzen du. MPI geruza C lerro
   gutxi batzuk dira, makinaren MPI bilgarriarekin konpilatuak. Ikus [docs/hpc.eu.md](../docs/hpc.eu.md).
+* **Egoera bakar bat prozesu askotan** (`qoa run --mpi --distribute`): nodo baten memoria baino handiagoak
+  diren egoeretarako. 2^g prozesurekin bakoitzak egoeraren 1/2^g du. Bere qubitetako ateak ohiko kernelekin
+  doaz; partekatutako goiko qubitetako ate diagonalek ez dute komunikaziorik behar; haietako beste ateek
+  64 MiB-eko zatiak trukatzen dituzte prozesu-bikoteen artean. Emaitzak prozesu batekoak bezalakoak dira.
 * **Memoriaren araberako tamaina-muga:** 2^32 anplitudeko muga finkoa desagertu da. Egoera batek erabilgarri
   dagoen memoriaren % 90 erabil dezake, edo lanaren cgroup mugarena, edo `QOA_MAX_MEMORY`. Sartzen ez den
   egoera bat errore argi bat da, ezer erreserbatu aurretik.
