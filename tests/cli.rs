@@ -282,10 +282,13 @@ fn visual_explains_bad_input() {
     if have_ffmpeg() {
         let o = qoa("en", &["visual", "examples/bell.qoa", "out.mp4"]);
         assert!(!o.status.success());
+        // ffmpeg-en bertsioaren arabera, fitxategia probatzean edo deskodetzean baztertzen da
+        let e = stderr(&o);
         assert!(
-            stderr(&o).contains("has no audio that ffmpeg can read"),
+            e.contains("has no audio that ffmpeg can read")
+                || e.contains("ffmpeg could not decode"),
             "{}",
-            stderr(&o)
+            e
         );
     }
     let o = qoa("eu", &["visual", "ez-dago.wav", "out.mp4"]);
