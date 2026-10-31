@@ -213,6 +213,8 @@ struct Asm {
     qubit_limit_reported: bool,
     // izendun erregistroak (QREG, CREG, OREG) eta mota bakoitzeko hurrengo elementu librea
     named: HashMap<String, Named>,
+    // izenak adierazi ziren ordenan: mezuak ez daude HashMap-aren ordenaren menpe
+    named_order: Vec<String>,
     named_next: HashMap<char, u32>,
     // lehen pasaldian ikusitako etiketa-izenak (minuskulaz): izen hutsak ez dira erregistro gisa irakurtzen
     label_names: std::collections::HashSet<String>,
@@ -244,6 +246,7 @@ pub fn assemble(source: &str, name: &str) -> Result<Program, Vec<Diagnostic>> {
         qinit_token: None,
         qubit_limit_reported: false,
         named: HashMap::new(),
+        named_order: Vec::new(),
         named_next: HashMap::new(),
         label_names: std::collections::HashSet::new(),
     };
@@ -329,7 +332,8 @@ pub fn assemble(source: &str, name: &str) -> Result<Program, Vec<Diagnostic>> {
     }
 
     // erregistro-izen bat ezin da etiketa bat ere izan (`JUMP data` anbiguoa litzateke)
-    for (name, r) in &a.named {
+    for name in &a.named_order {
+        let r = &a.named[name];
         if a.labels.contains_key(&name.to_ascii_lowercase()) {
             a.diags.push(Diagnostic::at(
                 &r.tok,
@@ -616,9 +620,11 @@ impl Asm {
                 }
             },
         };
+        // gainjartzen den lehen erregistroa, adierazpen-ordenan
         if let Some((other, r)) = self
-            .named
+            .named_order
             .iter()
+            .map(|n| (n, &self.named[n]))
             .find(|(_, r)| r.kind == kind && start < r.start + r.size && r.start < start + size)
         {
             let msg = t!(
@@ -646,6 +652,7 @@ impl Asm {
             _ => &mut self.max_mode,
         };
         *max = Some(max.map_or(last, |m| m.max(last)));
+        self.named_order.push(name.to_string());
         self.named.insert(
             name.to_string(),
             Named {
@@ -660,7 +667,8 @@ impl Asm {
     // izendun erregistroak QINIT eta QMODE-k adierazitakoaren barruan
     fn registers_fit(&mut self) {
         let mut problems = Vec::new();
-        for (name, r) in &self.named {
+        for name in &self.named_order {
+            let r = &self.named[name];
             let limit = match r.kind {
                 'q' => self.declared_qubits,
                 'o' => self.declared_modes.map(|m| m.0),
@@ -1963,7 +1971,8 @@ impl Asm {
                 dst: idx(0),
                 src: idx(1),
             },
-            "ADD" | "SUB" | "MUL" | "DIV" | "ANDBITS" | "ORBITS" | "XORBITS" | "SHL" | "SHR" => {
+            "ADD" | "SUB" | "MUL" | "DIV" | "ANDBITS" | "ORBITS" | "XORBITS" | "SHL" | "SHR"
+            | "POW" => {
                 let op = match spec.name {
                     "ADD" => BinOp::Add,
                     "SUB" => BinOp::Sub,
@@ -1973,7 +1982,8 @@ impl Asm {
                     "ORBITS" => BinOp::Or,
                     "XORBITS" => BinOp::Xor,
                     "SHL" => BinOp::Shl,
-                    _ => BinOp::Shr,
+                    "SHR" => BinOp::Shr,
+                    _ => BinOp::Pow,
                 };
                 Op::Bin {
                     op,
@@ -1982,12 +1992,15 @@ impl Asm {
                     b: idx(2),
                 }
             }
-            "NOTBITS" | "SQRT" | "EXP" | "LOG" => {
+            "NOTBITS" | "SQRT" | "EXP" | "LOG" | "SIN" | "COS" | "TAN" => {
                 let op = match spec.name {
                     "NOTBITS" => UnOp::Not,
                     "SQRT" => UnOp::Sqrt,
                     "EXP" => UnOp::Exp,
-                    _ => UnOp::Log,
+                    "LOG" => UnOp::Log,
+                    "SIN" => UnOp::Sin,
+                    "COS" => UnOp::Cos,
+                    _ => UnOp::Tan,
                 };
                 Op::Un {
                     op,
@@ -2129,6 +2142,59 @@ impl Asm {
                 text: text(1),
             },
             "DUMPREGS" => Op::DumpRegs,
+            "LOAD" => Op::Load {
+                dst: idx(0),
+                addr: idx(1),
+            },
+            "STORE" => Op::Store {
+                src: idx(0),
+                addr: idx(1),
+            },
+            "STORETEXT" => Op::StoreText {
+                addr: idx(0),
+                text: text(1),
+            },
+            "GETC" => Op::GetByte { r: idx(0) },
+            "PUTC" => Op::PutByte { r: idx(0) },
+            "STREAM" => match int(0) {
+                1 => Op::Stream { stderr: false },
+                2 => Op::Stream { stderr: true },
+                n => {
+                    self.error(Diagnostic::at(
+                        &tok(0),
+                        t!(
+                            "STREAM takes 1 (standard output) or 2 (standard error), found {}",
+                            "STREAM-ek 1 (irteera estandarra) edo 2 (errore-irteera) hartzen ditu, baina {} dago",
+                            n
+                        ),
+                    ));
+                    return;
+                }
+            },
+            "EXIT" => {
+                let status = int(0);
+                if status > 255 {
+                    self.error(Diagnostic::at(
+                        &tok(0),
+                        t!(
+                            "an exit status is 0..255, found {}",
+                            "irteera-egoera bat 0..255 da, baina {} dago",
+                            status
+                        ),
+                    ));
+                    return;
+                }
+                Op::Exit {
+                    status: status as u8,
+                }
+            }
+            "GETLANG" => Op::GetLang { r: idx(0) },
+            "ARGC" => Op::ArgCount { r: idx(0) },
+            "ARGBYTE" => Op::ArgByte {
+                dst: idx(0),
+                arg: idx(1),
+                index: idx(2),
+            },
             other => unreachable!("{} aginduak ez du eraikitzailerik", other),
         };
         self.emit(op, line);

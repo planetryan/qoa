@@ -435,7 +435,17 @@ pub fn native(op: &Op) -> Native {
         | Op::Print { .. }
         | Op::Printf { .. }
         | Op::CharOut { .. }
-        | Op::Log { .. } => Native::Free,
+        | Op::Log { .. }
+        | Op::Load { .. }
+        | Op::Store { .. }
+        | Op::StoreText { .. }
+        | Op::GetByte { .. }
+        | Op::PutByte { .. }
+        | Op::Stream { .. }
+        | Op::Exit { .. }
+        | Op::GetLang { .. }
+        | Op::ArgCount { .. }
+        | Op::ArgByte { .. } => Native::Free,
     }
 }
 

@@ -150,6 +150,10 @@ Instructions marked *simulator only* read information a real device cannot see w
 | `SQRT dst src` | Square root. | SR |
 | `EXP dst src` | e to the power of the value. |  |
 | `LOG dst src` | Natural logarithm. | LN |
+| `SIN dst src` | Sine of an angle in radians. |  |
+| `COS dst src` | Cosine of an angle in radians. |  |
+| `TAN dst src` | Tangent of an angle in radians. |  |
+| `POW dst a b` | a to the power of b. |  |
 | `RAND reg` | A uniform random number in [0, 1). | RN |
 | `SEEDRNG seed` | Reseed the random number generator. Measurements use it too, so every shot then repeats the same outcomes. | SRNG |
 | `INPUT reg` | Read a number from standard input. | INP |
@@ -158,6 +162,20 @@ Instructions marked *simulator only* read information a real device cannot see w
 | `POP reg` | Pop the stack into a register. | POPREG |
 | `CHARLOAD reg char` | Load a character code into a register ("A" or 65). | CLOAD, CLD |
 | `PACKBITS dst bits...` | Read classical bits as a whole number into a register. The first bit listed is the lowest; bits never written count as 0 (as in OpenQASM). |  |
+
+## Memory, bytes and arguments
+
+| Instruction | Does | Aliases |
+|---|---|---|
+| `LOAD dst addr` | Read the memory cell whose address is in addr. Memory is cells 0, 1, 2, ... (up to 2^32 of them), each holding one number; a cell never written holds 0. | LD |
+| `STORE src addr` | Write src into the memory cell whose address is in addr. | ST |
+| `STORETEXT addr text` | Write the bytes of the text (UTF-8) into memory from the address in addr, one byte per cell, then a 0; addr then holds the address after the 0. | STEXT |
+| `GETC dst` | Read the next byte of standard input (0..255), or -1 at the end of the input. | GETBYTE |
+| `PUTC src` | Write one byte (0..255) to the output exactly as it is, for binary output. | PUTBYTE |
+| `STREAM stream` | Send the output that follows to standard output (1) or to standard error (2). |  |
+| `ARGC dst` | How many arguments the program was given after -- (qoa run prog.qx -- a b). |  |
+| `ARGBYTE dst arg index` | Byte number index of argument number arg (both counted from 0), or -1 past the end of the argument. |  |
+| `GETLANG dst` | 1 when QOA is speaking Basque (QOA_LANG=eu), 0 for English, so a program can print its messages in the user's language. |  |
 
 ## Control flow
 
@@ -175,6 +193,7 @@ Instructions marked *simulator only* read information a real device cannot see w
 | `LOOPSTART count` | Run the block up to the matching LOOPEND this many times (a number or a register). | LOOP, LSTART, LS |
 | `LOOPEND` | End of a LOOPSTART block. | ENDLOOP, LEND, LE |
 | `HALT` | Stop the program. | HLT, END |
+| `EXIT status` | Stop the program like HALT, with an exit status (0..255). The status of the first shot becomes the exit status of qoa run. |  |
 | `BARRIER [qubits...]` | Does nothing in simulation. Marks a layer boundary and is kept for OpenQASM round trips. | BR |
 
 ## Output
@@ -228,14 +247,12 @@ These were accepted by QOA 0.3 but did nothing, or had no defined meaning. Using
 | `CMP` | IFEQ, IFNE, IFGT and IFLT compare registers directly |
 | `JMPABS` | byte addresses no longer exist; jump to a label |
 | `CALLADDR` | byte addresses no longer exist; CALL a label |
-| `LOAD` | memory was never implemented; use the 32 registers and PUSH/POP |
-| `STORE` | memory was never implemented; use the 32 registers and PUSH/POP |
-| `LOADMEM` | memory was never implemented; use the 32 registers and PUSH/POP |
-| `STOREMEM` | memory was never implemented; use the 32 registers and PUSH/POP |
-| `LOADCLASSICAL` | memory was never implemented; use the 32 registers and PUSH/POP |
-| `STORECLASSICAL` | memory was never implemented; use the 32 registers and PUSH/POP |
-| `ALLOC` | memory was never implemented; use the 32 registers and PUSH/POP |
-| `FREE` | memory was never implemented; use the 32 registers and PUSH/POP |
+| `LOADMEM` | memory is now LOAD dst addr, with the address in a register |
+| `STOREMEM` | memory is now STORE src addr, with the address in a register |
+| `LOADCLASSICAL` | memory is now LOAD dst addr, with the address in a register |
+| `STORECLASSICAL` | memory is now STORE src addr, with the address in a register |
+| `ALLOC` | memory needs no allocation: LOAD and STORE use cells 0, 1, 2, ... directly |
+| `FREE` | memory needs no freeing: LOAD and STORE use cells 0, 1, 2, ... directly |
 | `BREAKPOINT` | use DUMPSTATE and DUMPREGS to look at a point in the program |
 | `EXITCODE` | use HALT |
 | `QUBITS` | use QINIT with the qubit count, e.g. QINIT 25 |

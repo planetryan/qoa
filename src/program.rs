@@ -205,6 +205,8 @@ pub enum BinOp {
     Xor,
     Shl,
     Shr,
+    // 0.4.3: a^b (formatu bitarraren 2. bertsioa)
+    Pow,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -213,6 +215,10 @@ pub enum UnOp {
     Exp,
     Log,
     Not,
+    // 0.4.3: trigonometria, radianetan (formatu bitarraren 2. bertsioa)
+    Sin,
+    Cos,
+    Tan,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -473,6 +479,51 @@ pub enum Op {
         q: u32,
         text: String,
     },
+
+    // ---- 0.4.3: memoria eta byte-sarrera/irteera (formatu bitarraren 2. bertsioa) ----
+    // memoria: 0, 1, 2, ... gelaxkak, bakoitzean zenbaki bat; idatzi gabeak 0 dira
+    Load {
+        dst: u32,
+        addr: u32,
+    },
+    Store {
+        src: u32,
+        addr: u32,
+    },
+    // testuaren byteak (utf-8) addr-en helbidetik aurrera, gelaxka bakoitzean bat, eta gero 0; addr 0aren ondora mugitzen da
+    StoreText {
+        addr: u32,
+        text: String,
+    },
+    // sarrera estandarraren hurrengo bytea (0..255), edo -1 amaieran
+    GetByte {
+        r: u32,
+    },
+    // byte bat irteerara, bere horretan
+    PutByte {
+        r: u32,
+    },
+    // hemendik aurrerako irteera: irteera estandarra (false) edo errore-irteera (true)
+    Stream {
+        stderr: bool,
+    },
+    // HALT bezala, irteera-egoera batekin
+    Exit {
+        status: u8,
+    },
+    // 1 QOA euskaraz ari bada, 0 ingelesez
+    GetLang {
+        r: u32,
+    },
+    // programari `--` ondoren emandako argumentuak
+    ArgCount {
+        r: u32,
+    },
+    ArgByte {
+        dst: u32,
+        arg: u32,
+        index: u32,
+    },
 }
 
 impl Op {
@@ -570,7 +621,36 @@ impl Op {
                 | Op::Printf { .. }
                 | Op::CharOut { .. }
                 | Op::Log { .. }
+                | Op::Load { .. }
+                | Op::Store { .. }
+                | Op::StoreText { .. }
+                | Op::GetByte { .. }
+                | Op::PutByte { .. }
+                | Op::Stream { .. }
+                | Op::Exit { .. }
+                | Op::GetLang { .. }
+                | Op::ArgCount { .. }
+                | Op::ArgByte { .. }
         )
+    }
+
+    // 0.4.2-k irakur ez ditzakeen eragiketak: hauek dituen programa formatuaren 2. bertsioan idazten da
+    pub fn needs_format_2(&self) -> bool {
+        match self {
+            Op::Bin { op, .. } => *op == BinOp::Pow,
+            Op::Un { op, .. } => matches!(op, UnOp::Sin | UnOp::Cos | UnOp::Tan),
+            Op::Load { .. }
+            | Op::Store { .. }
+            | Op::StoreText { .. }
+            | Op::GetByte { .. }
+            | Op::PutByte { .. }
+            | Op::Stream { .. }
+            | Op::Exit { .. }
+            | Op::GetLang { .. }
+            | Op::ArgCount { .. }
+            | Op::ArgByte { .. } => true,
+            _ => false,
+        }
     }
 
     pub fn is_control_flow(&self) -> bool {
@@ -651,6 +731,7 @@ impl Program {
                     | Op::Rand { .. }
                     | Op::Seed { .. }
                     | Op::Input { .. }
+                    | Op::GetByte { .. }
                     | Op::Time { .. }
                     | Op::DisplaceReg { .. }
                     | Op::SqueezeReg { .. }
@@ -662,7 +743,10 @@ impl Program {
             if op.touches_quantum_state() && !op.is_diagonal_readout() {
                 return None;
             }
-            if matches!(op, Op::Rand { .. } | Op::Seed { .. } | Op::Input { .. }) {
+            if matches!(
+                op,
+                Op::Rand { .. } | Op::Seed { .. } | Op::Input { .. } | Op::GetByte { .. }
+            ) {
                 return None;
             }
         }
@@ -678,12 +762,23 @@ impl Program {
     // ---- formatu bitarra ----
 
     pub const MAGIC: &'static [u8; 4] = b"QOAX";
-    pub const FORMAT_VERSION: u16 = 1;
+    // irakur daitekeen bertsio berriena. 1. bertsioa 2.aren azpimultzoa da: 0.4.3-ko eragiketak (memoria,
+    // byte-sarrera/irteera, SIN/COS/TAN/POW) erabiltzen ez dituen programa 1. bertsioan idazten da, QOA
+    // zaharragoek ere irakur dezaten
+    pub const FORMAT_VERSION: u16 = 2;
+
+    pub fn format_version(&self) -> u16 {
+        if self.ops.iter().any(Op::needs_format_2) {
+            2
+        } else {
+            1
+        }
+    }
 
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut out = Vec::new();
         out.extend_from_slice(Self::MAGIC);
-        out.extend_from_slice(&Self::FORMAT_VERSION.to_le_bytes());
+        out.extend_from_slice(&self.format_version().to_le_bytes());
         out.extend(bincode::serialize(self).expect("programa beti serializatzen da"));
         out
     }
@@ -709,15 +804,23 @@ impl Program {
             ));
         }
         let version = u16::from_le_bytes([data[4], data[5]]);
-        if version != Self::FORMAT_VERSION {
+        if version == 0 || version > Self::FORMAT_VERSION {
             return Err(t!(
-                "binary format version {} is not supported by this QOA (it reads version {})",
-                "{}. bertsioko formatu bitarra ez du QOA honek onartzen ({}. bertsioa irakurtzen du)",
+                "binary format version {} is not supported by this QOA (it reads versions 1 to {})",
+                "{}. bertsioko formatu bitarra ez du QOA honek onartzen (1. bertsiotik {}.era irakurtzen ditu)",
                 version,
                 Self::FORMAT_VERSION
             ));
         }
-        bincode::deserialize(&data[6..])
-            .map_err(|e| t!("corrupt QOA binary: {}", "QOA bitar hondatua: {}", e))
+        let p: Program = bincode::deserialize(&data[6..])
+            .map_err(|e| t!("corrupt QOA binary: {}", "QOA bitar hondatua: {}", e))?;
+        if version < p.format_version() {
+            return Err(t!(
+                "corrupt QOA binary: version {} cannot hold QOA 0.4.3 instructions",
+                "QOA bitar hondatua: {}. bertsioak ezin ditu QOA 0.4.3-ko aginduak izan",
+                version
+            ));
+        }
+        Ok(p)
     }
 }

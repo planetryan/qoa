@@ -46,6 +46,10 @@ pub struct RunConfig {
     pub team: Option<Arc<dyn Team>>,
     // `--distribute`: egoera bakarra taldeko prozesuen artean banatuta (src/dist.rs), shot-ak denek batera
     pub distribute: bool,
+    // programaren argumentuak (`qoa run prog.qx -- a b`), ARGC eta ARGBYTE-rentzat
+    pub args: Vec<String>,
+    // sarrera estandarraren ordez byte hauek (INPUT eta GETC), adib. `qoa compile --assembler`-ek
+    pub input: Option<Arc<Vec<u8>>>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize)]
@@ -69,6 +73,8 @@ impl Default for RunConfig {
             precision: Precision::Double,
             team: None,
             distribute: false,
+            args: Vec::new(),
+            input: None,
         }
     }
 }
@@ -104,6 +110,8 @@ pub struct RunOutput {
     pub steps: u64,
     // |1 - ‖ψ‖²| lehen shot-aren amaieran, egoeraren doitasun osoan (128 bitekoa quad moduan)
     pub norm_error: f64,
+    // lehen shot-a EXIT batekin amaitu bada, haren egoera
+    pub exit_status: Option<u8>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -204,7 +212,20 @@ struct Machine<'a> {
     captured: Option<Vec<f64>>,
     // GPUak huts egin badu: exekuzioa hurrengo urratsean errore honekin gelditzen da
     gpu_error: Option<String>,
+    // memoria-gelaxkak (LOAD/STORE); idatzi gabeak 0
+    memory: Vec<f64>,
+    // STREAM 2: irteera errore-irteerara
+    to_err: bool,
+    // shot honen irteera erakusten da (lehen shot-a, 0. rank-ean); errore-irteerak ere honi jarraitzen dio
+    show: bool,
+    // EXIT-en egoera
+    exit: Option<u8>,
+    // `cfg.input`-en hurrengo bytea
+    input_pos: usize,
 }
+
+// memoria-gelaxken kopuru handiena: 2^32 (32 GiB)
+const MAX_CELLS: f64 = 4_294_967_296.0;
 
 pub fn run(
     prog: &Program,
@@ -391,6 +412,7 @@ pub fn run(
         shot_rng(cfg.seed, 0),
     )?;
     first.capture_at = split;
+    first.show = rank == 0;
     let first_result = first.run();
     if let Some(t) = team
         && spread_inputs
@@ -409,6 +431,7 @@ pub fn run(
     let captured = first.captured.take();
     let regs = first.regs;
     let captured_totals = first.captured_totals.take();
+    let exit_status = first.exit;
     let local_bits = first.dist.as_ref().map_or(0, |d| d.local_bits());
     let (final_state, norm_error) = match (first.quad.take(), first.dist.take()) {
         (Some(q), _) => (q.to_state(), q.norm_error()),
@@ -609,6 +632,7 @@ pub fn run(
         leakage,
         steps,
         norm_error,
+        exit_status,
     })
 }
 
@@ -791,6 +815,11 @@ impl<'a> Machine<'a> {
             capture_at: None,
             captured: None,
             gpu_error: None,
+            memory: Vec::new(),
+            to_err: false,
+            show: false,
+            exit: None,
+            input_pos: 0,
         })
     }
 
@@ -1147,7 +1176,140 @@ impl<'a> Machine<'a> {
     }
 
     fn print(&mut self, s: &str) {
-        let _ = self.out.write_all(s.as_bytes());
+        self.write_bytes(s.as_bytes());
+    }
+
+    // irteera uneko korrontera (STREAM): irteera estandarra, edo errore-irteera shot hau erakusten bada
+    fn write_bytes(&mut self, b: &[u8]) {
+        if self.to_err {
+            if self.show {
+                let _ = std::io::stderr().write_all(b);
+            }
+        } else {
+            let _ = self.out.write_all(b);
+        }
+    }
+
+    // sarrerako hurrengo balioa: INPUT-entzat lerro bateko zenbakia, GETC-rentzat byte bat (-1 amaieran).
+    // lehen shot-ak irakurri eta gordetzen ditu; besteek ordena berean errepikatzen dituzte
+    fn next_input(&mut self, pc: usize, byte: bool) -> Result<f64, RuntimeError> {
+        // egoera banatuan, 0. prozesuak irakurtzen du eta besteei bidaltzen die unean bertan
+        let distributed = self.dist.is_some();
+        let team = self.cfg.team.clone();
+        let v = match &mut self.inputs {
+            Inputs::Record(list) if distributed && team.as_ref().is_some_and(|t| t.rank() != 0) => {
+                let t = team.as_ref().unwrap();
+                let v = f64s(&t.broadcast(Vec::new()))
+                    .first()
+                    .copied()
+                    .unwrap_or(0.0);
+                list.push(v);
+                v
+            }
+            Inputs::Record(_) => {
+                let _ = self.out.flush();
+                let v = if byte {
+                    self.read_byte()
+                } else {
+                    self.read_number(pc)?
+                };
+                if let Inputs::Record(list) = &mut self.inputs {
+                    list.push(v);
+                }
+                if distributed && let Some(t) = &team {
+                    t.broadcast(v.to_le_bytes().to_vec());
+                }
+                v
+            }
+            Inputs::Replay(list, i) => {
+                let v = list
+                    .get(*i)
+                    .copied()
+                    .unwrap_or(if byte { -1.0 } else { 0.0 });
+                *i += 1;
+                v
+            }
+        };
+        Ok(v)
+    }
+
+    fn read_byte(&mut self) -> f64 {
+        if let Some(buf) = &self.cfg.input {
+            return match buf.get(self.input_pos) {
+                Some(&b) => {
+                    self.input_pos += 1;
+                    b as f64
+                }
+                None => -1.0,
+            };
+        }
+        let mut b = [0u8; 1];
+        loop {
+            match std::io::Read::read(&mut std::io::stdin().lock(), &mut b) {
+                Ok(1) => return b[0] as f64,
+                Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+                _ => return -1.0,
+            }
+        }
+    }
+
+    fn read_number(&mut self, pc: usize) -> Result<f64, RuntimeError> {
+        let mut line = String::new();
+        if let Some(buf) = &self.cfg.input {
+            let rest = &buf[self.input_pos.min(buf.len())..];
+            let n = rest
+                .iter()
+                .position(|&b| b == b'\n')
+                .map_or(rest.len(), |i| i + 1);
+            line = String::from_utf8_lossy(&rest[..n]).into_owned();
+            self.input_pos += n;
+        } else {
+            std::io::stdin().lock().read_line(&mut line).ok();
+        }
+        line.trim().parse::<f64>().map_err(|_| RuntimeError {
+            line: self.prog.line_of(pc),
+            message: t!(
+                "INPUT expected a number, got '{}'",
+                "INPUT-ek zenbaki bat espero zuen, baina '{}' jaso du",
+                line.trim()
+            ),
+        })
+    }
+
+    // memoria-gelaxka baten helbidea r erregistrotik: zenbaki oso bat, 0 eta 2^32 - 1 artean
+    fn cell(&self, pc: usize, r: u32) -> Result<usize, RuntimeError> {
+        let a = self.regs[r as usize];
+        if a >= 0.0 && a.fract() == 0.0 && a < MAX_CELLS {
+            Ok(a as usize)
+        } else {
+            Err(self.err(
+                pc,
+                t!(
+                    "R{} holds {}, which is not a memory address (a whole number from 0 to 2^32 - 1)",
+                    "R{}-k {} du, eta hori ez da memoria-helbide bat (0 eta 2^32 - 1 arteko zenbaki osoa)",
+                    r,
+                    fmt_value(a)
+                ),
+            ))
+        }
+    }
+
+    // memoria gutxienez `len` gelaxkara handitu, memoria-mugaren barruan
+    fn grow_memory(&mut self, pc: usize, len: usize) -> Result<(), RuntimeError> {
+        if len <= self.memory.len() {
+            return Ok(());
+        }
+        let want = len
+            .max(self.memory.len() * 2)
+            .max(1024)
+            .min(MAX_CELLS as usize);
+        crate::state::check_memory(
+            &t!("{} memory cells", "{} memoria-gelaxka", want),
+            want as u128 * 8,
+        )
+        .map_err(|m| self.err(pc, m))?;
+        self.memory.resize(want, 0.0);
+        Ok(())
     }
 
     fn value_of(&self, pc: usize, src: Source) -> Result<f64, RuntimeError> {
@@ -1482,6 +1644,7 @@ impl<'a> Machine<'a> {
                     BinOp::Xor => ((x as i64) ^ (y as i64)) as f64,
                     BinOp::Shl => ((x as i64).wrapping_shl(y.clamp(0.0, 63.0) as u32)) as f64,
                     BinOp::Shr => ((x as i64).wrapping_shr(y.clamp(0.0, 63.0) as u32)) as f64,
+                    BinOp::Pow => x.powf(y),
                 };
                 self.regs[*dst as usize] = v;
             }
@@ -1502,49 +1665,15 @@ impl<'a> Machine<'a> {
                         x.ln()
                     }
                     UnOp::Not => (!(x as i64)) as f64,
+                    UnOp::Sin => x.sin(),
+                    UnOp::Cos => x.cos(),
+                    UnOp::Tan => x.tan(),
                 };
                 self.regs[*dst as usize] = v;
             }
             Op::Rand { r } => self.regs[*r as usize] = self.uniform(),
             Op::Seed { seed } => self.rng = StdRng::seed_from_u64(*seed),
-            Op::Input { r } => {
-                // egoera banatuan, 0. prozesuak irakurtzen du eta besteei bidaltzen die unean bertan
-                let distributed = self.dist.is_some();
-                let team = self.cfg.team.clone();
-                let v = match &mut self.inputs {
-                    Inputs::Record(list)
-                        if distributed && team.as_ref().is_some_and(|t| t.rank() != 0) =>
-                    {
-                        let t = team.as_ref().unwrap();
-                        let v = f64s(&t.broadcast(Vec::new()))
-                            .first()
-                            .copied()
-                            .unwrap_or(0.0);
-                        list.push(v);
-                        v
-                    }
-                    Inputs::Record(list) => {
-                        let mut line = String::new();
-                        let _ = self.out.flush();
-                        std::io::stdin().lock().read_line(&mut line).ok();
-                        let v = line.trim().parse::<f64>().map_err(|_| RuntimeError {
-                            line: self.prog.line_of(pc),
-                            message: t!("INPUT expected a number, got '{}'", "INPUT-ek zenbaki bat espero zuen, baina '{}' jaso du", line.trim()),
-                        })?;
-                        list.push(v);
-                        if distributed && let Some(t) = &team {
-                            t.broadcast(v.to_le_bytes().to_vec());
-                        }
-                        v
-                    }
-                    Inputs::Replay(list, i) => {
-                        let v = list.get(*i).copied().unwrap_or(0.0);
-                        *i += 1;
-                        v
-                    }
-                };
-                self.regs[*r as usize] = v;
-            }
+            Op::Input { r } => self.regs[*r as usize] = self.next_input(pc, false)?,
             Op::Time { r } => {
                 self.regs[*r as usize] = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
@@ -1660,6 +1789,80 @@ impl<'a> Machine<'a> {
                 }
             }
             Op::Log { q, text } => self.print(&format!("[q{}] {}\n", q, text)),
+            Op::Load { dst, addr } => {
+                let a = self.cell(pc, *addr)?;
+                self.regs[*dst as usize] = self.memory.get(a).copied().unwrap_or(0.0);
+            }
+            Op::Store { src, addr } => {
+                let a = self.cell(pc, *addr)?;
+                self.grow_memory(pc, a + 1)?;
+                self.memory[a] = self.regs[*src as usize];
+            }
+            Op::StoreText { addr, text } => {
+                let a = self.cell(pc, *addr)?;
+                let end = a + text.len() + 1;
+                if end as f64 > MAX_CELLS {
+                    return Err(self.err(pc, t!(
+                        "the text does not fit below memory address 2^32",
+                        "testua ez da sartzen 2^32 memoria-helbidearen azpian"
+                    )));
+                }
+                self.grow_memory(pc, end)?;
+                for (k, b) in text.bytes().enumerate() {
+                    self.memory[a + k] = b as f64;
+                }
+                self.memory[end - 1] = 0.0;
+                self.regs[*addr as usize] = end as f64;
+            }
+            Op::GetByte { r } => self.regs[*r as usize] = self.next_input(pc, true)?,
+            Op::PutByte { r } => {
+                let v = self.regs[*r as usize];
+                if !(0.0..=255.0).contains(&v) || v.fract() != 0.0 {
+                    return Err(self.err(pc, t!(
+                        "R{} holds {}, which is not a byte (0..255)",
+                        "R{}-k {} du, eta hori ez da byte bat (0..255)",
+                        r,
+                        fmt_value(v)
+                    )));
+                }
+                self.write_bytes(&[v as u8]);
+            }
+            Op::Stream { stderr } => {
+                // ordena gordetzeko: irteera estandarra hustu errore-irteerara aldatu aurretik
+                let _ = self.out.flush();
+                self.to_err = *stderr;
+            }
+            Op::Exit { status } => {
+                self.exit = Some(*status);
+                return Ok(Flow::Stop);
+            }
+            Op::GetLang { r } => {
+                self.regs[*r as usize] = if crate::lang::is_eu() { 1.0 } else { 0.0 }
+            }
+            Op::ArgCount { r } => self.regs[*r as usize] = self.cfg.args.len() as f64,
+            Op::ArgByte { dst, arg, index } => {
+                let (k, i) = (self.regs[*arg as usize], self.regs[*index as usize]);
+                let n = self.cfg.args.len();
+                if !(k >= 0.0 && k.fract() == 0.0 && k < n as f64) {
+                    return Err(self.err(pc, t!(
+                        "R{} holds {}, but the program has {} argument(s), counted from 0",
+                        "R{}-k {} du, baina programak {} argumentu ditu, 0tik zenbatuta",
+                        arg,
+                        fmt_value(k),
+                        n
+                    )));
+                }
+                if !(i >= 0.0 && i.fract() == 0.0) {
+                    return Err(self.err(pc, t!(
+                        "R{} holds {}, which is not a byte position (0, 1, 2, ...)",
+                        "R{}-k {} du, eta hori ez da byte-posizio bat (0, 1, 2, ...)",
+                        index,
+                        fmt_value(i)
+                    )));
+                }
+                let bytes = self.cfg.args[k as usize].as_bytes();
+                self.regs[*dst as usize] = bytes.get(i as usize).map_or(-1.0, |&b| b as f64);
+            }
         }
         Ok(Flow::Next)
     }

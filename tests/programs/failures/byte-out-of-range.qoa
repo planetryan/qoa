@@ -1,0 +1,4 @@
+; nahita huts egiten duen proba
+; expect-error: R0 holds 256, which is not a byte (0..255)
+REGSET R0 256
+PUTC R0

@@ -1,0 +1,33 @@
+; memoria: LOAD, STORE eta STORETEXT; idatzi gabeko gelaxkak 0 dira
+; expect-output: sum=55 unwritten=0 text=81,79,65,0 next=104
+REGSET R1 1
+REGSET R3 10
+REGSET R8 1
+fill:
+STORE R1 R1
+ADD R1 R1 R8
+IFGT R1 R3 summed
+JUMP fill
+summed:
+REGSET R1 1
+REGSET R4 0
+add:
+LOAD R5 R1
+ADD R4 R4 R5
+ADD R1 R1 R8
+IFGT R1 R3 done
+JUMP add
+done:
+REGSET R6 5000
+LOAD R7 R6
+REGSET R9 100
+STORETEXT R9 "QOA"
+REGSET R10 100
+LOAD R11 R10
+REGSET R10 101
+LOAD R12 R10
+REGSET R10 102
+LOAD R13 R10
+REGSET R10 103
+LOAD R14 R10
+PRINTF "sum={} unwritten={} text={},{},{},{} next={}\n" R4 R7 R11 R12 R13 R14 R9

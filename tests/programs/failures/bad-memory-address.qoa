@@ -1,0 +1,4 @@
+; nahita huts egiten duen proba
+; expect-error: R1 holds -1, which is not a memory address
+REGSET R1 -1
+LOAD R0 R1

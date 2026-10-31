@@ -141,6 +141,16 @@ enum Command {
             "--mpi-rekin: egoera bakar bat prozesuen artean banatu (haien kopurua bi-ren berretura) bakoitzari kopia bat eman ordez, nodo baten memoria baino handiagoak diren egoeretarako. qubit-programak bakarrik"
         ))]
         distribute: bool,
+        #[arg(short, long, conflicts_with_all = ["json", "state"], help = ts!(
+            "print only what the program itself writes, byte for byte, with no report; qoa exits with the program's EXIT status. For programs used as tools, like an assembler",
+            "programak berak idazten duena bakarrik inprimatu, bytez byte, txostenik gabe; qoa programaren EXIT egoerarekin amaitzen da. tresna gisa erabiltzen diren programetarako, mihiztatzaile bat adibidez"
+        ))]
+        quiet: bool,
+        #[arg(last = true, value_name = "ARGS", help = ts!(
+            "arguments for the program, after --; it reads them with ARGC and ARGBYTE",
+            "programarentzako argumentuak, -- ondoren; ARGC eta ARGBYTE-rekin irakurtzen ditu"
+        ))]
+        args: Vec<String>,
     },
     #[command(about = ts!("Assemble a program and report what it needs, without running it", "Programa bat mihiztatu eta zer behar duen esan, exekutatu gabe"))]
     Check {
@@ -153,6 +163,11 @@ enum Command {
         file: PathBuf,
         #[arg(short, long, help = ts!("output file (default: same name with .qx)", "irteera-fitxategia (lehenetsia: izen bera .qx-rekin)"))]
         output: Option<PathBuf>,
+        #[arg(long, value_name = "ASSEMBLER", help = ts!(
+            "assemble with this QOA program instead of the built-in assembler, for example tools/asm.qoa (QOA's assembler written in QOA). It runs on the QOA machine, reads the source on its input, gets the file name as its argument and writes the .qx",
+            "mihiztatzaile integratuaren ordez QOA programa honekin mihiztatu, adibidez tools/asm.qoa (QOAn idatzitako QOA-ren mihiztatzailea). QOA makinan exekutatzen da, iturburua sarreran irakurtzen du, fitxategi-izena argumentu gisa jasotzen du eta .qx idazten du"
+        ))]
+        assembler: Option<PathBuf>,
     },
     #[command(about = ts!("Convert a program to another form: glyph, OpenQASM 2.0, IonQ json, canonical QOA, a listing, json or a dot graph", "Programa bat beste forma batera bihurtu: glifoa, OpenQASM 2.0, IonQ json, QOA kanonikoa, zerrenda, json edo dot grafoa"))]
     Export {
@@ -420,6 +435,9 @@ const CLAP_EU: &[(&str, &str)] = &[
     (" as a value, use ", " balio gisa pasatzeko, erabili "),
 ];
 
+// programaren EXIT egoera (`qoa run`), qoa bera amaitzean itzultzeko
+static EXIT_STATUS: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+
 fn main() -> ExitCode {
     let cli = match Cli::try_parse() {
         Ok(cli) => cli,
@@ -473,6 +491,8 @@ fn main() -> ExitCode {
             precision,
             mpi,
             distribute,
+            quiet,
+            args,
         } => cmd_run(
             &file,
             shots,
@@ -496,9 +516,15 @@ fn main() -> ExitCode {
             },
             mpi,
             distribute,
+            quiet,
+            args,
         ),
         Command::Check { file } => cmd_check(&file),
-        Command::Compile { file, output } => cmd_compile(&file, output),
+        Command::Compile {
+            file,
+            output,
+            assembler,
+        } => cmd_compile(&file, output, assembler.as_deref()),
         Command::Export {
             file,
             to,
@@ -592,15 +618,20 @@ fn main() -> ExitCode {
         }
     };
     match result {
-        Ok(()) => ExitCode::SUCCESS,
+        Ok(()) => ExitCode::from(EXIT_STATUS.load(std::sync::atomic::Ordering::Relaxed)),
         Err(message) => {
-            // mihiztatzailearen erroreek beren formatua dute; besteei aurrizkia jarri
-            if message.starts_with(ts!("error:", "errorea:")) {
+            // mihiztatzailearen erroreek beren formatua dute; besteei aurrizkia jarri. mezu hutsa: programak
+            // (`--assembler`) bere erroreak jada inprimatu ditu, eta haren EXIT egoera itzultzen da
+            if message.is_empty() {
+            } else if message.starts_with(ts!("error:", "errorea:")) {
                 eprint!("{}", message);
             } else {
                 eprintln!("{} {}", ts!("error:", "errorea:"), message);
             }
-            ExitCode::FAILURE
+            match EXIT_STATUS.load(std::sync::atomic::Ordering::Relaxed) {
+                0 => ExitCode::FAILURE,
+                status => ExitCode::from(status),
+            }
         }
     }
 }
@@ -680,6 +711,8 @@ fn cmd_run(
     precision: qoa::vm::Precision,
     mpi: bool,
     distribute: bool,
+    quiet: bool,
+    args: Vec<String>,
 ) -> Result<(), String> {
     let team = join_team(mpi)?;
     let rank = team.as_ref().map_or(0, |t| t.rank());
@@ -710,7 +743,24 @@ fn cmd_run(
         precision,
         team: team.clone(),
         distribute,
+        args,
+        input: None,
     };
+    if quiet {
+        // programaren irteera bakarrik, bufferrean (byte bakoitza idazketa bat ez izateko)
+        let mut out = std::io::BufWriter::new(std::io::stdout().lock());
+        let output = vm::run(&program, &config, &mut out);
+        std::io::Write::flush(&mut out).map_err(|e| e.to_string())?;
+        if rank != 0 {
+            return Ok(());
+        }
+        let output = output.map_err(|e| format!("{}: {}", file.display(), e))?;
+        EXIT_STATUS.store(
+            output.exit_status.unwrap_or(0),
+            std::sync::atomic::Ordering::Relaxed,
+        );
+        return Ok(());
+    }
     let start = Instant::now();
     // json moduan programaren irteera bildu egiten da; testu moduan zuzenean ateratzen da
     let mut captured: Vec<u8> = Vec::new();
@@ -754,6 +804,10 @@ fn cmd_run(
         }
         print!("{}", report::render(&rep, &Style::detect()));
     }
+    EXIT_STATUS.store(
+        output.exit_status.unwrap_or(0),
+        std::sync::atomic::Ordering::Relaxed,
+    );
     Ok(())
 }
 
@@ -940,10 +994,20 @@ fn cmd_check(file: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn cmd_compile(file: &Path, output: Option<PathBuf>) -> Result<(), String> {
-    let p = load(file)?;
+fn cmd_compile(
+    file: &Path,
+    output: Option<PathBuf>,
+    assembler: Option<&Path>,
+) -> Result<(), String> {
+    let (p, bytes) = match assembler {
+        None => {
+            let p = load(file)?;
+            let bytes = p.to_bytes();
+            (p, bytes)
+        }
+        Some(a) => assemble_with(a, file)?,
+    };
     let out = output.unwrap_or_else(|| file.with_extension("qx"));
-    let bytes = p.to_bytes();
     std::fs::write(&out, &bytes).map_err(|e| {
         t!(
             "cannot write {}: {}",
@@ -963,6 +1027,44 @@ fn cmd_compile(file: &Path, output: Option<PathBuf>) -> Result<(), String> {
         )
     );
     Ok(())
+}
+
+// QOA programa batekin mihiztatu (adib. tools/asm.qoa): iturburua sarrera gisa, fitxategi-izena argumentu
+// gisa, eta programak idatzitako byteak .qx-a dira. haren mezuak errore-irteerara doaz zuzenean
+fn assemble_with(assembler: &Path, file: &Path) -> Result<(Program, Vec<u8>), String> {
+    let tool = load(assembler)?;
+    let name = file.display().to_string();
+    let source = std::fs::read(file)
+        .map_err(|e| t!("cannot read {}: {}", "ezin da {} irakurri: {}", name, e))?;
+    let config = RunConfig {
+        shots: 1,
+        seed: 0,
+        max_steps: u64::MAX,
+        args: vec![name.clone()],
+        input: Some(std::sync::Arc::new(source)),
+        ..RunConfig::default()
+    };
+    let mut bytes = Vec::new();
+    let output = vm::run(&tool, &config, &mut bytes)
+        .map_err(|e| format!("{}: {}", assembler.display(), e))?;
+    match output.exit_status.unwrap_or(0) {
+        0 => {}
+        status => {
+            // mihiztatzaileak bere erroreak jada inprimatu ditu
+            EXIT_STATUS.store(status, std::sync::atomic::Ordering::Relaxed);
+            return Err(String::new());
+        }
+    }
+    let p = Program::from_bytes(&bytes).map_err(|e| {
+        t!(
+            "{} did not write a QOA binary for {}: {}",
+            "{}-k ez du QOA bitarrik idatzi {}-rentzat: {}",
+            assembler.display(),
+            name,
+            e
+        )
+    })?;
+    Ok((p, bytes))
 }
 
 fn write_or_print(output: Option<PathBuf>, text: &str) -> Result<(), String> {

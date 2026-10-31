@@ -150,6 +150,10 @@ Mnemonikoetan berdin dio maiuskula edo minuskula. Ezizen bakoitzak bere izen nag
 | `SQRT dst src` | Erro karratua. | SR |
 | `EXP dst src` | e balioaren berretzailera. |  |
 | `LOG dst src` | Logaritmo nepertarra. | LN |
+| `SIN dst src` | Angelu baten sinua, radianetan. |  |
+| `COS dst src` | Angelu baten kosinua, radianetan. |  |
+| `TAN dst src` | Angelu baten tangentea, radianetan. |  |
+| `POW dst a b` | a b-ren berretzailera. |  |
 | `RAND erregistroa` | Ausazko zenbaki uniforme bat [0, 1) tartean. | RN |
 | `SEEDRNG hazia` | Ausazko zenbaki-sorgailuari hazi berria eman. Neurketek ere hura erabiltzen dute, beraz shot guztiek emaitza berak errepikatuko dituzte. | SRNG |
 | `INPUT erregistroa` | Zenbaki bat irakurri sarrera estandarretik. | INP |
@@ -158,6 +162,20 @@ Mnemonikoetan berdin dio maiuskula edo minuskula. Ezizen bakoitzak bere izen nag
 | `POP erregistroa` | Pilatik atera erregistro batera. | POPREG |
 | `CHARLOAD erregistroa karakterea` | Karaktere-kode bat erregistro batean kargatu ("A" edo 65). | CLOAD, CLD |
 | `PACKBITS dst bitak...` | Bit klasikoak zenbaki oso gisa irakurri erregistro batera. Zerrendako lehen bita baxuena da; inoiz idatzi gabeko bitak 0 dira (OpenQASM-en bezala). |  |
+
+## Memoria, byteak eta argumentuak
+
+| Agindua | Zer egiten du | Ezizenak |
+|---|---|---|
+| `LOAD dst addr` | addr-ek duen helbideko memoria-gelaxka irakurri. Memoria 0, 1, 2, ... gelaxkak dira (2^32 arte), bakoitzean zenbaki bat; inoiz idatzi gabeko gelaxka batek 0 du. | LD |
+| `STORE src addr` | src addr-ek duen helbideko memoria-gelaxkan idatzi. | ST |
+| `STORETEXT addr testua` | Testuaren byteak (UTF-8) memorian idatzi addr-eko helbidetik aurrera, gelaxka bakoitzean byte bat, eta gero 0 bat; ondoren addr-ek 0aren ondorengo helbidea du. | STEXT |
+| `GETC dst` | Sarrera estandarraren hurrengo bytea irakurri (0..255), edo -1 sarreraren amaieran. | GETBYTE |
+| `PUTC src` | Byte bat (0..255) irteerara idatzi bere horretan, irteera bitarrerako. | PUTBYTE |
+| `STREAM stream` | Hurrengo irteera irteera estandarrera (1) edo errore-irteerara (2) bidali. |  |
+| `ARGC dst` | Programari -- ondoren zenbat argumentu eman zaizkion (qoa run prog.qx -- a b). |  |
+| `ARGBYTE dst arg index` | arg zenbakidun argumentuaren index zenbakidun bytea (biak 0tik zenbatuta), edo -1 argumentuaren amaieratik aurrera. |  |
+| `GETLANG dst` | 1 QOA euskaraz ari bada (QOA_LANG=eu), 0 ingelesez, programak bere mezuak erabiltzailearen hizkuntzan inprimatu ditzan. |  |
 
 ## Kontrol-fluxua
 
@@ -175,6 +193,7 @@ Mnemonikoetan berdin dio maiuskula edo minuskula. Ezizen bakoitzak bere izen nag
 | `LOOPSTART kopurua` | Dagokion LOOPEND-erainoko blokea hainbat aldiz exekutatu (zenbaki bat edo erregistro bat). | LOOP, LSTART, LS |
 | `LOOPEND` | LOOPSTART bloke baten amaiera. | ENDLOOP, LEND, LE |
 | `HALT` | Programa gelditu. | HLT, END |
+| `EXIT status` | Programa gelditu HALT bezala, irteera-egoera batekin (0..255). Lehen shot-aren egoera qoa run-en irteera-egoera bihurtzen da. |  |
 | `BARRIER [qubitak...]` | Simulazioan ez du ezer egiten. Geruza-muga bat markatzen du eta OpenQASM-erako joan-etorrietan gordetzen da. | BR |
 
 ## Irteera
@@ -228,14 +247,12 @@ QOA 0.3-k onartzen zituen, baina ez zuten ezer egiten edo ez zuten esanahi zehat
 | `CMP` | IFEQ, IFNE, IFGT eta IFLT aginduek erregistroak zuzenean konparatzen dituzte |
 | `JMPABS` | byte-helbideak jada ez daude; jauzi etiketa batera |
 | `CALLADDR` | byte-helbideak jada ez daude; erabili CALL etiketa batekin |
-| `LOAD` | memoria ez zen inoiz inplementatu; erabili 32 erregistroak eta PUSH/POP |
-| `STORE` | memoria ez zen inoiz inplementatu; erabili 32 erregistroak eta PUSH/POP |
-| `LOADMEM` | memoria ez zen inoiz inplementatu; erabili 32 erregistroak eta PUSH/POP |
-| `STOREMEM` | memoria ez zen inoiz inplementatu; erabili 32 erregistroak eta PUSH/POP |
-| `LOADCLASSICAL` | memoria ez zen inoiz inplementatu; erabili 32 erregistroak eta PUSH/POP |
-| `STORECLASSICAL` | memoria ez zen inoiz inplementatu; erabili 32 erregistroak eta PUSH/POP |
-| `ALLOC` | memoria ez zen inoiz inplementatu; erabili 32 erregistroak eta PUSH/POP |
-| `FREE` | memoria ez zen inoiz inplementatu; erabili 32 erregistroak eta PUSH/POP |
+| `LOADMEM` | memoria orain LOAD helmuga helbidea da, helbidea erregistro batean |
+| `STOREMEM` | memoria orain STORE iturria helbidea da, helbidea erregistro batean |
+| `LOADCLASSICAL` | memoria orain LOAD helmuga helbidea da, helbidea erregistro batean |
+| `STORECLASSICAL` | memoria orain STORE iturria helbidea da, helbidea erregistro batean |
+| `ALLOC` | memoriak ez du esleipenik behar: LOAD eta STORE 0, 1, 2, ... gelaxkak zuzenean erabiltzen dituzte |
+| `FREE` | memoria ez da askatu behar: LOAD eta STORE 0, 1, 2, ... gelaxkak zuzenean erabiltzen dituzte |
 | `BREAKPOINT` | erabili DUMPSTATE eta DUMPREGS programaren puntu bat ikusteko |
 | `EXITCODE` | erabili HALT |
 | `QUBITS` | erabili QINIT qubit-kopuruarekin, adib. QINIT 25 |

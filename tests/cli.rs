@@ -162,6 +162,82 @@ fn old_binaries_are_refused_with_an_explanation() {
 }
 
 #[test]
+fn quiet_runs_are_tools_with_input_arguments_and_exit_status() {
+    // GETC sarrera estandarretik, ARGC/ARGBYTE argumentuak, STREAM 2 errore-irteerara eta EXIT egoera
+    let prog = scratch("tool.qoa");
+    std::fs::write(
+        &prog,
+        "REGSET R1 -1\nnext:\nGETC R0\nIFEQ R0 R1 args\nPUTC R0\nJUMP next\nargs:\nARGC R2\n\
+         REGSET R3 0\nREGSET R4 1\nARGBYTE R5 R4 R3\nPRINTF \"|{} {}\" R2 R5\nSTREAM 2\n\
+         PRINT \"to stderr\"\nSTREAM 1\nEXIT 3\n",
+    )
+    .unwrap();
+    let mut child = Command::new(env!("CARGO_BIN_EXE_qoa"))
+        .args(["run", prog.to_str().unwrap(), "--quiet", "--", "ab", "cd"])
+        .env("QOA_LANG", "en")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    use std::io::Write;
+    child.stdin.take().unwrap().write_all(b"in\xffput").unwrap();
+    let o = child.wait_with_output().unwrap();
+    assert_eq!(o.status.code(), Some(3), "{}", stderr(&o));
+    assert_eq!(o.stdout, b"in\xffput|2 99");
+    assert_eq!(stderr(&o), "to stderr");
+    // txostenarekin ere EXIT egoera itzultzen da
+    let o = qoa("en", &["run", prog.to_str().unwrap(), "--", "x", "y"]);
+    assert_eq!(o.status.code(), Some(3));
+    assert!(stdout(&o).contains("shots"), "{}", stdout(&o));
+}
+
+#[test]
+fn new_instructions_need_format_2_and_others_stay_readable_by_0_4_2() {
+    let plain = scratch("plain.qx");
+    let o = qoa(
+        "en",
+        &[
+            "compile",
+            "examples/bell.qoa",
+            "-o",
+            plain.to_str().unwrap(),
+        ],
+    );
+    assert!(o.status.success(), "{}", stderr(&o));
+    assert_eq!(&std::fs::read(&plain).unwrap()[..6], b"QOAX\x01\x00");
+    let src = scratch("v2.qoa");
+    std::fs::write(&src, "REGSET R1 2\nPOW R0 R1 R1\n").unwrap();
+    let v2 = scratch("v2.qx");
+    let o = qoa(
+        "en",
+        &["compile", src.to_str().unwrap(), "-o", v2.to_str().unwrap()],
+    );
+    assert!(o.status.success(), "{}", stderr(&o));
+    let bytes = std::fs::read(&v2).unwrap();
+    assert_eq!(&bytes[..6], b"QOAX\x02\x00");
+    // 1. bertsioa idatzita baina 0.4.3-ko aginduekin: hondatua
+    let mut fake = bytes.clone();
+    fake[4] = 1;
+    std::fs::write(&v2, &fake).unwrap();
+    let o = qoa("en", &["run", v2.to_str().unwrap()]);
+    assert!(!o.status.success());
+    assert!(
+        stderr(&o).contains("cannot hold QOA 0.4.3"),
+        "{}",
+        stderr(&o)
+    );
+    fake[4] = 3;
+    std::fs::write(&v2, &fake).unwrap();
+    let o = qoa("en", &["run", v2.to_str().unwrap()]);
+    assert!(
+        stderr(&o).contains("reads versions 1 to 2"),
+        "{}",
+        stderr(&o)
+    );
+}
+
+#[test]
 fn check_reports_the_resources() {
     let o = qoa("en", &["check", "examples/cat.qoa"]);
     assert!(o.status.success());

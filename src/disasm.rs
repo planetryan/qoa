@@ -252,6 +252,7 @@ fn instr(op: &Op, addr: usize) -> Result<Instr, String> {
                 BinOp::Xor => "XORBITS",
                 BinOp::Shl => "SHL",
                 BinOp::Shr => "SHR",
+                BinOp::Pow => "POW",
             };
             i(name, vec![Tok::R(*dst), Tok::R(*a), Tok::R(*b)])
         }
@@ -261,6 +262,9 @@ fn instr(op: &Op, addr: usize) -> Result<Instr, String> {
                 UnOp::Sqrt => "SQRT",
                 UnOp::Exp => "EXP",
                 UnOp::Log => "LOG",
+                UnOp::Sin => "SIN",
+                UnOp::Cos => "COS",
+                UnOp::Tan => "TAN",
             };
             i(name, vec![Tok::R(*dst), Tok::R(*src)])
         }
@@ -318,6 +322,23 @@ fn instr(op: &Op, addr: usize) -> Result<Instr, String> {
         }
         Op::CharOut { r } => i("CHAROUT", vec![Tok::R(*r)]),
         Op::Log { q, text } => i("VERBOSELOG", vec![Tok::Q(*q), Tok::Text(text.clone())]),
+        Op::Load { dst, addr } => i("LOAD", vec![Tok::R(*dst), Tok::R(*addr)]),
+        Op::Store { src, addr } => i("STORE", vec![Tok::R(*src), Tok::R(*addr)]),
+        Op::StoreText { addr, text } => {
+            i("STORETEXT", vec![Tok::R(*addr), Tok::Text(text.clone())])
+        }
+        Op::GetByte { r } => i("GETC", vec![Tok::R(*r)]),
+        Op::PutByte { r } => i("PUTC", vec![Tok::R(*r)]),
+        Op::Stream { stderr } => i(
+            "STREAM",
+            vec![Tok::Word(if *stderr { "2" } else { "1" }.to_string())],
+        ),
+        Op::Exit { status } => i("EXIT", vec![Tok::Word(status.to_string())]),
+        Op::GetLang { r } => i("GETLANG", vec![Tok::R(*r)]),
+        Op::ArgCount { r } => i("ARGC", vec![Tok::R(*r)]),
+        Op::ArgByte { dst, arg, index } => {
+            i("ARGBYTE", vec![Tok::R(*dst), Tok::R(*arg), Tok::R(*index)])
+        }
     })
 }
 

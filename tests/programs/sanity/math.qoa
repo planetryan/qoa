@@ -1,0 +1,11 @@
+; SIN, COS, TAN eta POW
+; expect-output: sin=1 cos=1 tan=0 pow=1024
+REGSET R0 pi/2
+SIN R1 R0
+REGSET R2 0
+COS R3 R2
+TAN R4 R2
+REGSET R5 2
+REGSET R6 10
+POW R7 R5 R6
+PRINTF "sin={} cos={} tan={} pow={}\n" R1 R3 R4 R7
