@@ -70,6 +70,11 @@ fn statements_expand_to_plain_qoa() {
         ("`QINIT 2`; `MEASUREALL`;", "QINIT 2\nMEASUREALL\n"),
         // QOA arrunteko eragigaiak bere horretan
         ("`QINIT 2`; CNOT/q0,q1;", "QINIT 2\nCNOT q0 q1\n"),
+        // balio-eragigaietan zenbaki bat (edo parentesi arteko adierazpen bat) zenbaki bat da
+        (
+            "ADD/#1,#1,1; ADD/#2,#1,(pi/2); CHAROUT/(65); IFEQ/#1,10,a; a:; STORE/7,#3;",
+            "ADD R1 R1 (1)\nADD R2 R1 (pi/2)\nCHAROUT (65)\nIFEQ R1 (10) a\na:\nSTORE (7) R3\n",
+        ),
         // iruzkinak: `;`-z hasten den lerroa, eta // edonon
         (
             "; iruzkina\nQ{1}; // beste bat\nH/Q; // ;\n",
@@ -130,8 +135,10 @@ fn errors_point_at_the_glyph_source() {
     // erregistro bat beste tamaina batekin berriz
     let e = errors("Q{2}; H/Q{3};");
     assert!(e[0].2.contains("already declared"), "{:?}", e);
-    // zenbaki hutsa helbide baten lekuan
-    let e = errors("Q{1}; ADD/#1,#1,1;");
+    // zenbaki hutsa helbide baten lekuan (helmuga batean; balio-eragigaietan zenbaki bat zenbaki bat da)
+    let e = errors("Q{1}; ADD/1,#1,#1;");
+    assert!(e[0].2.contains("would be read as an address"), "{:?}", e);
+    let e = errors("Q{1}; H/0;");
     assert!(e[0].2.contains("would be read as an address"), "{:?}", e);
     // begiztak
     let e = errors("Q{1}; *2{ H/Q;");

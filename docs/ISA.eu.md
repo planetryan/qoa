@@ -11,6 +11,7 @@ Mnemonikoetan berdin dio maiuskula edo minuskula. Ezizen bakoitzak bere izen nag
 | `q3` | qubita: q3 (edo 3), edo data[1] QREG ondoren; q0..q3 bezalako tarteak onartzen diren lekuetan |
 | `o1` | modu optikoa: o1 (edo 1) |
 | `R2` | erregistroa: R2 (edo 2), R0..R31 |
+| `R2` / `(10)` | erregistroa edo zenbakia: R2 (edo 2), edo parentesi arteko zenbaki bat, (10), (pi/2) edo (newline) bezala |
 | `c0` / `c0..c3` | bit klasikoa: c0, edo c0..c3 bezalako tarte bat |
 | `-> c0` / `-> R2` | emaitzaren helmuga: c0 (bit klasikoa) edo R2 (erregistroa), nahi bada -> ondoren |
 | `c0` / `R2` | balioa: c0 (bit klasikoa) edo R2 (erregistroa) |
@@ -33,6 +34,8 @@ Mnemonikoetan berdin dio maiuskula edo minuskula. Ezizen bakoitzak bere izen nag
 | `QREG izena size [first]` | Qubitei izena eman (aukerakoa): QREG data 3 ondoren, data[0]..data[2]-k (edo data-k, hirurak) izenik gabeko hurrengo 3 qubitak adierazten dituzte, edo `first`-etik hasitakoak emanez gero. q0, q1, ... erabiltzen jarraitzen dute. |  |
 | `CREG izena size [first]` | Bit klasikoei izena eman (aukerakoa), QREG bezala: CREG flags 2-k flags[0], flags[1] eta flags sortzen ditu. |  |
 | `OREG izena size [first]` | Modu optikoei izena eman (aukerakoa), QREG bezala: OREG arm 2-k arm[0], arm[1] eta arm sortzen ditu. |  |
+| `RREG izena size [first]` | Erregistro klasikoei izena eman (aukerakoa): RREG total 2 ondoren, total[0] eta total[1] (edo total, biak) izenik gabeko hurrengo 2 erregistroak dira, edo `first`-etik aurrerakoak ematen bada. R0..R31-ek ere balio dute. |  |
+| `CONST izena balioa` | Zenbaki bati izena eman: CONST newline 10 ondoren, newline edozein adierazpenetan erabil daiteke (RX q0 newline/4, ADD R1 R1 (newline)). Konstante batek bere gainetik definitutakoak erabil ditzake. |  |
 
 ## Qubit-ateak
 

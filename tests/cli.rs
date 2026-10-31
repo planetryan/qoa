@@ -193,7 +193,7 @@ fn quiet_runs_are_tools_with_input_arguments_and_exit_status() {
 }
 
 #[test]
-fn new_instructions_need_format_2_and_others_stay_readable_by_0_4_2() {
+fn new_instructions_need_a_newer_format_and_others_stay_readable_by_0_4_2() {
     let plain = scratch("plain.qx");
     let o = qoa(
         "en",
@@ -227,14 +227,52 @@ fn new_instructions_need_format_2_and_others_stay_readable_by_0_4_2() {
         "{}",
         stderr(&o)
     );
-    fake[4] = 3;
+    fake[4] = 4;
     std::fs::write(&v2, &fake).unwrap();
     let o = qoa("en", &["run", v2.to_str().unwrap()]);
     assert!(
-        stderr(&o).contains("reads versions 1 to 2"),
+        stderr(&o).contains("reads versions 1 to 3"),
         "{}",
         stderr(&o)
     );
+    // (zenbaki) eragigaiak 0.4.4-koak dira: 3. bertsioa, QOA 0.4.3-k irakurri ezin duela argi esan dezan
+    std::fs::write(
+        &src,
+        "REGSET R1 2
+ADD R0 R1 (1)
+",
+    )
+    .unwrap();
+    let v3 = scratch("v3.qx");
+    let o = qoa(
+        "en",
+        &["compile", src.to_str().unwrap(), "-o", v3.to_str().unwrap()],
+    );
+    assert!(o.status.success(), "{}", stderr(&o));
+    let mut bytes = std::fs::read(&v3).unwrap();
+    assert_eq!(&bytes[..6], b"QOAX\x03\x00");
+    bytes[4] = 2;
+    std::fs::write(&v3, &bytes).unwrap();
+    let o = qoa("en", &["run", v3.to_str().unwrap()]);
+    assert!(
+        stderr(&o).contains("cannot hold QOA 0.4.4"),
+        "{}",
+        stderr(&o)
+    );
+    // erregistro arruntekin, ADD-ek 1. bertsioan jarraitzen du
+    std::fs::write(
+        &src,
+        "REGSET R1 2
+ADD R0 R1 R1
+",
+    )
+    .unwrap();
+    let o = qoa(
+        "en",
+        &["compile", src.to_str().unwrap(), "-o", v3.to_str().unwrap()],
+    );
+    assert!(o.status.success(), "{}", stderr(&o));
+    assert_eq!(&std::fs::read(&v3).unwrap()[..6], b"QOAX\x01\x00");
 }
 
 #[test]

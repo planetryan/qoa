@@ -1010,6 +1010,7 @@ fn straight_block(p: &Program, from: usize, to: usize) -> bool {
             Op::Jump { .. }
                 | Op::JumpIf { .. }
                 | Op::Branch { .. }
+                | Op::BranchV { .. }
                 | Op::Call { .. }
                 | Op::Return
                 | Op::LoopStart { .. }
@@ -1020,6 +1021,7 @@ fn straight_block(p: &Program, from: usize, to: usize) -> bool {
         Op::Jump { to: t }
         | Op::JumpIf { to: t, .. }
         | Op::Branch { to: t, .. }
+        | Op::BranchV { to: t, .. }
         | Op::Call { to: t } => inner(*t),
         Op::LoopStart { end, .. } => inner(*end),
         Op::LoopEnd { start } => inner(*start),
@@ -1030,12 +1032,7 @@ fn straight_block(p: &Program, from: usize, to: usize) -> bool {
 // begizta baten gorputzera (`start` LOOPSTART da, `le` LOOPEND) kanpotik ez da jauzirik sartzen eta handik ez
 // da ateratzen
 fn closed_loop(p: &Program, start: usize, le: usize) -> bool {
-    let target = |op: &Op| match op {
-        Op::Jump { to } | Op::JumpIf { to, .. } | Op::Branch { to, .. } | Op::Call { to } => {
-            Some(*to)
-        }
-        _ => None,
-    };
+    let target = |op: &Op| op.jump_target();
     let jumps_in = p.ops.iter().enumerate().any(|(pc, op)| {
         (pc < start || pc > le) && target(op).is_some_and(|t| t > start && t <= le)
     });
@@ -1393,6 +1390,7 @@ pub fn describe(op: &Op) -> String {
         Op::Jump { .. }
         | Op::JumpIf { .. }
         | Op::Branch { .. }
+        | Op::BranchV { .. }
         | Op::Call { .. }
         | Op::Return
         | Op::LoopStart { .. }

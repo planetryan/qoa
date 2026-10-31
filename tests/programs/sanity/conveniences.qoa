@@ -1,0 +1,35 @@
+; CONST, RREG eta (zenbaki) eragigaiak: erregistro bat zenbaki batekin kargatu gabe
+; expect-output: sum=7 dist=12.5 sq=1.4142135623730951 mem=42 pushed=65 total=3
+; expect-output: loop=0 1 2 3 4
+; expect-output: big
+CONST newline 10
+CONST half newline/20
+CONST letter 65
+RREG acc 2
+RREG i 1 8
+REGSET acc[0] 3
+ADD acc[1] acc[0] (4)
+MUL R2 (newline) (1.25)
+SQRT R3 (2)
+STORE (42) (100)
+LOAD R4 (100)
+PUSH (letter)
+POP R5
+ADD R6 (half) (2.5)
+PRINTF "sum={} dist={} sq={} mem={} pushed={} total={}\n" acc[1] R2 R3 R4 R5 R6
+PRINT "loop="
+REGSET i 0
+next:
+PRINTF "{}" i
+ADD i i (1)
+IFEQ i (5) done
+CHAROUT (32)
+JMP next
+done:
+CHAROUT (newline)
+IFGT (newline) (half) yes
+PRINTLN "small"
+JMP end
+yes:
+PRINTLN "big"
+end:

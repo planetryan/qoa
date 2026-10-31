@@ -109,6 +109,8 @@ enum Operand {
     Reg(usize),
     // beste edozer (q3, c1, pi/4, 5...): bere horretan
     Raw(String),
+    // parentesi arteko balioa, `(pi/2)`: parentesirik gabe, erregistro edo zenbaki baten lekuan izan ezik
+    Value(String),
 }
 
 #[derive(Debug)]
@@ -554,7 +556,7 @@ impl Parser {
                 };
                 self.named(name, Some(kind), pos)
             }
-            '(' => self.paren().map(Operand::Raw),
+            '(' => self.paren().map(Operand::Value),
             c if c.is_ascii_alphabetic() || c == '_' => {
                 let name = self.ident()?;
                 self.named(name, None, pos)
@@ -693,7 +695,7 @@ impl Parser {
                 self.bump();
                 let count = match self.operand()? {
                     Operand::Reg(k) => format!("R{}", k),
-                    Operand::Raw(s) => s,
+                    Operand::Raw(s) | Operand::Value(s) => s,
                     Operand::Named { pos, .. } => {
                         self.error(
                             pos,
@@ -1063,7 +1065,7 @@ fn push_lines(
             Some(_) => Err(quantum()),
             None => elements(regs, a).map(|_| vec![]),
         },
-        Operand::Raw(s) => {
+        Operand::Raw(s) | Operand::Value(s) => {
             let lower = s.to_ascii_lowercase();
             let indexed = |p: char| {
                 lower
@@ -1210,7 +1212,7 @@ pub fn expand(src: &str) -> Result<Expanded, Vec<Diagnostic>> {
 // eragigai baten QOA elementuak: erregistro osoa -> elementu bakoitza
 fn elements(regs: &HashMap<String, Register>, op: &Operand) -> Result<Vec<String>, Diagnostic> {
     match op {
-        Operand::Raw(s) => Ok(vec![s.clone()]),
+        Operand::Raw(s) | Operand::Value(s) => Ok(vec![s.clone()]),
         Operand::Reg(k) => Ok(vec![format!("R{}", k)]),
         Operand::Named { name, range, pos } => {
             let Some(r) = regs.get(name) else {
@@ -1294,10 +1296,38 @@ fn op_lines(
     } else {
         (name, texts)
     };
+    // erregistro edo zenbaki baten lekuan (x) zenbakiak eta parentesi arteko balioak `(..)` QOA arruntean:
+    // `ADD/#1,#1,1` -> `ADD R1 R1 (1)`. izen hutsak erregistro-izenak dira (QOA arruntean bezala)
+    let specs = crate::isa::lookup(mnemonic(name)).map(|s| s.operand_specs());
+    let kind_at = |k: usize| {
+        specs.as_ref().map_or(' ', |sp| {
+            sp.get(texts.len() + k)
+                .or(sp.last())
+                .map_or(' ', |s| s.kind)
+        })
+    };
     let ops: Vec<Vec<String>> = operands
         .iter()
-        .map(|o| elements(regs, o))
-        .collect::<Result<_, _>>()?;
+        .enumerate()
+        .map(|(k, o)| {
+            let els = elements(regs, o)?;
+            let value = |e: String| format!("({})", e);
+            Ok(match (kind_at(k), o) {
+                ('x', Operand::Value(_)) => els.into_iter().map(value).collect(),
+                ('x', Operand::Raw(_)) => els
+                    .into_iter()
+                    .map(|e| {
+                        if e.starts_with(|c: char| c.is_ascii_digit() || "-+.".contains(c)) {
+                            value(e)
+                        } else {
+                            e
+                        }
+                    })
+                    .collect(),
+                _ => els,
+            })
+        })
+        .collect::<Result<_, Diagnostic>>()?;
     let dst: Vec<Vec<String>> = dests
         .iter()
         .map(|o| elements(regs, o))
@@ -1332,7 +1362,7 @@ fn op_lines(
         for (k, o) in operands.iter().enumerate() {
             let at = texts.len() + k;
             let kind = specs.get(at).or(specs.last()).map_or(' ', |s| s.kind);
-            if let Operand::Raw(text) = o
+            if let Operand::Raw(text) | Operand::Value(text) = o
                 && "qorcv".contains(kind)
                 && text.parse::<u64>().is_ok()
             {

@@ -5,7 +5,7 @@
 use crate::expr;
 use crate::isa::{self, OperandSpec, Repeat, Spec};
 use crate::program::{
-    Basis, BinOp, Cmp, Count, DEFAULT_CUTOFF, Dest, Gate, NUM_REGS, Op, Program, Source, UnOp,
+    Basis, BinOp, Cmp, Count, DEFAULT_CUTOFF, Dest, Gate, NUM_REGS, Op, Program, Source, UnOp, Val,
 };
 use crate::{t, ts};
 use std::collections::HashMap;
@@ -190,6 +190,8 @@ enum Arg {
     Text(String),
     Basis(Basis),
     Name(String),
+    // erregistro baten lekuan parentesi arteko zenbakia: `(1)`
+    Num(f64),
     Missing,
 }
 
@@ -218,6 +220,9 @@ struct Asm {
     named_next: HashMap<char, u32>,
     // lehen pasaldian ikusitako etiketa-izenak (minuskulaz): izen hutsak ez dira erregistro gisa irakurtzen
     label_names: std::collections::HashSet<String>,
+    // CONST-ek izendatutako zenbakiak (adierazpen guztietan), eta haien izenen tokenak ordenan
+    consts: HashMap<String, f64>,
+    const_order: Vec<Token>,
 }
 
 // izendun erregistro bat: mota ('q', 'c', 'o'), lehen elementua, tamaina eta adierazpenaren tokena
@@ -249,6 +254,8 @@ pub fn assemble(source: &str, name: &str) -> Result<Program, Vec<Diagnostic>> {
         named_order: Vec::new(),
         named_next: HashMap::new(),
         label_names: std::collections::HashSet::new(),
+        consts: HashMap::new(),
+        const_order: Vec::new(),
     };
 
     // lehen pasaldia: QINIT eta QMODE bilatu, gero indizeak berehala egiaztatu ahal izateko
@@ -268,11 +275,27 @@ pub fn assemble(source: &str, name: &str) -> Result<Program, Vec<Diagnostic>> {
         if spec.name == "QINIT" || spec.name == "QMODE" {
             a.declaration(spec, first, &toks[1..]);
         }
-        if matches!(spec.name, "QREG" | "CREG" | "OREG") {
+        if matches!(spec.name, "QREG" | "CREG" | "OREG" | "RREG") {
             a.register(spec, first, &toks[1..]);
+        }
+        if spec.name == "CONST" {
+            a.constant(first, &toks[1..]);
         }
     }
     a.registers_fit();
+    // konstante bat ezin da erregistro-izen bat ere izan (izena erregistro gisa ordezkatuko litzateke)
+    for tok in std::mem::take(&mut a.const_order) {
+        if a.named.contains_key(&tok.text) {
+            a.error(Diagnostic::at(
+                &tok,
+                t!(
+                    "'{}' is both a constant and a register; rename one of them",
+                    "'{}' konstantea eta erregistroa da aldi berean; aldatu baten izena",
+                    tok.text
+                ),
+            ));
+        }
+    }
 
     // bigarren pasaldia: agindu guztiak
     for (n, raw) in source.lines().enumerate() {
@@ -424,9 +447,11 @@ fn strip_label(toks: &[Token]) -> Vec<Token> {
 
 fn set_target(op: &mut Op, target: usize) {
     match op {
-        Op::Jump { to } | Op::JumpIf { to, .. } | Op::Branch { to, .. } | Op::Call { to } => {
-            *to = target
-        }
+        Op::Jump { to }
+        | Op::JumpIf { to, .. }
+        | Op::Branch { to, .. }
+        | Op::BranchV { to, .. }
+        | Op::Call { to } => *to = target,
         _ => unreachable!("jauziek bakarrik dituzte etiketa-zuzenketak"),
     }
 }
@@ -540,6 +565,7 @@ impl Asm {
         let kind = match spec.name {
             "QREG" => 'q',
             "CREG" => 'c',
+            "RREG" => 'r',
             _ => 'o',
         };
         let usage = || {
@@ -558,17 +584,7 @@ impl Asm {
             }
         };
         let name = name_tok.text.as_str();
-        let shaped = name
-            .chars()
-            .next()
-            .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
-            && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
-        let operand_like = name.len() > 1
-            && name.starts_with(['q', 'Q', 'o', 'O', 'c', 'C', 'r', 'R'])
-            && name[1..].chars().all(|c| c.is_ascii_digit());
-        let reserved = ["pi", "tau", "e", "sqrt", "sin", "cos", "tan", "exp", "ln"]
-            .contains(&name.to_ascii_lowercase().as_str());
-        if !shaped || operand_like || reserved || isa::lookup(name).is_some() {
+        if !free_name(name) {
             self.error(Diagnostic::at(
                 name_tok,
                 t!(
@@ -627,18 +643,20 @@ impl Asm {
             .map(|n| (n, &self.named[n]))
             .find(|(_, r)| r.kind == kind && start < r.start + r.size && r.start < start + size)
         {
+            // erregistro klasikoak R4 dira, ez r4
+            let shown = if kind == 'r' { 'R' } else { kind };
             let msg = t!(
                 "{} ({}{}..{}{}) overlaps {} ({}{}..{}{})",
                 "{} ({}{}..{}{}) {}-rekin gainjartzen da ({}{}..{}{})",
                 name,
-                kind,
+                shown,
                 start,
-                kind,
+                shown,
                 start + size - 1,
                 other,
-                kind,
+                shown,
                 r.start,
-                kind,
+                shown,
                 r.start + r.size - 1
             );
             self.error(Diagnostic::at(name_tok, msg));
@@ -647,11 +665,14 @@ impl Asm {
         self.named_next.insert(kind, next.max(start + size));
         let last = start + size - 1;
         let max = match kind {
-            'q' => &mut self.max_qubit,
-            'c' => &mut self.max_bit,
-            _ => &mut self.max_mode,
+            'q' => Some(&mut self.max_qubit),
+            'c' => Some(&mut self.max_bit),
+            'o' => Some(&mut self.max_mode),
+            _ => None,
         };
-        *max = Some(max.map_or(last, |m| m.max(last)));
+        if let Some(max) = max {
+            *max = Some(max.map_or(last, |m| m.max(last)));
+        }
         self.named_order.push(name.to_string());
         self.named.insert(
             name.to_string(),
@@ -664,6 +685,58 @@ impl Asm {
         );
     }
 
+    // CONST izena balioa (lehen pasaldian, ordenan: balioak bere gainetik definitutakoak erabil ditzake)
+    fn constant(&mut self, head: &Token, args: &[Token]) {
+        let [name_tok, value_tok] = args else {
+            self.error(Diagnostic::at(
+                head,
+                t!(
+                    "CONST takes a name and a value, like CONST newline 10",
+                    "CONST-ek izen bat eta balio bat hartzen ditu, CONST newline 10 bezala"
+                ),
+            ));
+            return;
+        };
+        let name = name_tok.text.as_str();
+        if !free_name(name) {
+            self.error(Diagnostic::at(
+                name_tok,
+                t!(
+                    "'{}' cannot name a constant: use letters, digits and _, not an instruction, an operand like q3, or a constant like pi",
+                    "'{}' ezin da konstante-izena izan: erabili letrak, digituak eta _, ez agindu bat, q3 bezalako eragigai bat edo pi bezalako konstante bat",
+                    name
+                ),
+            ));
+            return;
+        }
+        if self.consts.contains_key(name) {
+            self.error(Diagnostic::at(
+                name_tok,
+                t!(
+                    "constant '{}' is defined twice",
+                    "'{}' konstantea bi aldiz definituta dago",
+                    name
+                ),
+            ));
+            return;
+        }
+        match expr::eval_with(&value_tok.text, &self.consts) {
+            Ok(v) => {
+                self.consts.insert(name.to_string(), v);
+                self.const_order.push(name_tok.clone());
+            }
+            Err(e) => self.error(Diagnostic::at(
+                value_tok,
+                t!(
+                    "expected a number for {}: {}",
+                    "zenbaki bat espero zen {}-rentzat: {}",
+                    "value",
+                    e
+                ),
+            )),
+        }
+    }
+
     // izendun erregistroak QINIT eta QMODE-k adierazitakoaren barruan
     fn registers_fit(&mut self) {
         let mut problems = Vec::new();
@@ -672,9 +745,24 @@ impl Asm {
             let limit = match r.kind {
                 'q' => self.declared_qubits,
                 'o' => self.declared_modes.map(|m| m.0),
+                'r' => Some(NUM_REGS as u32),
                 _ => None,
             };
-            if let Some(n) = limit
+            if r.kind == 'r'
+                && let Some(n) = limit
+                && r.start + r.size > n
+            {
+                problems.push(Diagnostic::at(
+                    &r.tok,
+                    t!(
+                        "{} needs R{}..R{}, but the registers are R0..R31",
+                        "{}-k R{}..R{} behar ditu, baina erregistroak R0..R31 dira",
+                        name,
+                        r.start,
+                        r.start + r.size - 1
+                    ),
+                ));
+            } else if let Some(n) = limit
                 && r.start + r.size > n
             {
                 let what = if r.kind == 'q' { "QINIT" } else { "QMODE" };
@@ -808,7 +896,7 @@ impl Asm {
         // deklarazioak lehen pasaldian landu dira
         if matches!(
             spec.name,
-            "QINIT" | "QMODE" | "QREG" | "CREG" | "OREG" | "COMMENT"
+            "QINIT" | "QMODE" | "QREG" | "CREG" | "OREG" | "RREG" | "CONST" | "COMMENT"
         ) {
             return;
         }
@@ -1027,8 +1115,9 @@ impl Asm {
                     return Some(Arg::Indices(all));
                 }
                 'r' => {
+                    // erregistro-zerrendek tarteak ere onartzen dituzte (R0..R3, edo RREG-en izen osoa)
                     for tk in toks {
-                        all.push(self.index(tk, 'r')?);
+                        all.extend(self.index_list(tk, 'r')?);
                     }
                     return Some(Arg::Indices(all));
                 }
@@ -1038,7 +1127,22 @@ impl Asm {
         let tk = &toks[0];
         let name = os.name;
         Some(match os.kind {
-            'q' | 'o' | 'r' | 'c' => {
+            'x' if tk.text.starts_with('(') => match expr::eval_with(&tk.text, &self.consts) {
+                Ok(v) => Arg::Num(v),
+                Err(e) => {
+                    self.error(Diagnostic::at(
+                        tk,
+                        t!(
+                            "expected a number for {}: {}",
+                            "zenbaki bat espero zen {}-rentzat: {}",
+                            name,
+                            e
+                        ),
+                    ));
+                    return None;
+                }
+            },
+            'q' | 'o' | 'r' | 'c' | 'x' => {
                 if tk.text.contains("..") {
                     self.error(Diagnostic::at(
                         tk,
@@ -1050,7 +1154,8 @@ impl Asm {
                     ));
                     return None;
                 }
-                Arg::Index(self.index(tk, os.kind)?)
+                let kind = if os.kind == 'x' { 'r' } else { os.kind };
+                Arg::Index(self.index(tk, kind)?)
             }
             'd' => Arg::Dest(self.dest(tk)?),
             'v' => match self.dest(tk)? {
@@ -1058,7 +1163,7 @@ impl Asm {
                 Dest::Reg(r) => Arg::Source(Source::Reg(r)),
                 Dest::Own => unreachable!(),
             },
-            'f' => match expr::eval(&tk.text) {
+            'f' => match expr::eval_with(&tk.text, &self.consts) {
                 Ok(v) => Arg::Float(v),
                 Err(e) => {
                     self.error(Diagnostic::at(
@@ -1479,6 +1584,21 @@ impl Asm {
                 t!(
                     "operand {} of {} is {:?}, not an index (QOA bug)",
                     "{1}-ren {0}. eragigaia {2:?} da, ez indize bat (QOA-ren akatsa)",
+                    i,
+                    spec.name,
+                    other
+                )
+            ),
+        };
+        // erregistro bat edo zenbaki bat
+        let val = |i: usize| match &v[i] {
+            Arg::Index(n) => Val::Reg(*n),
+            Arg::Num(x) => Val::Num(*x),
+            other => panic!(
+                "{}",
+                t!(
+                    "operand {} of {} is {:?}, not a register or number (QOA bug)",
+                    "{1}-ren {0}. eragigaia {2:?} da, ez erregistro edo zenbaki bat (QOA-ren akatsa)",
                     i,
                     spec.name,
                     other
@@ -1967,9 +2087,9 @@ impl Asm {
                 r: idx(0),
                 value: float(1, 0.0),
             },
-            "REGCOPY" => Op::Copy {
-                dst: idx(0),
-                src: idx(1),
+            "REGCOPY" => match val(1) {
+                Val::Reg(src) => Op::Copy { dst: idx(0), src },
+                Val::Num(value) => Op::Set { r: idx(0), value },
             },
             "ADD" | "SUB" | "MUL" | "DIV" | "ANDBITS" | "ORBITS" | "XORBITS" | "SHL" | "SHR"
             | "POW" => {
@@ -1985,11 +2105,19 @@ impl Asm {
                     "SHR" => BinOp::Shr,
                     _ => BinOp::Pow,
                 };
-                Op::Bin {
-                    op,
-                    dst: idx(0),
-                    a: idx(1),
-                    b: idx(2),
+                match (val(1), val(2)) {
+                    (Val::Reg(a), Val::Reg(b)) => Op::Bin {
+                        op,
+                        dst: idx(0),
+                        a,
+                        b,
+                    },
+                    (a, b) => Op::BinV {
+                        op,
+                        dst: idx(0),
+                        a,
+                        b,
+                    },
                 }
             }
             "NOTBITS" | "SQRT" | "EXP" | "LOG" | "SIN" | "COS" | "TAN" => {
@@ -2002,17 +2130,27 @@ impl Asm {
                     "COS" => UnOp::Cos,
                     _ => UnOp::Tan,
                 };
-                Op::Un {
-                    op,
-                    dst: idx(0),
-                    src: idx(1),
+                match val(1) {
+                    Val::Reg(src) => Op::Un {
+                        op,
+                        dst: idx(0),
+                        src,
+                    },
+                    src => Op::UnV {
+                        op,
+                        dst: idx(0),
+                        src,
+                    },
                 }
             }
             "RAND" => Op::Rand { r: idx(0) },
             "SEEDRNG" => Op::Seed { seed: int(0) },
             "INPUT" => Op::Input { r: idx(0) },
             "GETTIME" => Op::Time { r: idx(0) },
-            "PUSH" => Op::Push { r: idx(0) },
+            "PUSH" => match val(0) {
+                Val::Reg(r) => Op::Push { r },
+                v => Op::PushV { v },
+            },
             "POP" => Op::Pop { r: idx(0) },
             "CHARLOAD" => Op::Set {
                 r: idx(0),
@@ -2066,15 +2204,21 @@ impl Asm {
                     "IFGT" => Cmp::Gt,
                     _ => Cmp::Lt,
                 };
-                let i = self.emit(
-                    Op::Branch {
+                let op = match (val(0), val(1)) {
+                    (Val::Reg(a), Val::Reg(b)) => Op::Branch {
                         cmp,
-                        a: idx(0),
-                        b: idx(1),
+                        a,
+                        b,
                         to: usize::MAX,
                     },
-                    line,
-                );
+                    (a, b) => Op::BranchV {
+                        cmp,
+                        a,
+                        b,
+                        to: usize::MAX,
+                    },
+                };
+                let i = self.emit(op, line);
                 self.fixups.push((i, label(2), tok(2)));
                 return;
             }
@@ -2136,26 +2280,32 @@ impl Asm {
                 }
                 Op::Printf { format, regs }
             }
-            "CHAROUT" => Op::CharOut { r: idx(0) },
+            "CHAROUT" => match val(0) {
+                Val::Reg(r) => Op::CharOut { r },
+                v => Op::CharOutV { v },
+            },
             "VERBOSELOG" => Op::Log {
                 q: idx(0),
                 text: text(1),
             },
             "DUMPREGS" => Op::DumpRegs,
-            "LOAD" => Op::Load {
-                dst: idx(0),
-                addr: idx(1),
+            "LOAD" => match val(1) {
+                Val::Reg(addr) => Op::Load { dst: idx(0), addr },
+                addr => Op::LoadV { dst: idx(0), addr },
             },
-            "STORE" => Op::Store {
-                src: idx(0),
-                addr: idx(1),
+            "STORE" => match (val(0), val(1)) {
+                (Val::Reg(src), Val::Reg(addr)) => Op::Store { src, addr },
+                (src, addr) => Op::StoreV { src, addr },
             },
             "STORETEXT" => Op::StoreText {
                 addr: idx(0),
                 text: text(1),
             },
             "GETC" => Op::GetByte { r: idx(0) },
-            "PUTC" => Op::PutByte { r: idx(0) },
+            "PUTC" => match val(0) {
+                Val::Reg(r) => Op::PutByte { r },
+                v => Op::PutByteV { v },
+            },
             "STREAM" => match int(0) {
                 1 => Op::Stream { stderr: false },
                 2 => Op::Stream { stderr: true },
@@ -2190,15 +2340,38 @@ impl Asm {
             }
             "GETLANG" => Op::GetLang { r: idx(0) },
             "ARGC" => Op::ArgCount { r: idx(0) },
-            "ARGBYTE" => Op::ArgByte {
-                dst: idx(0),
-                arg: idx(1),
-                index: idx(2),
+            "ARGBYTE" => match (val(1), val(2)) {
+                (Val::Reg(arg), Val::Reg(index)) => Op::ArgByte {
+                    dst: idx(0),
+                    arg,
+                    index,
+                },
+                (arg, index) => Op::ArgByteV {
+                    dst: idx(0),
+                    arg,
+                    index,
+                },
             },
             other => unreachable!("{} aginduak ez du eraikitzailerik", other),
         };
         self.emit(op, line);
     }
+}
+
+// erregistro edo konstante baten izena izan daitekeen: letrak, digituak eta _ (letra edo _ lehenik), eta ez q3
+// bezalako eragigai bat, ez pi bezalako konstante bat, ez agindu bat
+fn free_name(name: &str) -> bool {
+    let shaped = name
+        .chars()
+        .next()
+        .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+        && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+    let operand_like = name.len() > 1
+        && name.starts_with(['q', 'Q', 'o', 'O', 'c', 'C', 'r', 'R'])
+        && name[1..].chars().all(|c| c.is_ascii_digit());
+    let reserved = ["pi", "tau", "e", "sqrt", "sin", "cos", "tan", "exp", "ln"]
+        .contains(&name.to_ascii_lowercase().as_str());
+    shaped && !operand_like && !reserved && isa::lookup(name).is_none()
 }
 
 fn rotation(axis: Basis, angle: f64) -> Gate {

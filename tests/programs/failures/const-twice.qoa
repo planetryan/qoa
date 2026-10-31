@@ -1,0 +1,4 @@
+; nahita huts egiten duen proba
+; expect-error: constant 'newline' is defined twice
+CONST newline 10
+CONST newline 11

@@ -1,0 +1,3 @@
+; nahita huts egiten duen proba: emaitza erregistro batera doa, ez zenbaki batera
+; expect-error: expected a register, found '(1)'
+ADD (1) R1 R1

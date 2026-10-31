@@ -11,6 +11,7 @@ Mnemonics are case-insensitive. Every alias does exactly what its main name does
 | `q3` | qubit: q3 (or 3), or data[1] after QREG; ranges like q0..q3 where allowed |
 | `o1` | optical mode: o1 (or 1) |
 | `R2` | register: R2 (or 2), R0..R31 |
+| `R2` / `(10)` | register or number: R2 (or 2), or a number in parentheses like (10), (pi/2) or (newline) |
 | `c0` / `c0..c3` | classical bit: c0, or a range like c0..c3 |
 | `-> c0` / `-> R2` | result destination: c0 (classical bit) or R2 (register), optionally after -> |
 | `c0` / `R2` | value: c0 (classical bit) or R2 (register) |
@@ -33,6 +34,8 @@ Instructions marked *simulator only* read information a real device cannot see w
 | `QREG name size [first]` | Name qubits (optional): after QREG data 3, data[0]..data[2] (or data, all three) stand for the next 3 unnamed qubits, or for qubits from `first` if given. q0, q1, ... keep working. |  |
 | `CREG name size [first]` | Name classical bits (optional), like QREG: CREG flags 2 makes flags[0], flags[1] and flags. |  |
 | `OREG name size [first]` | Name optical modes (optional), like QREG: OREG arm 2 makes arm[0], arm[1] and arm. |  |
+| `RREG name size [first]` | Name classical registers (optional): after RREG total 2, total[0] and total[1] (or total, both) stand for the next 2 unnamed registers, or for registers from `first` if given. R0..R31 keep working. |  |
+| `CONST name value` | Name a number: after CONST newline 10, newline can be used in any expression (RX q0 newline/4, ADD R1 R1 (newline)). A constant can use the constants defined above it. |  |
 
 ## Qubit gates
 

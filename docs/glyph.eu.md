@@ -94,9 +94,11 @@ giltzarik gabe erabiltzen da.
 erregistroek tamaina bera izan behar dute eta elementuz elementu doaz, eta elementu bakarrak errepikatu
 egiten dira: `A{2}` eta `B{2}`-rekin, `CX/A,B` `CNOT q0 q2` eta `CNOT q1 q3` da.
 
-**Zenbaki huts bat ez da inoiz helbide bat.** QOA arruntean `3`-k q3 esan nahi du qubit-leku batean eta R3
-erregistro-leku batean; glifo-programa batean errorea da, `ADD/#1,#1,1`-ek "bat gehitu" dirudielako baina
-R1 gehituko lukeelako. Idatzi `#1`, `Q[1]` edo `q1`.
+**Zenbaki huts bat ez da inoiz helbide bat.** Glifo-programa batean zenbaki bat zenbaki bat da:
+`ADD/#1,#1,1`-ek bat gehitzen du, `IFEQ/#1,10,done`-k R1 hamarrekin konparatzen du, eta `STORE/7,#3`-k
+zazpi gordetzen du R3-ko helbidean (QOA arruntean `ADD R1 R1 (1)`, `IFEQ R1 (10) done` eta `STORE (7) R3`).
+Qubit bat, modu bat, bit bat edo idazteko erregistro bat bakarrik egokitzen den lekuan, zenbaki huts bat
+errorea da, QOA arruntak `3` q3 edo R3 gisa irakurriko lukeelako hor. Idatzi `#1`, `Q[1]` edo `q1`.
 
 ### Aginduak
 

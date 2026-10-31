@@ -12,7 +12,9 @@ use crate::fock::{self, Mat};
 use crate::gpu::Gpu;
 use crate::kernel::QGate;
 use crate::noise::{GateNoise, Native, NoiseModel, Relax};
-use crate::program::{Basis, BinOp, Cmp, Count, Dest, Gate, NUM_REGS, Op, Program, Source, UnOp};
+use crate::program::{
+    Basis, BinOp, Cmp, Count, Dest, Gate, NUM_REGS, Op, Program, Source, UnOp, Val,
+};
 use crate::quad::{self, QuadGate, QuadState};
 use crate::state::State;
 use crate::team::{self, Team};
@@ -1276,22 +1278,220 @@ impl<'a> Machine<'a> {
         })
     }
 
-    // memoria-gelaxka baten helbidea r erregistrotik: zenbaki oso bat, 0 eta 2^32 - 1 artean
-    fn cell(&self, pc: usize, r: u32) -> Result<usize, RuntimeError> {
-        let a = self.regs[r as usize];
+    // eragigai baten balioa: erregistroa edo zenbakia
+    #[inline(always)]
+    fn val(&self, v: Val) -> f64 {
+        match v {
+            Val::Reg(r) => self.regs[r as usize],
+            Val::Num(x) => x,
+        }
+    }
+
+    // eragigai baten balioa mezuetan: "R5-ek 3 du" edo "3" (zenbaki bat bada)
+    fn what(&self, v: Val) -> String {
+        match v {
+            Val::Reg(r) => t!(
+                "R{} holds {}",
+                "R{}-k {} du",
+                r,
+                fmt_value(self.regs[r as usize])
+            ),
+            Val::Num(x) => fmt_value(x),
+        }
+    }
+
+    // memoria-gelaxka baten helbidea: zenbaki oso bat, 0 eta 2^32 - 1 artean
+    #[inline(always)]
+    fn cell(&self, pc: usize, v: Val) -> Result<usize, RuntimeError> {
+        let a = self.val(v);
         if a >= 0.0 && a.fract() == 0.0 && a < MAX_CELLS {
             Ok(a as usize)
         } else {
             Err(self.err(
                 pc,
                 t!(
-                    "R{} holds {}, which is not a memory address (a whole number from 0 to 2^32 - 1)",
-                    "R{}-k {} du, eta hori ez da memoria-helbide bat (0 eta 2^32 - 1 arteko zenbaki osoa)",
-                    r,
-                    fmt_value(a)
+                    "{}, which is not a memory address (a whole number from 0 to 2^32 - 1)",
+                    "{}, eta hori ez da memoria-helbide bat (0 eta 2^32 - 1 arteko zenbaki osoa)",
+                    self.what(v)
                 ),
             ))
         }
+    }
+
+    #[inline(always)]
+    fn bin(&self, pc: usize, op: BinOp, a: Val, b: Val) -> Result<f64, RuntimeError> {
+        let (x, y) = (self.val(a), self.val(b));
+        Ok(match op {
+            BinOp::Add => x + y,
+            BinOp::Sub => x - y,
+            BinOp::Mul => x * y,
+            BinOp::Div => {
+                if y == 0.0 {
+                    return Err(self.err(
+                        pc,
+                        match b {
+                            Val::Reg(r) => t!(
+                                "division by zero (R{} is 0)",
+                                "zeroz zatitzea (R{} 0 da)",
+                                r
+                            ),
+                            Val::Num(_) => t!(
+                                "division by zero (the divisor is 0)",
+                                "zeroz zatitzea (zatitzailea 0 da)"
+                            ),
+                        },
+                    ));
+                }
+                x / y
+            }
+            BinOp::And => ((x as i64) & (y as i64)) as f64,
+            BinOp::Or => ((x as i64) | (y as i64)) as f64,
+            BinOp::Xor => ((x as i64) ^ (y as i64)) as f64,
+            BinOp::Shl => ((x as i64).wrapping_shl(y.clamp(0.0, 63.0) as u32)) as f64,
+            BinOp::Shr => ((x as i64).wrapping_shr(y.clamp(0.0, 63.0) as u32)) as f64,
+            BinOp::Pow => x.powf(y),
+        })
+    }
+
+    #[inline(always)]
+    fn un(&self, pc: usize, op: UnOp, src: Val) -> Result<f64, RuntimeError> {
+        let x = self.val(src);
+        Ok(match op {
+            UnOp::Sqrt => {
+                if x < 0.0 {
+                    return Err(self.err(
+                        pc,
+                        t!(
+                            "square root of a negative number ({})",
+                            "zenbaki negatibo baten erro karratua ({})",
+                            fmt_value(x)
+                        ),
+                    ));
+                }
+                x.sqrt()
+            }
+            UnOp::Exp => x.exp(),
+            UnOp::Log => {
+                if x <= 0.0 {
+                    return Err(self.err(
+                        pc,
+                        t!(
+                            "logarithm of a number that is not positive ({})",
+                            "positiboa ez den zenbaki baten logaritmoa ({})",
+                            fmt_value(x)
+                        ),
+                    ));
+                }
+                x.ln()
+            }
+            UnOp::Not => (!(x as i64)) as f64,
+            UnOp::Sin => x.sin(),
+            UnOp::Cos => x.cos(),
+            UnOp::Tan => x.tan(),
+        })
+    }
+
+    #[inline(always)]
+    fn compare(&self, cmp: Cmp, a: Val, b: Val) -> bool {
+        let (x, y) = (self.val(a), self.val(b));
+        match cmp {
+            Cmp::Eq => x == y,
+            Cmp::Ne => x != y,
+            Cmp::Gt => x > y,
+            Cmp::Lt => x < y,
+        }
+    }
+
+    #[inline(always)]
+    fn push(&mut self, pc: usize, v: Val) -> Result<(), RuntimeError> {
+        if self.stack.len() >= 1 << 20 {
+            return Err(self.err(
+                pc,
+                t!(
+                    "stack overflow (more than a million values pushed)",
+                    "pila gainezka (milioi bat balio baino gehiago sartuta)"
+                ),
+            ));
+        }
+        let x = self.val(v);
+        self.stack.push(x);
+        Ok(())
+    }
+
+    fn char_out(&mut self, pc: usize, v: Val) -> Result<(), RuntimeError> {
+        let x = self.val(v);
+        match char::from_u32(x as u32).filter(|_| x >= 0.0 && x.fract() == 0.0) {
+            Some(c) => {
+                self.print(&c.to_string());
+                Ok(())
+            }
+            None => Err(self.err(
+                pc,
+                t!(
+                    "{}, which is not a character code",
+                    "{}, eta hori ez da karaktere-kode bat",
+                    self.what(v)
+                ),
+            )),
+        }
+    }
+
+    #[inline(always)]
+    fn load(&self, pc: usize, addr: Val) -> Result<f64, RuntimeError> {
+        let a = self.cell(pc, addr)?;
+        Ok(self.memory.get(a).copied().unwrap_or(0.0))
+    }
+
+    #[inline(always)]
+    fn store(&mut self, pc: usize, src: Val, addr: Val) -> Result<(), RuntimeError> {
+        let a = self.cell(pc, addr)?;
+        self.grow_memory(pc, a + 1)?;
+        self.memory[a] = self.val(src);
+        Ok(())
+    }
+
+    fn put_byte(&mut self, pc: usize, v: Val) -> Result<(), RuntimeError> {
+        let x = self.val(v);
+        if !(0.0..=255.0).contains(&x) || x.fract() != 0.0 {
+            return Err(self.err(
+                pc,
+                t!(
+                    "{}, which is not a byte (0..255)",
+                    "{}, eta hori ez da byte bat (0..255)",
+                    self.what(v)
+                ),
+            ));
+        }
+        self.write_bytes(&[x as u8]);
+        Ok(())
+    }
+
+    fn arg_byte(&self, pc: usize, arg: Val, index: Val) -> Result<f64, RuntimeError> {
+        let (k, i) = (self.val(arg), self.val(index));
+        let n = self.cfg.args.len();
+        if !(k >= 0.0 && k.fract() == 0.0 && k < n as f64) {
+            return Err(self.err(
+                pc,
+                t!(
+                    "{}, but the program has {} argument(s), counted from 0",
+                    "{}, baina programak {} argumentu ditu, 0tik zenbatuta",
+                    self.what(arg),
+                    n
+                ),
+            ));
+        }
+        if !(i >= 0.0 && i.fract() == 0.0) {
+            return Err(self.err(
+                pc,
+                t!(
+                    "{}, which is not a byte position (0, 1, 2, ...)",
+                    "{}, eta hori ez da byte-posizio bat (0, 1, 2, ...)",
+                    self.what(index)
+                ),
+            ));
+        }
+        let bytes = self.cfg.args[k as usize].as_bytes();
+        Ok(bytes.get(i as usize).map_or(-1.0, |&b| b as f64))
     }
 
     // memoria gutxienez `len` gelaxkara handitu, memoria-mugaren barruan
@@ -1628,49 +1828,11 @@ impl<'a> Machine<'a> {
             Op::Set { r, value } => self.regs[*r as usize] = *value,
             Op::Copy { dst, src } => self.regs[*dst as usize] = self.regs[*src as usize],
             Op::Bin { op, dst, a, b } => {
-                let (x, y) = (self.regs[*a as usize], self.regs[*b as usize]);
-                let v = match op {
-                    BinOp::Add => x + y,
-                    BinOp::Sub => x - y,
-                    BinOp::Mul => x * y,
-                    BinOp::Div => {
-                        if y == 0.0 {
-                            return Err(self.err(pc, t!("division by zero (R{} is 0)", "zeroz zatitzea (R{} 0 da)", b)));
-                        }
-                        x / y
-                    }
-                    BinOp::And => ((x as i64) & (y as i64)) as f64,
-                    BinOp::Or => ((x as i64) | (y as i64)) as f64,
-                    BinOp::Xor => ((x as i64) ^ (y as i64)) as f64,
-                    BinOp::Shl => ((x as i64).wrapping_shl(y.clamp(0.0, 63.0) as u32)) as f64,
-                    BinOp::Shr => ((x as i64).wrapping_shr(y.clamp(0.0, 63.0) as u32)) as f64,
-                    BinOp::Pow => x.powf(y),
-                };
-                self.regs[*dst as usize] = v;
+                self.regs[*dst as usize] = self.bin(pc, *op, Val::Reg(*a), Val::Reg(*b))?
             }
-            Op::Un { op, dst, src } => {
-                let x = self.regs[*src as usize];
-                let v = match op {
-                    UnOp::Sqrt => {
-                        if x < 0.0 {
-                            return Err(self.err(pc, t!("square root of a negative number ({})", "zenbaki negatibo baten erro karratua ({})", fmt_value(x))));
-                        }
-                        x.sqrt()
-                    }
-                    UnOp::Exp => x.exp(),
-                    UnOp::Log => {
-                        if x <= 0.0 {
-                            return Err(self.err(pc, t!("logarithm of a number that is not positive ({})", "positiboa ez den zenbaki baten logaritmoa ({})", fmt_value(x))));
-                        }
-                        x.ln()
-                    }
-                    UnOp::Not => (!(x as i64)) as f64,
-                    UnOp::Sin => x.sin(),
-                    UnOp::Cos => x.cos(),
-                    UnOp::Tan => x.tan(),
-                };
-                self.regs[*dst as usize] = v;
-            }
+            Op::BinV { op, dst, a, b } => self.regs[*dst as usize] = self.bin(pc, *op, *a, *b)?,
+            Op::Un { op, dst, src } => self.regs[*dst as usize] = self.un(pc, *op, Val::Reg(*src))?,
+            Op::UnV { op, dst, src } => self.regs[*dst as usize] = self.un(pc, *op, *src)?,
             Op::Rand { r } => self.regs[*r as usize] = self.uniform(),
             Op::Seed { seed } => self.rng = StdRng::seed_from_u64(*seed),
             Op::Input { r } => self.regs[*r as usize] = self.next_input(pc, false)?,
@@ -1680,12 +1842,8 @@ impl<'a> Machine<'a> {
                     .map(|d| d.as_secs_f64())
                     .unwrap_or(0.0)
             }
-            Op::Push { r } => {
-                if self.stack.len() >= 1 << 20 {
-                    return Err(self.err(pc, t!("stack overflow (more than a million values pushed)", "pila gainezka (milioi bat balio baino gehiago sartuta)")));
-                }
-                self.stack.push(self.regs[*r as usize]);
-            }
+            Op::Push { r } => self.push(pc, Val::Reg(*r))?,
+            Op::PushV { v } => self.push(pc, *v)?,
             Op::Pop { r } => match self.stack.pop() {
                 Some(v) => self.regs[*r as usize] = v,
                 None => return Err(self.err(pc, t!("POP on an empty stack", "POP pila huts batean"))),
@@ -1705,14 +1863,12 @@ impl<'a> Machine<'a> {
                 }
             }
             Op::Branch { cmp, a, b, to } => {
-                let (x, y) = (self.regs[*a as usize], self.regs[*b as usize]);
-                let take = match cmp {
-                    Cmp::Eq => x == y,
-                    Cmp::Ne => x != y,
-                    Cmp::Gt => x > y,
-                    Cmp::Lt => x < y,
-                };
-                if take {
+                if self.compare(*cmp, Val::Reg(*a), Val::Reg(*b)) {
+                    return Ok(Flow::Goto(*to));
+                }
+            }
+            Op::BranchV { cmp, a, b, to } => {
+                if self.compare(*cmp, *a, *b) {
                     return Ok(Flow::Goto(*to));
                 }
             }
@@ -1781,25 +1937,15 @@ impl<'a> Machine<'a> {
                 }
                 self.print(&s);
             }
-            Op::CharOut { r } => {
-                let v = self.regs[*r as usize];
-                match char::from_u32(v as u32).filter(|_| v >= 0.0 && v.fract() == 0.0) {
-                    Some(c) => self.print(&c.to_string()),
-                    None => return Err(self.err(pc, t!("R{} holds {}, which is not a character code", "R{}-k {} du, eta hori ez da karaktere-kode bat", r, fmt_value(v)))),
-                }
-            }
+            Op::CharOut { r } => self.char_out(pc, Val::Reg(*r))?,
+            Op::CharOutV { v } => self.char_out(pc, *v)?,
             Op::Log { q, text } => self.print(&format!("[q{}] {}\n", q, text)),
-            Op::Load { dst, addr } => {
-                let a = self.cell(pc, *addr)?;
-                self.regs[*dst as usize] = self.memory.get(a).copied().unwrap_or(0.0);
-            }
-            Op::Store { src, addr } => {
-                let a = self.cell(pc, *addr)?;
-                self.grow_memory(pc, a + 1)?;
-                self.memory[a] = self.regs[*src as usize];
-            }
+            Op::Load { dst, addr } => self.regs[*dst as usize] = self.load(pc, Val::Reg(*addr))?,
+            Op::LoadV { dst, addr } => self.regs[*dst as usize] = self.load(pc, *addr)?,
+            Op::Store { src, addr } => self.store(pc, Val::Reg(*src), Val::Reg(*addr))?,
+            Op::StoreV { src, addr } => self.store(pc, *src, *addr)?,
             Op::StoreText { addr, text } => {
-                let a = self.cell(pc, *addr)?;
+                let a = self.cell(pc, Val::Reg(*addr))?;
                 let end = a + text.len() + 1;
                 if end as f64 > MAX_CELLS {
                     return Err(self.err(pc, t!(
@@ -1815,18 +1961,8 @@ impl<'a> Machine<'a> {
                 self.regs[*addr as usize] = end as f64;
             }
             Op::GetByte { r } => self.regs[*r as usize] = self.next_input(pc, true)?,
-            Op::PutByte { r } => {
-                let v = self.regs[*r as usize];
-                if !(0.0..=255.0).contains(&v) || v.fract() != 0.0 {
-                    return Err(self.err(pc, t!(
-                        "R{} holds {}, which is not a byte (0..255)",
-                        "R{}-k {} du, eta hori ez da byte bat (0..255)",
-                        r,
-                        fmt_value(v)
-                    )));
-                }
-                self.write_bytes(&[v as u8]);
-            }
+            Op::PutByte { r } => self.put_byte(pc, Val::Reg(*r))?,
+            Op::PutByteV { v } => self.put_byte(pc, *v)?,
             Op::Stream { stderr } => {
                 // ordena gordetzeko: irteera estandarra hustu errore-irteerara aldatu aurretik
                 let _ = self.out.flush();
@@ -1841,27 +1977,10 @@ impl<'a> Machine<'a> {
             }
             Op::ArgCount { r } => self.regs[*r as usize] = self.cfg.args.len() as f64,
             Op::ArgByte { dst, arg, index } => {
-                let (k, i) = (self.regs[*arg as usize], self.regs[*index as usize]);
-                let n = self.cfg.args.len();
-                if !(k >= 0.0 && k.fract() == 0.0 && k < n as f64) {
-                    return Err(self.err(pc, t!(
-                        "R{} holds {}, but the program has {} argument(s), counted from 0",
-                        "R{}-k {} du, baina programak {} argumentu ditu, 0tik zenbatuta",
-                        arg,
-                        fmt_value(k),
-                        n
-                    )));
-                }
-                if !(i >= 0.0 && i.fract() == 0.0) {
-                    return Err(self.err(pc, t!(
-                        "R{} holds {}, which is not a byte position (0, 1, 2, ...)",
-                        "R{}-k {} du, eta hori ez da byte-posizio bat (0, 1, 2, ...)",
-                        index,
-                        fmt_value(i)
-                    )));
-                }
-                let bytes = self.cfg.args[k as usize].as_bytes();
-                self.regs[*dst as usize] = bytes.get(i as usize).map_or(-1.0, |&b| b as f64);
+                self.regs[*dst as usize] = self.arg_byte(pc, Val::Reg(*arg), Val::Reg(*index))?
+            }
+            Op::ArgByteV { dst, arg, index } => {
+                self.regs[*dst as usize] = self.arg_byte(pc, *arg, *index)?
             }
         }
         Ok(Flow::Next)

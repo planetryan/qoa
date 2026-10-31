@@ -174,8 +174,8 @@ berdina da.
 qoa compile --assembler tools/asm.qoa programa.qoa
 ```
 
-Rust-en mihiztatzailea baino 19 aldiz motelagoa da gutxi gorabehera (segundoko 27.000 lerro 500.000-ren
-ordez), eta hala ere segundo erdi baino gutxiago behar du bere 10.000 lerroetarako. Behar izan zituen aginduak
+Rust-en mihiztatzailea baino 17 aldiz motelagoa da gutxi gorabehera (segundoko 27.000 lerro 470.000-ren
+ordez), eta hala ere segundo erdi baino gutxiago behar du bere 11.000 lerroetarako. Behar izan zituen aginduak
 (memoria `LOAD`/`STORE`-rekin, byteak `GETC`/`PUTC`-rekin, argumentuak, errore-irteera, irteera-egoera)
 edozein QOA programatan dabiltza, eta `qoa run --quiet`-ek programa bat tresna gisa exekutatzen du. Zer
 dagoen QOAn, zer geratzen den rust-en eta zergatik: [docs/self-hosting.eu.md](docs/self-hosting.eu.md).

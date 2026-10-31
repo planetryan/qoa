@@ -14,7 +14,7 @@
 // mihiztatu eta konparatu), eta tests/disasm.rs-ek programa guztiekin. jauzi-helburuen helbideak glifo-
 // sintaxiaren CC[0x..] eta `0x..:` helbide berberak dira.
 
-use crate::program::{BinOp, Cmp, Count, Dest, Gate, Op, Program, Source, UnOp};
+use crate::program::{BinOp, Cmp, Count, Dest, Gate, Op, Program, Source, UnOp, Val};
 use crate::{t, ts};
 use std::collections::BTreeSet;
 use std::f64::consts::PI;
@@ -30,6 +30,8 @@ enum Tok {
     Word(String),
     Label(usize),
     Text(String),
+    // erregistro baten lekuko zenbakia: `(1)` (QOA arruntean eta glifoan berdin)
+    Imm(f64),
 }
 
 // agindu bat: izena, eragigaiak ordenan eta aukerako helmuga (-> ondoren)
@@ -48,6 +50,50 @@ pub fn label(addr: usize) -> String {
 // zenbaki bat berriz irakurtzean bit berak emateko moduan (rust-en idazkera laburrena, beti zehatza)
 fn num(x: f64) -> Tok {
     Tok::Word(format!("{}", x))
+}
+
+// erregistro bat edo zenbaki bat (Val)
+fn val(v: Val) -> Tok {
+    match v {
+        Val::Reg(r) => Tok::R(r),
+        Val::Num(x) => Tok::Imm(x),
+    }
+}
+
+fn binop_name(op: BinOp) -> &'static str {
+    match op {
+        BinOp::Add => "ADD",
+        BinOp::Sub => "SUB",
+        BinOp::Mul => "MUL",
+        BinOp::Div => "DIV",
+        BinOp::And => "ANDBITS",
+        BinOp::Or => "ORBITS",
+        BinOp::Xor => "XORBITS",
+        BinOp::Shl => "SHL",
+        BinOp::Shr => "SHR",
+        BinOp::Pow => "POW",
+    }
+}
+
+fn unop_name(op: UnOp) -> &'static str {
+    match op {
+        UnOp::Not => "NOTBITS",
+        UnOp::Sqrt => "SQRT",
+        UnOp::Exp => "EXP",
+        UnOp::Log => "LOG",
+        UnOp::Sin => "SIN",
+        UnOp::Cos => "COS",
+        UnOp::Tan => "TAN",
+    }
+}
+
+fn cmp_name(cmp: Cmp) -> &'static str {
+    match cmp {
+        Cmp::Eq => "IFEQ",
+        Cmp::Ne => "IFNE",
+        Cmp::Gt => "IFGT",
+        Cmp::Lt => "IFLT",
+    }
 }
 
 fn escape(s: &str) -> String {
@@ -241,33 +287,8 @@ fn instr(op: &Op, addr: usize) -> Result<Instr, String> {
         }
         Op::Set { r, value } => i("REGSET", vec![Tok::R(*r), num(*value)]),
         Op::Copy { dst, src } => i("REGCOPY", vec![Tok::R(*dst), Tok::R(*src)]),
-        Op::Bin { op, dst, a, b } => {
-            let name = match op {
-                BinOp::Add => "ADD",
-                BinOp::Sub => "SUB",
-                BinOp::Mul => "MUL",
-                BinOp::Div => "DIV",
-                BinOp::And => "ANDBITS",
-                BinOp::Or => "ORBITS",
-                BinOp::Xor => "XORBITS",
-                BinOp::Shl => "SHL",
-                BinOp::Shr => "SHR",
-                BinOp::Pow => "POW",
-            };
-            i(name, vec![Tok::R(*dst), Tok::R(*a), Tok::R(*b)])
-        }
-        Op::Un { op, dst, src } => {
-            let name = match op {
-                UnOp::Not => "NOTBITS",
-                UnOp::Sqrt => "SQRT",
-                UnOp::Exp => "EXP",
-                UnOp::Log => "LOG",
-                UnOp::Sin => "SIN",
-                UnOp::Cos => "COS",
-                UnOp::Tan => "TAN",
-            };
-            i(name, vec![Tok::R(*dst), Tok::R(*src)])
-        }
+        Op::Bin { op, dst, a, b } => i(binop_name(*op), vec![Tok::R(*dst), Tok::R(*a), Tok::R(*b)]),
+        Op::Un { op, dst, src } => i(unop_name(*op), vec![Tok::R(*dst), Tok::R(*src)]),
         Op::Rand { r } => i("RAND", vec![Tok::R(*r)]),
         Op::Seed { seed } => i("SEEDRNG", vec![Tok::Word(seed.to_string())]),
         Op::Input { r } => i("INPUT", vec![Tok::R(*r)]),
@@ -293,15 +314,10 @@ fn instr(op: &Op, addr: usize) -> Result<Instr, String> {
             };
             i(name, vec![source_tok(*src), Tok::Label(*to)])
         }
-        Op::Branch { cmp, a, b, to } => {
-            let name = match cmp {
-                Cmp::Eq => "IFEQ",
-                Cmp::Ne => "IFNE",
-                Cmp::Gt => "IFGT",
-                Cmp::Lt => "IFLT",
-            };
-            i(name, vec![Tok::R(*a), Tok::R(*b), Tok::Label(*to)])
-        }
+        Op::Branch { cmp, a, b, to } => i(
+            cmp_name(*cmp),
+            vec![Tok::R(*a), Tok::R(*b), Tok::Label(*to)],
+        ),
         Op::Call { to } => i("CALL", vec![Tok::Label(*to)]),
         Op::Return => i("RETSUB", vec![]),
         Op::LoopStart { count, .. } => match count {
@@ -339,6 +355,17 @@ fn instr(op: &Op, addr: usize) -> Result<Instr, String> {
         Op::ArgByte { dst, arg, index } => {
             i("ARGBYTE", vec![Tok::R(*dst), Tok::R(*arg), Tok::R(*index)])
         }
+        Op::BinV { op, dst, a, b } => i(binop_name(*op), vec![Tok::R(*dst), val(*a), val(*b)]),
+        Op::UnV { op, dst, src } => i(unop_name(*op), vec![Tok::R(*dst), val(*src)]),
+        Op::BranchV { cmp, a, b, to } => i(cmp_name(*cmp), vec![val(*a), val(*b), Tok::Label(*to)]),
+        Op::LoadV { dst, addr } => i("LOAD", vec![Tok::R(*dst), val(*addr)]),
+        Op::StoreV { src, addr } => i("STORE", vec![val(*src), val(*addr)]),
+        Op::PutByteV { v } => i("PUTC", vec![val(*v)]),
+        Op::CharOutV { v } => i("CHAROUT", vec![val(*v)]),
+        Op::PushV { v } => i("PUSH", vec![val(*v)]),
+        Op::ArgByteV { dst, arg, index } => {
+            i("ARGBYTE", vec![Tok::R(*dst), val(*arg), val(*index)])
+        }
     })
 }
 
@@ -348,6 +375,7 @@ fn plain_tok(t: &Tok) -> String {
         Tok::O(k) => format!("o{}", k),
         Tok::C(k) => format!("c{}", k),
         Tok::R(k) => format!("R{}", k),
+        Tok::Imm(x) => format!("({})", x),
         Tok::Word(w) => w.clone(),
         Tok::Label(a) => label(*a),
         Tok::Text(s) => escape(s),
@@ -369,15 +397,7 @@ fn plain(ins: &Instr) -> String {
 
 // jauzi eta dei guztien helburuak
 fn targets(p: &Program) -> BTreeSet<usize> {
-    p.ops
-        .iter()
-        .filter_map(|op| match op {
-            Op::Jump { to } | Op::JumpIf { to, .. } | Op::Branch { to, .. } | Op::Call { to } => {
-                Some(*to)
-            }
-            _ => None,
-        })
-        .collect()
+    p.ops.iter().filter_map(Op::jump_target).collect()
 }
 
 fn header(p: &Program) -> Vec<String> {
@@ -548,6 +568,7 @@ pub fn to_dot(p: &Program) -> Result<String, String> {
             Op::Jump { .. }
             | Op::JumpIf { .. }
             | Op::Branch { .. }
+            | Op::BranchV { .. }
             | Op::Call { .. }
             | Op::Return
             | Op::Halt
@@ -608,7 +629,7 @@ pub fn to_dot(p: &Program) -> Result<String, String> {
                 out.push(edge(*to, &format!("{} = {}", what, value), ""));
                 out.push(edge(e, ts!("else", "bestela"), ", style=dashed"));
             }
-            Op::Branch { to, .. } => {
+            Op::Branch { to, .. } | Op::BranchV { to, .. } => {
                 out.push(edge(*to, ts!("if", "baldin"), ""));
                 out.push(edge(e, ts!("else", "bestela"), ", style=dashed"));
             }
@@ -782,6 +803,8 @@ fn glyph_tok(t: &Tok, o: &GlyphOptions) -> String {
         Tok::O(k) => format!("{}[{}]", o.modes, index(*k, o)),
         Tok::C(k) => format!("#{}[{}]", o.bits, index(*k, o)),
         Tok::R(k) => format!("#{}", k),
+        // glifoan zenbaki huts bat erregistro edo zenbaki baten lekuan balio bat da: `ADD/#1,#1,1`
+        Tok::Imm(x) => format!("{}", x),
         Tok::Label(a) => label(*a),
         Tok::Word(w) => {
             if w.starts_with(|c: char| c.is_ascii_digit() || c == '-' || c == '.')

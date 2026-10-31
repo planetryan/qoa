@@ -1,0 +1,4 @@
+; nahita huts egiten duen proba: izen bera konstante eta erregistro
+; expect-error: 'acc' is both a constant and a register; rename one of them
+CONST acc 1
+RREG acc 2

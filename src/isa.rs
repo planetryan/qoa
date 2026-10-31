@@ -9,6 +9,7 @@
 // motak:
 //   q qubita (`q3` edo `3`)            o modu optikoa (`o1` edo `1`)
 //   r erregistroa (`R2` edo `2`)       c bit klasikoa (`c0`, edo tartea `c0..c3`)
+//   x erregistroa edo zenbakia (`R2`, edo parentesi artean `(10)`)
 //   d emaitzaren helmuga (`c0` bita edo `R2` erregistroa)
 //   v balio-iturria (`c0` edo `R2`)    f zenbakizko adierazpena (`pi/2`)
 //   i zenbaki osoa                     n kopurua (zenbaki osoa edo `R2`)
@@ -196,6 +197,22 @@ pub static SPECS: &[Spec] = &[
         Setup,
         "Name optical modes (optional), like QREG: OREG arm 2 makes arm[0], arm[1] and arm.",
         "Modu optikoei izena eman (aukerakoa), QREG bezala: OREG arm 2-k arm[0], arm[1] eta arm sortzen ditu.",
+    ),
+    spec(
+        "RREG",
+        &[],
+        "w:name i:size i:first?",
+        Setup,
+        "Name classical registers (optional): after RREG total 2, total[0] and total[1] (or total, both) stand for the next 2 unnamed registers, or for registers from `first` if given. R0..R31 keep working.",
+        "Erregistro klasikoei izena eman (aukerakoa): RREG total 2 ondoren, total[0] eta total[1] (edo total, biak) izenik gabeko hurrengo 2 erregistroak dira, edo `first`-etik aurrerakoak ematen bada. R0..R31-ek ere balio dute.",
+    ),
+    spec(
+        "CONST",
+        &[],
+        "w:name f:value",
+        Setup,
+        "Name a number: after CONST newline 10, newline can be used in any expression (RX q0 newline/4, ADD R1 R1 (newline)). A constant can use the constants defined above it.",
+        "Zenbaki bati izena eman: CONST newline 10 ondoren, newline edozein adierazpenetan erabil daiteke (RX q0 newline/4, ADD R1 R1 (newline)). Konstante batek bere gainetik definitutakoak erabil ditzake.",
     ),
     // ---- qubit-ateak ----
     each(spec(
@@ -768,7 +785,7 @@ pub static SPECS: &[Spec] = &[
     spec(
         "REGCOPY",
         &["MOV", "RCOPY", "RC"],
-        "r:dst r:src",
+        "r:dst x:src",
         Classical,
         "Copy one register into another.",
         "Erregistro bat beste batera kopiatu.",
@@ -776,7 +793,7 @@ pub static SPECS: &[Spec] = &[
     spec(
         "ADD",
         &["REGADD", "RADD", "RGA"],
-        "r:dst r:a r:b",
+        "r:dst x:a x:b",
         Classical,
         "dst = a + b",
         "dst = a + b",
@@ -784,7 +801,7 @@ pub static SPECS: &[Spec] = &[
     spec(
         "SUB",
         &["REGSUB", "RSUB", "RGS"],
-        "r:dst r:a r:b",
+        "r:dst x:a x:b",
         Classical,
         "dst = a - b",
         "dst = a - b",
@@ -792,7 +809,7 @@ pub static SPECS: &[Spec] = &[
     spec(
         "MUL",
         &["REGMUL"],
-        "r:dst r:a r:b",
+        "r:dst x:a x:b",
         Classical,
         "dst = a * b",
         "dst = a * b",
@@ -800,7 +817,7 @@ pub static SPECS: &[Spec] = &[
     spec(
         "DIV",
         &["REGDIV"],
-        "r:dst r:a r:b",
+        "r:dst x:a x:b",
         Classical,
         "dst = a / b (division by zero stops the program)",
         "dst = a / b (zeroz zatitzeak programa gelditzen du)",
@@ -808,7 +825,7 @@ pub static SPECS: &[Spec] = &[
     spec(
         "ANDBITS",
         &["AND", "ANDB", "AB"],
-        "r:dst r:a r:b",
+        "r:dst x:a x:b",
         Classical,
         "Bitwise AND of the values as 64-bit integers.",
         "Balioen bitez biteko AND, 64 biteko oso gisa.",
@@ -816,7 +833,7 @@ pub static SPECS: &[Spec] = &[
     spec(
         "ORBITS",
         &["OR", "ORB", "OB"],
-        "r:dst r:a r:b",
+        "r:dst x:a x:b",
         Classical,
         "Bitwise OR of the values as 64-bit integers.",
         "Balioen bitez biteko OR, 64 biteko oso gisa.",
@@ -824,7 +841,7 @@ pub static SPECS: &[Spec] = &[
     spec(
         "XORBITS",
         &["XOR", "XORB", "XB"],
-        "r:dst r:a r:b",
+        "r:dst x:a x:b",
         Classical,
         "Bitwise XOR of the values as 64-bit integers.",
         "Balioen bitez biteko XOR, 64 biteko oso gisa.",
@@ -832,7 +849,7 @@ pub static SPECS: &[Spec] = &[
     spec(
         "NOTBITS",
         &["NOTB", "NB"],
-        "r:dst r:src",
+        "r:dst x:src",
         Classical,
         "Bitwise NOT of the value as a 64-bit integer.",
         "Balioaren bitez biteko NOT, 64 biteko oso gisa.",
@@ -840,7 +857,7 @@ pub static SPECS: &[Spec] = &[
     spec(
         "SHL",
         &[],
-        "r:dst r:src r:amount",
+        "r:dst x:src x:amount",
         Classical,
         "Shift left by the amount in a register.",
         "Ezkerrera desplazatu erregistro bateko kopuruan.",
@@ -848,7 +865,7 @@ pub static SPECS: &[Spec] = &[
     spec(
         "SHR",
         &[],
-        "r:dst r:src r:amount",
+        "r:dst x:src x:amount",
         Classical,
         "Shift right by the amount in a register.",
         "Eskuinera desplazatu erregistro bateko kopuruan.",
@@ -856,7 +873,7 @@ pub static SPECS: &[Spec] = &[
     spec(
         "SQRT",
         &["SR"],
-        "r:dst r:src",
+        "r:dst x:src",
         Classical,
         "Square root.",
         "Erro karratua.",
@@ -864,7 +881,7 @@ pub static SPECS: &[Spec] = &[
     spec(
         "EXP",
         &[],
-        "r:dst r:src",
+        "r:dst x:src",
         Classical,
         "e to the power of the value.",
         "e balioaren berretzailera.",
@@ -872,7 +889,7 @@ pub static SPECS: &[Spec] = &[
     spec(
         "LOG",
         &["LN"],
-        "r:dst r:src",
+        "r:dst x:src",
         Classical,
         "Natural logarithm.",
         "Logaritmo nepertarra.",
@@ -880,7 +897,7 @@ pub static SPECS: &[Spec] = &[
     spec(
         "SIN",
         &[],
-        "r:dst r:src",
+        "r:dst x:src",
         Classical,
         "Sine of an angle in radians.",
         "Angelu baten sinua, radianetan.",
@@ -888,7 +905,7 @@ pub static SPECS: &[Spec] = &[
     spec(
         "COS",
         &[],
-        "r:dst r:src",
+        "r:dst x:src",
         Classical,
         "Cosine of an angle in radians.",
         "Angelu baten kosinua, radianetan.",
@@ -896,7 +913,7 @@ pub static SPECS: &[Spec] = &[
     spec(
         "TAN",
         &[],
-        "r:dst r:src",
+        "r:dst x:src",
         Classical,
         "Tangent of an angle in radians.",
         "Angelu baten tangentea, radianetan.",
@@ -904,7 +921,7 @@ pub static SPECS: &[Spec] = &[
     spec(
         "POW",
         &[],
-        "r:dst r:a r:b",
+        "r:dst x:a x:b",
         Classical,
         "a to the power of b.",
         "a b-ren berretzailera.",
@@ -945,7 +962,7 @@ pub static SPECS: &[Spec] = &[
     spec(
         "LOAD",
         &["LD"],
-        "r:dst r:addr",
+        "r:dst x:addr",
         Memory,
         "Read the memory cell whose address is in addr. Memory is cells 0, 1, 2, ... (up to 2^32 of them), each holding one number; a cell never written holds 0.",
         "addr-ek duen helbideko memoria-gelaxka irakurri. Memoria 0, 1, 2, ... gelaxkak dira (2^32 arte), bakoitzean zenbaki bat; inoiz idatzi gabeko gelaxka batek 0 du.",
@@ -953,7 +970,7 @@ pub static SPECS: &[Spec] = &[
     spec(
         "STORE",
         &["ST"],
-        "r:src r:addr",
+        "x:src x:addr",
         Memory,
         "Write src into the memory cell whose address is in addr.",
         "src addr-ek duen helbideko memoria-gelaxkan idatzi.",
@@ -977,7 +994,7 @@ pub static SPECS: &[Spec] = &[
     spec(
         "PUTC",
         &["PUTBYTE"],
-        "r:src",
+        "x:src",
         Memory,
         "Write one byte (0..255) to the output exactly as it is, for binary output.",
         "Byte bat (0..255) irteerara idatzi bere horretan, irteera bitarrerako.",
@@ -1001,7 +1018,7 @@ pub static SPECS: &[Spec] = &[
     spec(
         "ARGBYTE",
         &[],
-        "r:dst r:arg r:index",
+        "r:dst x:arg x:index",
         Memory,
         "Byte number index of argument number arg (both counted from 0), or -1 past the end of the argument.",
         "arg zenbakidun argumentuaren index zenbakidun bytea (biak 0tik zenbatuta), edo -1 argumentuaren amaieratik aurrera.",
@@ -1017,7 +1034,7 @@ pub static SPECS: &[Spec] = &[
     spec(
         "PUSH",
         &["PUSHREG"],
-        "r:reg",
+        "x:reg",
         Classical,
         "Push a register onto the stack.",
         "Erregistro bat pilan sartu.",
@@ -1074,7 +1091,7 @@ pub static SPECS: &[Spec] = &[
     spec(
         "IFEQ",
         &["IEQ"],
-        "r:a r:b l:label",
+        "x:a x:b l:label",
         Flow,
         "Jump if a == b.",
         "Jauzi a == b bada.",
@@ -1082,7 +1099,7 @@ pub static SPECS: &[Spec] = &[
     spec(
         "IFNE",
         &["INE"],
-        "r:a r:b l:label",
+        "x:a x:b l:label",
         Flow,
         "Jump if a != b.",
         "Jauzi a != b bada.",
@@ -1090,7 +1107,7 @@ pub static SPECS: &[Spec] = &[
     spec(
         "IFGT",
         &["IGT"],
-        "r:a r:b l:label",
+        "x:a x:b l:label",
         Flow,
         "Jump if a > b.",
         "Jauzi a > b bada.",
@@ -1098,7 +1115,7 @@ pub static SPECS: &[Spec] = &[
     spec(
         "IFLT",
         &["ILT"],
-        "r:a r:b l:label",
+        "x:a x:b l:label",
         Flow,
         "Jump if a < b.",
         "Jauzi a < b bada.",
@@ -1187,7 +1204,7 @@ pub static SPECS: &[Spec] = &[
     spec(
         "CHAROUT",
         &["COUT", "CO"],
-        "r:reg",
+        "x:reg",
         Output,
         "Print a register's value as a character.",
         "Erregistro baten balioa karaktere gisa inprimatu.",
@@ -1633,6 +1650,10 @@ pub fn kind_help(kind: char) -> &'static str {
             "register: R2 (or 2), R0..R31",
             "erregistroa: R2 (edo 2), R0..R31",
         ),
+        'x' => (
+            "register or number: R2 (or 2), or a number in parentheses like (10), (pi/2) or (newline)",
+            "erregistroa edo zenbakia: R2 (edo 2), edo parentesi arteko zenbaki bat, (10), (pi/2) edo (newline) bezala",
+        ),
         'c' => (
             "classical bit: c0, or a range like c0..c3",
             "bit klasikoa: c0, edo c0..c3 bezalako tarte bat",
@@ -1697,12 +1718,13 @@ pub fn markdown_reference() -> String {
         "| Idazkera | Esanahia |\n|---|---|\n",
     ));
     for k in [
-        'q', 'o', 'r', 'c', 'd', 'v', 'f', 'n', 'l', 's', 'b', 'k', 'w',
+        'q', 'o', 'r', 'x', 'c', 'd', 'v', 'f', 'n', 'l', 's', 'b', 'k', 'w',
     ] {
         let example = match k {
             'q' => "`q3`",
             'o' => "`o1`",
             'r' => "`R2`",
+            'x' => "`R2` / `(10)`",
             'c' => "`c0` / `c0..c3`",
             'd' => "`-> c0` / `-> R2`",
             'v' => "`c0` / `R2`",
@@ -1796,7 +1818,7 @@ mod tests {
         for s in SPECS {
             for op in s.operand_specs() {
                 assert!(
-                    "qorcdvfinlsbgkw".contains(op.kind),
+                    "qorxcdvfinlsbgkw".contains(op.kind),
                     "{}: bad kind {}",
                     s.name,
                     op.kind

@@ -63,16 +63,16 @@ dago oraindik. QOAn idatzitako glifo-aurrealde bat etorkizuneko lana izan daitek
 
 ## Nola konparatzen den rust-ekin
 
-Mihiztatzailearen iturburu propioan neurtuta (10.400 lerro), 4 nukleoko hodeiko makina batean:
+Mihiztatzailearen iturburu propioan neurtuta (11.000 lerro), 4 nukleoko hodeiko makina batean:
 
 | | rust (`src/asm.rs`) | QOA (`tools/asm.qoa`) |
 |---|---|---|
 | irteera | erreferentzia | byte berberak, mezu berberak |
-| denbora | 21 ms | 390 ms (19 aldiz motelago, gutxi gorabehera) |
-| abiadura | 500.000 lerro segundoko inguru | 27.000 lerro segundoko inguru |
-| tamaina | 2.500 lerro inguru mihiztatzailearentzat eta adierazpenentzat, gehi agindu-taula | 10.100 lerro inguru, gehi rust-etik sortutako 300 lerro inguru taula |
+| denbora | 23 ms | 405 ms (17 aldiz motelago, gutxi gorabehera) |
+| abiadura | 470.000 lerro segundoko inguru | 27.000 lerro segundoko inguru |
+| tamaina | 2.700 lerro inguru mihiztatzailearentzat eta adierazpenentzat, gehi agindu-taula | 10.700 lerro inguru, gehi rust-etik sortutako 300 lerro inguru taula |
 
-Beraz rust 19 aldiz azkarragoa da eta 4 aldiz laburragoa logika berarentzat. Hori da interpretatzaile
+Beraz rust 17 aldiz azkarragoa da eta 4 aldiz laburragoa logika berarentzat. Hori da interpretatzaile
 batean mihiztatze-estiloko kodearen kostua: QOA-k 32 zenbaki-erregistro, memoria-gelaxka zenbakituak eta
 jauziak ditu, eta ez mota, egitura edo testu-katerik. Eremu-irakurketa, konparazio eta konstante bakoitza
 agindu bereizi bat da. Trukean, mihiztatzaile osoa QOA programa bat da, eta QOA exekutatzen duen edozerk
@@ -122,8 +122,10 @@ lan egiten duen edozein programarentzat erabilgarriak:
 | `SIN`, `COS`, `TAN`, `POW` | adierazpenek erabiltzen dituzten gainerako funtzioak |
 
 Horietako bat erabiltzen duen programa `.qx` formatuaren 2. bertsioan idazten da; beste programa guztiak 1.
-bertsioan geratzen dira, eta QOA 0.4.2-k irakurtzen ditu oraindik. [ISA.eu.md](ISA.eu.md)-k guztiak
-deskribatzen ditu.
+bertsioan geratzen dira, eta QOA 0.4.2-k irakurtzen ditu oraindik. QOA 0.4.4-k parentesi arteko zenbakiak
+(`ADD R1 R1 (1)`), `CONST` eta `RREG` gehitu zituen, eta QOAn idatzitako mihiztatzaileak ulertu eta erabili
+ere egiten ditu; parentesi arteko zenbaki bat duen programa formatuaren 3. bertsioa da. [ISA.eu.md](ISA.eu.md)-k
+guztiak deskribatzen ditu.
 
 ## Mugak
 

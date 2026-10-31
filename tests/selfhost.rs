@@ -313,6 +313,12 @@ const EXPRESSIONS: &[&str] = &[
     "--1",
     "e1",
     "1e+",
+    "newline",
+    "newline/4",
+    "-newline*half",
+    "half",
+    "newline(2)",
+    "NEWLINE",
 ];
 
 fn long_number(rng: &mut StdRng) -> String {
@@ -349,11 +355,34 @@ fn operand(rng: &mut StdRng, kind: char) -> String {
             3 => "o0..o1".into(),
             _ => format!("o{}", rng.random_range(0..3)),
         },
-        'r' => match rng.random_range(0..8) {
+        'r' => match rng.random_range(0..11) {
             0 if bad => "R32".into(),
             1 if bad => "x".into(),
             2 => "7".into(),
+            3 => "acc[1]".into(),
+            4 if bad => "acc[2]".into(),
+            5 if bad => "acc".into(),
+            6 if bad => "newline".into(),
             _ => format!("R{}", rng.random_range(0..32)),
+        },
+        // erregistro bat edo (zenbaki) bat
+        'x' => match rng.random_range(0..16) {
+            0 => "(1)".into(),
+            1 => "(-0.5)".into(),
+            2 => "(pi/2)".into(),
+            3 => "(newline)".into(),
+            4 => "(newline*2+1)".into(),
+            5 => "(\u{3000}2 ^ 10\u{a0})".into(),
+            6 if bad => "(1".into(),
+            7 if bad => "(foo)".into(),
+            8 if bad => "()".into(),
+            9 if bad => "(1/0)".into(),
+            10 => format!(
+                "({})",
+                EXPRESSIONS[rng.random_range(0..EXPRESSIONS.len())]
+                    .replace("\\u{3000}", "\u{3000}")
+            ),
+            _ => operand(rng, 'r'),
         },
         'c' => match rng.random_range(0..8) {
             0 if bad => "3".into(),
@@ -367,6 +396,7 @@ fn operand(rng: &mut StdRng, kind: char) -> String {
             1 => format!("R{}", rng.random_range(0..32)),
             2 if bad => "-> q1".into(),
             3 => "-> c0..c2".into(),
+            4 => "-> acc[0]".into(),
             _ => format!("-> R{}", rng.random_range(0..32)),
         },
         'v' => {
@@ -498,8 +528,44 @@ fn program(rng: &mut StdRng) -> String {
             );
         }
     }
+    if rng.random_bool(0.5) {
+        for _ in 0..rng.random_range(1..3) {
+            lines.push(
+                [
+                    "CONST newline 10",
+                    "CONST half 1/2",
+                    "CONST half newline/20",
+                    "CONST 9x 1",
+                    "CONST pi 3",
+                    "CONST H 1",
+                    "CONST q3 1",
+                    "CONST half foo",
+                    "CONST half",
+                    "CONST half 1 2",
+                ][rng.random_range(0..10)]
+                .into(),
+            );
+        }
+    }
+    if rng.random_bool(0.4) {
+        for _ in 0..rng.random_range(1..3) {
+            lines.push(
+                [
+                    "RREG acc 2 4",
+                    "RREG acc 2",
+                    "RREG more 3 5",
+                    "RREG acc 2 31",
+                    "RREG acc 0",
+                    "RREG R5 2",
+                    "RREG acc 40",
+                    "RREG newline 1",
+                ][rng.random_range(0..8)]
+                .into(),
+            );
+        }
+    }
     for _ in 0..rng.random_range(3..18) {
-        let line = match rng.random_range(0..20) {
+        let line = match rng.random_range(0..22) {
             0 => "l1:".to_string(),
             1 => format!("L.two: {}", instruction(rng)),
             2 => "; a comment # with // marks".into(),
@@ -511,6 +577,8 @@ fn program(rng: &mut StdRng) -> String {
             8 => format!("\u{3000}{}\u{a0}", instruction(rng)),
             9 => "PRINT \"a;b#c//d\" # real comment".into(),
             10 => "l1:".into(),
+            11 => "CONST newline 12".into(),
+            12 => "RREG acc 2 4".into(),
             _ => instruction(rng),
         };
         lines.push(line);
@@ -540,6 +608,28 @@ fn generated_programs_assemble_the_same() {
     );
     cases.push(b"\n\n\n".to_vec());
     cases.push(Vec::new());
+    // proba-multzoak 0.4.4-ko erroreak ukitzen ditu benetan
+    let seen: Vec<String> = cases
+        .iter()
+        .filter_map(|c| std::str::from_utf8(c).ok())
+        .filter_map(|c| qoa::asm::assemble(c, "x.qoa").err())
+        .flatten()
+        .map(|d| d.message)
+        .collect();
+    for want in [
+        "cannot name a constant",
+        "is defined twice",
+        "CONST takes a name and a value",
+        "cannot name a register",
+        "but the registers are R0..R31",
+        "expected a number for",
+    ] {
+        assert!(
+            seen.iter().any(|m| m.contains(want)),
+            "sortutako programek ez dute '{}' ukitzen",
+            want
+        );
+    }
     for (i, case) in cases.iter().enumerate() {
         let file = scratch(&format!("gen-{}.qoa", i));
         std::fs::write(&file, case).unwrap();
@@ -593,7 +683,7 @@ fn decimal(rng: &mut StdRng) -> String {
 
 #[test]
 fn generated_valid_programs_assemble_the_same() {
-    let header = "QINIT 6\nQMODE 3 4\nQREG data 3 1\nCREG bits 3\nOREG light 2\nl1:\nL.two:\n";
+    let header = "QINIT 6\nQMODE 3 4\nQREG data 3 1\nCREG bits 3\nOREG light 2\nRREG acc 2 4\nCONST newline 10\nCONST half newline/20\nl1:\nL.two:\n";
     let mut rng = StdRng::seed_from_u64(0x0a5_0a5);
     let mut kept = Vec::new();
     // mihiztatzaile batek onartzen dituen lerroak bakarrik, gero fitxategi handietan elkarrekin
@@ -617,6 +707,21 @@ fn generated_valid_programs_assemble_the_same() {
             rng.random_range(0..32),
             "PRINTLN \"inner\""
         ));
+    }
+    for form in [
+        "acc[1]",
+        "-> acc[0]",
+        "(newline",
+        "(-0.5)",
+        "(pi/2)",
+        "newline/4",
+        "half",
+    ] {
+        assert!(
+            kept.iter().any(|l| l.contains(form)),
+            "onartutako lerroek ez dute '{}' erabiltzen",
+            form
+        );
     }
     assert!(
         kept.len() > 4000,

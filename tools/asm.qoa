@@ -25,7 +25,7 @@
 ;   21 NAMEDHT izendun erregistroak 22 NAMEDV haien ordena   23 LOOPP 24 LOOPN begizta-pila
 ;   25 DECLQ (-1 ez) 26 DECLMN (-1 ez) 27 DECLMC 28 DECLMD
 ;   29 MAXQ 30 MAXM 31 MAXB (-1 ez)   32 QREP 33 QLINE 34 QLIMREP
-;   35 NEXTQ 36 NEXTC 37 NEXTO   38 V2 (2. formatua behar da)   39 CURLINE
+;   35 NEXTQ 36 NEXTC 37 NEXTO   38 FMT (formatua ken 1)   39 CURLINE
 ;   40 TOKP 41 NTOK uneko lerroaren tokenak   42 SCR1 43 SCR2 44 DIGP lerro-luzerako bufferrak
 ;   45 BEST 46 NBEST 47 SEQ diagnostiko txikienak   48 FNAMES adierazpenetako izenak
 ;   49 ALPHAP 50 NALPHA 51 ALNUMP 52 NALNUM unicode-taulak
@@ -33,7 +33,7 @@
 ;   61 OCUR 62 OEND 63 OTAIL 64 OHEAD   eragiketen byte-korrontea
 ;   65 P10 10^0..10^22   66 BIGR 67 BIGD 68 BIGT bigint-ak   69 P2_32 70 N2_32 71 P2_64 72 N2_64
 ;   73 VALP balioak (eragigai bakoitzeko 4 gelaxka) 74 GRPP taldeak 75 TP 76 NT 77 ABP geziak
-;   78 LISTP 79 NLIST
+;   78 LISTP 79 NLIST   84 CONSTHT konstanteak 85 NEXTR 86 CONSTV haien ordena 87 "value" 88 erabili gabea
 ;   1000-tik aurrera: memoria dinamikoa
 
 ; ---------------------------------------------------------------- nagusia
@@ -53,6 +53,7 @@ CALL setup
 CALL isaload
 CALL pass1
 CALL fit
+CALL clash
 CALL pass2
 CALL post
 REGSET R0 16
@@ -551,10 +552,20 @@ ADD R2 R0 R31
 STORE R2 R1
 RETSUB
 
-; setv2: programak 2. formatua behar du (QOA 0.4.3-ko aginduak). aldatzen ditu R0
+; setv2: programak gutxienez 2. formatua behar du (QOA 0.4.3-ko aginduak). aldatzen ditu R0
 setv2:
 REGSET R0 38
+LOAD R0 R0
+IFNE R0 R30 setv2.done
+REGSET R0 38
 STORE R31 R0
+setv2.done:
+RETSUB
+
+; setv3: programak 3. formatua behar du (QOA 0.4.4-ko (zenbaki) eragigaiak). aldatzen ditu R0
+setv3:
+REGSET R0 38
+STORE (2) R0
 RETSUB
 
 ; ---------------------------------------------------------------- sarrera
@@ -964,6 +975,22 @@ REGSET R0 32
 CALL alloc
 REGSET R1 74
 STORE R0 R1
+; konstanteak: hash-taula [gakoa, luzera, balioa], ordena [izena, luzera, lerroa, zutabea, luzera]
+REGSET R0 19
+LOAD R0 R0
+ADD R0 R0 R31
+CALL alloc
+REGSET R1 84
+STORE R0 R1
+CALL vnew
+REGSET R1 86
+STORE R0 R1
+REGSET R0 0
+LOAD R1 R0
+REGSET R2 87
+STORE R1 R2
+STORETEXT R1 "value"
+STORE R1 R0
 ; adierazpenetako izenak
 CALL fnames
 REGSET R1 48
@@ -1509,6 +1536,8 @@ STORETEXT R1 "QMODE|MODES|i:modes i:cutoff?|0|0|||QMODE modes [cutoff]|QMODE mod
 STORETEXT R1 "QREG||w:name i:size i:first?|0|0|||QREG name size [first]|QREG izena size [first]"
 STORETEXT R1 "CREG||w:name i:size i:first?|0|0|||CREG name size [first]|CREG izena size [first]"
 STORETEXT R1 "OREG||w:name i:size i:first?|0|0|||OREG name size [first]|OREG izena size [first]"
+STORETEXT R1 "RREG||w:name i:size i:first?|0|0|||RREG name size [first]|RREG izena size [first]"
+STORETEXT R1 "CONST||w:name f:value|0|0|||CONST name value|CONST izena balioa"
 STORETEXT R1 "H|HAD APPLYHADAMARD|q:qubit|1|0|||H qubit|H qubita"
 STORETEXT R1 "X|APPLYBITFLIP|q:qubit|1|0|||X qubit|X qubita"
 STORETEXT R1 "Y||q:qubit|1|0|||Y qubit|Y qubita"
@@ -1577,48 +1606,48 @@ STORETEXT R1 "EXPECT|QUANTUMSTATETOMOGRAPHY QST QSTAT|q:qubit b:basis r:to?|0|0|
 STORETEXT R1 "BELLCHECK|BELLSTATEVERIFICATION BSV BSTATE|q:a q:b r:to?|0|0|||BELLCHECK a b [to]|BELLCHECK a b [helmuga]"
 STORETEXT R1 "MEANPHOTON|NMEAN|o:mode r:to?|0|0|||MEANPHOTON mode [to]|MEANPHOTON modua [helmuga]"
 STORETEXT R1 "REGSET|SET RSET RGST|r:reg f:value|0|0|||REGSET reg value|REGSET erregistroa balioa"
-STORETEXT R1 "REGCOPY|MOV RCOPY RC|r:dst r:src|0|0|||REGCOPY dst src|REGCOPY dst src"
-STORETEXT R1 "ADD|REGADD RADD RGA|r:dst r:a r:b|0|0|||ADD dst a b|ADD dst a b"
-STORETEXT R1 "SUB|REGSUB RSUB RGS|r:dst r:a r:b|0|0|||SUB dst a b|SUB dst a b"
-STORETEXT R1 "MUL|REGMUL|r:dst r:a r:b|0|0|||MUL dst a b|MUL dst a b"
-STORETEXT R1 "DIV|REGDIV|r:dst r:a r:b|0|0|||DIV dst a b|DIV dst a b"
-STORETEXT R1 "ANDBITS|AND ANDB AB|r:dst r:a r:b|0|0|||ANDBITS dst a b|ANDBITS dst a b"
-STORETEXT R1 "ORBITS|OR ORB OB|r:dst r:a r:b|0|0|||ORBITS dst a b|ORBITS dst a b"
-STORETEXT R1 "XORBITS|XOR XORB XB|r:dst r:a r:b|0|0|||XORBITS dst a b|XORBITS dst a b"
-STORETEXT R1 "NOTBITS|NOTB NB|r:dst r:src|0|0|||NOTBITS dst src|NOTBITS dst src"
-STORETEXT R1 "SHL||r:dst r:src r:amount|0|0|||SHL dst src amount|SHL dst src kopurua"
-STORETEXT R1 "SHR||r:dst r:src r:amount|0|0|||SHR dst src amount|SHR dst src kopurua"
-STORETEXT R1 "SQRT|SR|r:dst r:src|0|0|||SQRT dst src|SQRT dst src"
-STORETEXT R1 "EXP||r:dst r:src|0|0|||EXP dst src|EXP dst src"
-STORETEXT R1 "LOG|LN|r:dst r:src|0|0|||LOG dst src|LOG dst src"
-STORETEXT R1 "SIN||r:dst r:src|0|0|||SIN dst src|SIN dst src"
-STORETEXT R1 "COS||r:dst r:src|0|0|||COS dst src|COS dst src"
-STORETEXT R1 "TAN||r:dst r:src|0|0|||TAN dst src|TAN dst src"
-STORETEXT R1 "POW||r:dst r:a r:b|0|0|||POW dst a b|POW dst a b"
+STORETEXT R1 "REGCOPY|MOV RCOPY RC|r:dst x:src|0|0|||REGCOPY dst src|REGCOPY dst src"
+STORETEXT R1 "ADD|REGADD RADD RGA|r:dst x:a x:b|0|0|||ADD dst a b|ADD dst a b"
+STORETEXT R1 "SUB|REGSUB RSUB RGS|r:dst x:a x:b|0|0|||SUB dst a b|SUB dst a b"
+STORETEXT R1 "MUL|REGMUL|r:dst x:a x:b|0|0|||MUL dst a b|MUL dst a b"
+STORETEXT R1 "DIV|REGDIV|r:dst x:a x:b|0|0|||DIV dst a b|DIV dst a b"
+STORETEXT R1 "ANDBITS|AND ANDB AB|r:dst x:a x:b|0|0|||ANDBITS dst a b|ANDBITS dst a b"
+STORETEXT R1 "ORBITS|OR ORB OB|r:dst x:a x:b|0|0|||ORBITS dst a b|ORBITS dst a b"
+STORETEXT R1 "XORBITS|XOR XORB XB|r:dst x:a x:b|0|0|||XORBITS dst a b|XORBITS dst a b"
+STORETEXT R1 "NOTBITS|NOTB NB|r:dst x:src|0|0|||NOTBITS dst src|NOTBITS dst src"
+STORETEXT R1 "SHL||r:dst x:src x:amount|0|0|||SHL dst src amount|SHL dst src kopurua"
+STORETEXT R1 "SHR||r:dst x:src x:amount|0|0|||SHR dst src amount|SHR dst src kopurua"
+STORETEXT R1 "SQRT|SR|r:dst x:src|0|0|||SQRT dst src|SQRT dst src"
+STORETEXT R1 "EXP||r:dst x:src|0|0|||EXP dst src|EXP dst src"
+STORETEXT R1 "LOG|LN|r:dst x:src|0|0|||LOG dst src|LOG dst src"
+STORETEXT R1 "SIN||r:dst x:src|0|0|||SIN dst src|SIN dst src"
+STORETEXT R1 "COS||r:dst x:src|0|0|||COS dst src|COS dst src"
+STORETEXT R1 "TAN||r:dst x:src|0|0|||TAN dst src|TAN dst src"
+STORETEXT R1 "POW||r:dst x:a x:b|0|0|||POW dst a b|POW dst a b"
 STORETEXT R1 "RAND|RN|r:reg|0|0|||RAND reg|RAND erregistroa"
 STORETEXT R1 "SEEDRNG|SRNG|i:seed|0|0|||SEEDRNG seed|SEEDRNG hazia"
 STORETEXT R1 "INPUT|INP|r:reg|0|0|||INPUT reg|INPUT erregistroa"
 STORETEXT R1 "GETTIME|GTIME GT|r:reg|0|0|||GETTIME reg|GETTIME erregistroa"
-STORETEXT R1 "LOAD|LD|r:dst r:addr|0|0|||LOAD dst addr|LOAD dst addr"
-STORETEXT R1 "STORE|ST|r:src r:addr|0|0|||STORE src addr|STORE src addr"
+STORETEXT R1 "LOAD|LD|r:dst x:addr|0|0|||LOAD dst addr|LOAD dst addr"
+STORETEXT R1 "STORE|ST|x:src x:addr|0|0|||STORE src addr|STORE src addr"
 STORETEXT R1 "STORETEXT|STEXT|r:addr s:text|0|0|||STORETEXT addr text|STORETEXT addr testua"
 STORETEXT R1 "GETC|GETBYTE|r:dst|0|0|||GETC dst|GETC dst"
-STORETEXT R1 "PUTC|PUTBYTE|r:src|0|0|||PUTC src|PUTC src"
+STORETEXT R1 "PUTC|PUTBYTE|x:src|0|0|||PUTC src|PUTC src"
 STORETEXT R1 "STREAM||i:stream|0|0|||STREAM stream|STREAM stream"
 STORETEXT R1 "ARGC||r:dst|0|0|||ARGC dst|ARGC dst"
-STORETEXT R1 "ARGBYTE||r:dst r:arg r:index|0|0|||ARGBYTE dst arg index|ARGBYTE dst arg index"
+STORETEXT R1 "ARGBYTE||r:dst x:arg x:index|0|0|||ARGBYTE dst arg index|ARGBYTE dst arg index"
 STORETEXT R1 "GETLANG||r:dst|0|0|||GETLANG dst|GETLANG dst"
-STORETEXT R1 "PUSH|PUSHREG|r:reg|0|0|||PUSH reg|PUSH erregistroa"
+STORETEXT R1 "PUSH|PUSHREG|x:reg|0|0|||PUSH reg|PUSH erregistroa"
 STORETEXT R1 "POP|POPREG|r:reg|0|0|||POP reg|POP erregistroa"
 STORETEXT R1 "CHARLOAD|CLOAD CLD|r:reg k:char|0|0|||CHARLOAD reg char|CHARLOAD erregistroa karakterea"
 STORETEXT R1 "PACKBITS||r:dst c:bits+|0|0|||PACKBITS dst bits...|PACKBITS dst bitak..."
 STORETEXT R1 "JUMP|JMP|l:label|0|0|||JUMP label|JUMP etiketa"
 STORETEXT R1 "JUMPIFZERO|JIZ JZ|v:value l:label|0|0|||JUMPIFZERO value label|JUMPIFZERO balioa etiketa"
 STORETEXT R1 "JUMPIFONE|JIO JO|v:value l:label|0|0|||JUMPIFONE value label|JUMPIFONE balioa etiketa"
-STORETEXT R1 "IFEQ|IEQ|r:a r:b l:label|0|0|||IFEQ a b label|IFEQ a b etiketa"
-STORETEXT R1 "IFNE|INE|r:a r:b l:label|0|0|||IFNE a b label|IFNE a b etiketa"
-STORETEXT R1 "IFGT|IGT|r:a r:b l:label|0|0|||IFGT a b label|IFGT a b etiketa"
-STORETEXT R1 "IFLT|ILT|r:a r:b l:label|0|0|||IFLT a b label|IFLT a b etiketa"
+STORETEXT R1 "IFEQ|IEQ|x:a x:b l:label|0|0|||IFEQ a b label|IFEQ a b etiketa"
+STORETEXT R1 "IFNE|INE|x:a x:b l:label|0|0|||IFNE a b label|IFNE a b etiketa"
+STORETEXT R1 "IFGT|IGT|x:a x:b l:label|0|0|||IFGT a b label|IFGT a b etiketa"
+STORETEXT R1 "IFLT|ILT|x:a x:b l:label|0|0|||IFLT a b label|IFLT a b etiketa"
 STORETEXT R1 "CALL|CALLLABEL|l:label|0|0|||CALL label|CALL etiketa"
 STORETEXT R1 "RETSUB|RET RS||0|0|||RETSUB|RETSUB"
 STORETEXT R1 "LOOPSTART|LOOP LSTART LS|n:count|0|0|||LOOPSTART count|LOOPSTART kopurua"
@@ -1629,7 +1658,7 @@ STORETEXT R1 "BARRIER|BR|q:qubits*|0|0|||BARRIER [qubits...]|BARRIER [qubitak...
 STORETEXT R1 "PRINT||s:text|0|0|||PRINT text|PRINT testua"
 STORETEXT R1 "PRINTLN|PLN|s:text?|0|0|||PRINTLN [text]|PRINTLN [testua]"
 STORETEXT R1 "PRINTF|PF|s:format r:regs*|0|0|||PRINTF format [regs...]|PRINTF formatua [erregistroak...]"
-STORETEXT R1 "CHAROUT|COUT CO|r:reg|0|0|||CHAROUT reg|CHAROUT erregistroa"
+STORETEXT R1 "CHAROUT|COUT CO|x:reg|0|0|||CHAROUT reg|CHAROUT erregistroa"
 STORETEXT R1 "VERBOSELOG|VLOG VL|q:qubit s:text|0|0|||VERBOSELOG qubit text|VERBOSELOG qubita testua"
 STORETEXT R1 "DUMPREGS|DREGS DR||0|0|||DUMPREGS|DUMPREGS"
 STORETEXT R1 "COMMENT|CMT CM||0|0|||COMMENT|COMMENT"
@@ -1694,9 +1723,9 @@ STORETEXT R1 "CNOT 7 1 CY 7 2 CH 7 0 CSX 7 8 CRX 8 10 CRY 8 11 CRZ 8 12 CU 9 0 C
 STORETEXT R1 "SWAP 11 0 CSWAP 12 0 CCX 13 0 MCX 14 0 MCZ 15 0 BELL 16 0 GHZ 17 5 CLUSTER 17 6 ESWAP 18 0"
 STORETEXT R1 "MEASURE 19 0 MEASUREIN 20 0 MEASUREALL 21 9 RESETALL 21 11 DUMPSTATE 21 32 DUMPREGS 21 33"
 STORETEXT R1 "RETSUB 21 52 HALT 21 55 BARRIER 21 56"
-STORETEXT R1 "RESET 22 10 ADDPHOTON 22 27 SUBPHOTON 22 28 RAND 22 41 INPUT 22 43 GETTIME 22 44 PUSH 22 45"
-STORETEXT R1 "POP 22 46 CHAROUT 22 59 GETC 22 64 PUTC 22 65 GETLANG 22 68 ARGC 22 69"
-STORETEXT R1 "EMIT 23 13 DISPLACEREG 23 19 SQUEEZEREG 23 21 REGCOPY 23 38 LOAD 23 61 STORE 23 62 ARGBYTE 24 70"
+STORETEXT R1 "RESET 22 10 ADDPHOTON 22 27 SUBPHOTON 22 28 RAND 22 41 INPUT 22 43 GETTIME 22 44 PUSH 60 0"
+STORETEXT R1 "POP 22 46 CHAROUT 61 0 GETC 22 64 PUTC 62 0 GETLANG 22 68 ARGC 22 69"
+STORETEXT R1 "EMIT 23 13 DISPLACEREG 23 19 SQUEEZEREG 23 21 REGCOPY 57 0 LOAD 58 0 STORE 59 0 ARGBYTE 63 0"
 STORETEXT R1 "TOBASIS 25 0 DISPLACE 26 18 SQUEEZE 26 20 MODEPHASE 27 0 KERR 28 0 CROSSKERR 29 0 BS 29 1"
 STORETEXT R1 "MODESWAP 29 2 LOSS 30 0 FOCK 31 0 SINGLEPHOTON 32 0 COUNT 33 0 DETECT 34 15 PARITY 34 16"
 STORETEXT R1 "COINCIDENCE 35 0 DISPERSIVE 36 0 EXPECT 37 0 BELLCHECK 38 0 MEANPHOTON 39 0 REGSET 40 0"
@@ -1705,7 +1734,7 @@ STORETEXT R1 "POW 41 9 SQRT 42 0 EXP 42 1 LOG 42 2 NOTBITS 42 3 SIN 42 4 COS 42 
 STORETEXT R1 "CHARLOAD 44 0 PACKBITS 45 0 JUMP 46 48 CALL 46 51 JUMPIFZERO 47 0 JUMPIFONE 47 1"
 STORETEXT R1 "IFEQ 48 0 IFNE 48 1 IFGT 48 2 IFLT 48 3 LOOPSTART 49 0 LOOPEND 50 0 PRINT 51 0 PRINTLN 51 1"
 STORETEXT R1 "PRINTF 52 0 VERBOSELOG 53 0 STORETEXT 54 0 STREAM 55 0 EXIT 56 0"
-STORETEXT R1 "QINIT 99 1 QMODE 99 2 QREG 99 3 CREG 99 4 OREG 99 5 COMMENT 99 6"
+STORETEXT R1 "QINIT 99 1 QMODE 99 2 QREG 99 3 CREG 99 4 OREG 99 5 COMMENT 99 6 RREG 99 7 CONST 99 8"
 STORETEXT R1 ""
 STORE R1 R0
 REGCOPY R0 R2
@@ -2682,7 +2711,9 @@ REGSET R4 2
 IFEQ R1 R4 pass1.qmode
 REGSET R4 6
 IFEQ R1 R4 pass1.next
-; QREG / CREG / OREG
+REGSET R4 8
+IFEQ R1 R4 pass1.const
+; QREG / CREG / OREG / RREG
 REGCOPY R4 R1
 REGCOPY R0 R9
 REGCOPY R1 R2
@@ -2695,6 +2726,12 @@ REGCOPY R0 R9
 REGCOPY R1 R2
 REGCOPY R2 R3
 CALL declq
+JUMP pass1.next
+pass1.const:
+REGCOPY R0 R9
+REGCOPY R1 R2
+REGCOPY R2 R3
+CALL constant
 JUMP pass1.next
 pass1.qmode:
 REGCOPY R0 R9
@@ -2957,6 +2994,13 @@ REGSET R12 111
 REGSET R13 37
 REGSET R14 30
 register.k3:
+; RREG: R erregistroak; handiena ez da gordetzen (88, erabili gabea)
+REGSET R0 7
+IFNE R4 R0 register.k4
+REGSET R12 114
+REGSET R13 85
+REGSET R14 88
+register.k4:
 REGSET R0 2
 IFEQ R10 R0 register.shape
 REGSET R0 3
@@ -3301,6 +3345,178 @@ POP R9
 POP R8
 RETSUB
 
+; constant: R0 = CONST tokena, R1 = eragigaiak, R2 = kopurua -> CONST izena balioa, ordenan (balioak bere
+; gainetik definitutako konstanteak erabil ditzake)
+constant:
+PUSH R8
+PUSH R9
+PUSH R10
+PUSH R11
+REGCOPY R8 R0
+REGCOPY R9 R1
+REGCOPY R10 R2
+REGSET R0 2
+IFEQ R10 R0 constant.name
+REGCOPY R0 R8
+REGSET R1 70
+CALL diagtok
+JUMP constant.done
+constant.name:
+LOAD R0 R9
+ADD R1 R9 R31
+LOAD R1 R1
+CALL regname
+IFEQ R0 R31 constant.unique
+REGCOPY R0 R9
+REGSET R1 71
+CALL diagtext
+JUMP constant.done
+constant.unique:
+CALL constant.find
+IFEQ R1 R30 constant.value
+REGCOPY R0 R9
+REGSET R1 72
+CALL diagtext
+JUMP constant.done
+constant.value:
+REGSET R0 3
+ADD R11 R9 R0
+LOAD R0 R11
+ADD R1 R11 R31
+LOAD R1 R1
+CALL evalexpr
+IFEQ R0 R31 constant.put
+; "expected a number for value: ..."
+REGCOPY R0 R11
+REGSET R1 34
+CALL diagtok
+REGCOPY R11 R0
+REGSET R1 87
+LOAD R2 R1
+REGSET R1 4
+CALL dset
+REGSET R1 5
+REGSET R2 5
+CALL dset
+REGCOPY R0 R11
+CALL experr
+JUMP constant.done
+constant.put:
+; [gakoa, luzera, balioa] taulan, eta [izena, luzera, lerroa, zutabea, luzera] ordenan
+REGCOPY R11 R1
+CALL constant.find
+REGCOPY R10 R0
+REGSET R0 3
+CALL alloc
+LOAD R1 R9
+STORE R1 R0
+ADD R2 R0 R31
+ADD R1 R9 R31
+LOAD R1 R1
+STORE R1 R2
+ADD R2 R2 R31
+STORE R11 R2
+STORE R0 R10
+REGSET R0 5
+CALL alloc
+REGCOPY R10 R0
+LOAD R1 R9
+STORE R1 R10
+ADD R2 R10 R31
+ADD R1 R9 R31
+LOAD R1 R1
+STORE R1 R2
+ADD R2 R2 R31
+REGSET R1 39
+LOAD R1 R1
+STORE R1 R2
+ADD R2 R2 R31
+REGSET R1 2
+ADD R1 R9 R1
+LOAD R1 R1
+STORE R1 R2
+ADD R2 R2 R31
+ADD R1 R9 R31
+LOAD R1 R1
+IFGT R1 R30 constant.len
+REGSET R1 1
+constant.len:
+STORE R1 R2
+REGSET R0 86
+LOAD R0 R0
+REGCOPY R1 R10
+CALL vpush
+constant.done:
+POP R11
+POP R10
+POP R9
+POP R8
+RETSUB
+; constant.find: R9 = izenaren tokena -> R0 = zirrikitua, R1 = erregistroa (edo 0)
+constant.find:
+REGSET R0 84
+LOAD R0 R0
+LOAD R1 R9
+ADD R2 R9 R31
+LOAD R2 R2
+REGSET R3 19
+LOAD R3 R3
+JUMP htfind
+
+; clash: konstante bat ezin da erregistro-izen bat ere izan (izena erregistro gisa ordezkatuko litzateke)
+clash:
+PUSH R8
+PUSH R9
+PUSH R10
+PUSH R11
+REGSET R0 86
+LOAD R0 R0
+CALL vfirst
+REGCOPY R8 R0
+REGCOPY R9 R1
+REGCOPY R10 R2
+clash.next:
+IFEQ R10 R30 clash.done
+LOAD R11 R8
+REGSET R0 21
+LOAD R0 R0
+LOAD R1 R11
+ADD R2 R11 R31
+LOAD R2 R2
+REGSET R3 19
+LOAD R3 R3
+CALL htfind
+IFEQ R1 R30 clash.step
+REGSET R0 2
+ADD R0 R11 R0
+LOAD R3 R0
+ADD R0 R0 R31
+LOAD R1 R0
+ADD R0 R0 R31
+LOAD R2 R0
+REGCOPY R0 R3
+REGSET R3 73
+CALL diagat
+LOAD R2 R11
+ADD R3 R11 R31
+LOAD R3 R3
+REGSET R1 4
+CALL dtext
+clash.step:
+SUB R10 R10 R31
+REGCOPY R0 R8
+REGCOPY R1 R9
+CALL vnext
+REGCOPY R8 R0
+REGCOPY R9 R1
+JUMP clash.next
+clash.done:
+POP R11
+POP R10
+POP R9
+POP R8
+RETSUB
+
 ; fit: izendun erregistroak QINIT eta QMODE-k adierazitakoaren barruan
 fit:
 PUSH R8
@@ -3323,6 +3539,48 @@ REGSET R1 113
 IFEQ R0 R1 fit.q
 REGSET R1 111
 IFEQ R0 R1 fit.o
+REGSET R1 114
+IFEQ R0 R1 fit.r
+JUMP fit.step
+fit.r:
+; RREG: R0..R31-en barruan
+REGSET R3 3
+ADD R3 R11 R3
+LOAD R4 R3
+ADD R3 R3 R31
+LOAD R5 R3
+ADD R6 R4 R5
+REGSET R1 32
+IFGT R6 R1 fit.rbad
+JUMP fit.step
+fit.rbad:
+PUSH R4
+PUSH R6
+REGSET R0 5
+ADD R0 R11 R0
+LOAD R3 R0
+ADD R0 R0 R31
+LOAD R1 R0
+ADD R0 R0 R31
+LOAD R2 R0
+REGCOPY R0 R3
+REGSET R3 74
+CALL diagat
+REGCOPY R7 R0
+LOAD R2 R11
+ADD R3 R11 R31
+LOAD R3 R3
+REGSET R1 4
+PUSH R7
+CALL dtext
+POP R0
+POP R6
+SUB R2 R6 R31
+REGSET R1 7
+CALL dset
+POP R2
+REGSET R1 6
+CALL dset
 JUMP fit.step
 fit.q:
 REGSET R1 25
@@ -4474,7 +4732,8 @@ RETSUB
 ; balio bakoitza VALP-n (4 gelaxka): [mota, a, b, c]. motak: 0 falta da, 1 indizea (a), 2 indizeak (a = helbidea,
 ; b = kopurua), 3 helmuga (a = 1 bita / 2 erregistroa, b = n), 4 iturria (a = 0 erregistroa / 1 bita, b = n),
 ; 5 zenbakia (a), 6 osoa (a = goikoak, b = behekoak), 7 kopurua (a = 0 literala / 1 erregistroa, b, c),
-; 8 etiketa (a, b = testua), 9 testua (a, b = kode-puntuak), 10 oinarria (a = 0 X / 1 Y / 2 Z), 11 izena (a, b)
+; 8 etiketa (a, b = testua), 9 testua (a, b = kode-puntuak), 10 oinarria (a = 0 X / 1 Y / 2 Z), 11 izena (a, b),
+; 12 zenbakia erregistro baten lekuan (a, `(1)`)
 
 ; operand: R0 = zehaztapena, R1 = eragigaiaren zenbakia -> haren taldea irakurri. R0 = 1 ondo, 0 errorea
 operand:
@@ -4526,8 +4785,6 @@ ADD R1 R11 R1
 STORE R0 R1
 operand.ltok:
 IFEQ R13 R30 operand.ldone
-REGSET R0 114
-IFEQ R14 R0 operand.lreg
 REGCOPY R0 R12
 REGCOPY R1 R14
 CALL indexlist
@@ -4574,6 +4831,8 @@ REGSET R0 114
 IFEQ R14 R0 operand.idx
 REGSET R0 99
 IFEQ R14 R0 operand.idx
+REGSET R0 120
+IFEQ R14 R0 operand.xval
 REGSET R0 100
 IFEQ R14 R0 operand.dest
 REGSET R0 118
@@ -4603,6 +4862,24 @@ LOAD R0 R0
 ADD R1 R1 R31
 STORE R0 R1
 JUMP operand.ok
+operand.xval:
+; x: parentesi artean zenbaki bat (`(1)`), bestela erregistro bat
+LOAD R0 R12
+LOAD R0 R0
+REGSET R1 40
+IFNE R0 R1 operand.xreg
+LOAD R0 R12
+ADD R1 R12 R31
+LOAD R1 R1
+CALL evalexpr
+IFEQ R0 R30 operand.ferr
+REGSET R0 12
+STORE R0 R11
+ADD R0 R11 R31
+STORE R1 R0
+JUMP operand.ok
+operand.xreg:
+REGSET R14 114
 operand.idx:
 LOAD R0 R12
 ADD R1 R12 R31
@@ -5851,6 +6128,20 @@ IFEQ R0 R31 ex.atom.scan
 ex.atom.named:
 REGSET R0 53
 STORE R9 R0
+; CONST-en konstanteak lehenik, izen zehatzarekin
+REGSET R0 84
+LOAD R0 R0
+REGCOPY R1 R8
+SUB R2 R9 R8
+REGSET R3 19
+LOAD R3 R3
+CALL htfind
+IFEQ R1 R30 ex.atom.builtin
+REGSET R2 2
+ADD R2 R1 R2
+LOAD R0 R2
+JUMP ex.atom.ret
+ex.atom.builtin:
 REGCOPY R0 R8
 SUB R1 R9 R8
 PUSH R1
@@ -6866,17 +7157,18 @@ POP R9
 POP R8
 RETSUB
 
-; opnew: R0 = Op-en aldaera -> eragiketa berria hasi eta aldaera idatzi (61-etik aurrera 2. formatua).
-; R0 = eragiketaren indizea. aldatzen ditu R0-R7
+; opnew: R0 = Op-en aldaera -> eragiketa berria hasi eta aldaera idatzi (61-etik aurrera 2. formatua,
+; 71-tik aurrera 3.a). R0 = eragiketaren indizea. aldatzen ditu R0-R7
 opnew:
 PUSH R8
 PUSH R9
 REGCOPY R8 R0
 CALL opbegin
 REGCOPY R9 R0
-REGSET R0 61
-IFLT R8 R0 opnew.v1
+IFLT R8 (61) opnew.v1
 CALL setv2
+IFLT R8 (71) opnew.v1
+CALL setv3
 opnew.v1:
 REGCOPY R0 R8
 CALL ou32
@@ -7211,6 +7503,20 @@ REGSET R0 55
 IFEQ R10 R0 b.stream
 REGSET R0 56
 IFEQ R10 R0 b.exit
+REGSET R0 57
+IFEQ R10 R0 b.regcopy
+REGSET R0 58
+IFEQ R10 R0 b.load
+REGSET R0 59
+IFEQ R10 R0 b.store
+REGSET R0 60
+IFEQ R10 R0 b.push
+REGSET R0 61
+IFEQ R10 R0 b.charout
+REGSET R0 62
+IFEQ R10 R0 b.putc
+REGSET R0 63
+IFEQ R10 R0 b.argbyte
 JUMP b.done
 
 b.g1:
@@ -7814,6 +8120,26 @@ REGSET R1 0
 CALL oflt
 JUMP b.done
 b.bin:
+REGSET R0 1
+CALL isnum
+REGCOPY R10 R0
+REGSET R0 2
+CALL isnum
+ADD R10 R10 R0
+IFEQ R10 R30 b.bin.regs
+; BinV: zenbaki bat eragigaietako batean
+REGSET R0 71
+CALL opnew
+REGCOPY R0 R9
+CALL ou32
+REGSET R0 0
+CALL oidx
+REGSET R0 1
+CALL oval
+REGSET R0 2
+CALL oval
+JUMP b.done
+b.bin.regs:
 REGSET R0 9
 IFNE R9 R0 b.bin.v1
 CALL setv2
@@ -7830,6 +8156,19 @@ REGSET R0 2
 CALL oidx
 JUMP b.done
 b.un:
+REGSET R0 1
+CALL isnum
+IFEQ R0 R30 b.un.regs
+REGSET R0 72
+CALL opnew
+REGCOPY R0 R9
+CALL ou32
+REGSET R0 0
+CALL oidx
+REGSET R0 1
+CALL oval
+JUMP b.done
+b.un.regs:
 REGSET R0 4
 IFLT R9 R0 b.un.v1
 CALL setv2
@@ -7907,6 +8246,27 @@ REGSET R0 1
 CALL b.target
 JUMP b.done
 b.branch:
+REGSET R0 0
+CALL isnum
+REGCOPY R10 R0
+REGSET R0 1
+CALL isnum
+ADD R10 R10 R0
+IFEQ R10 R30 b.branch.regs
+REGSET R0 40
+CALL oreserve
+REGSET R0 73
+CALL opnew
+REGCOPY R0 R9
+CALL ou32
+REGSET R0 0
+CALL oval
+REGSET R0 1
+CALL oval
+REGSET R0 2
+CALL b.target
+JUMP b.done
+b.branch.regs:
 REGSET R0 24
 CALL oreserve
 REGSET R0 50
@@ -8196,12 +8556,155 @@ CALL dset
 REGCOPY R2 R3
 REGSET R1 5
 CALL dset
+b.regcopy:
+REGSET R0 1
+CALL isnum
+IFEQ R0 R30 b.regcopy.regs
+; REGCOPY R1 (5) = REGSET R1 5
+REGSET R0 37
+CALL opnew
+REGSET R0 0
+CALL oidx
+REGSET R0 1
+CALL vget
+REGCOPY R0 R1
+CALL of64
+JUMP b.done
+b.regcopy.regs:
+REGSET R0 38
+CALL opnew
+REGSET R0 0
+CALL oidx
+REGSET R0 1
+CALL oidx
+JUMP b.done
+b.load:
+REGSET R0 1
+CALL isnum
+IFEQ R0 R30 b.load.regs
+REGSET R0 74
+CALL opnew
+REGSET R0 0
+CALL oidx
+REGSET R0 1
+CALL oval
+JUMP b.done
+b.load.regs:
+REGSET R0 61
+CALL opnew
+REGSET R0 0
+CALL oidx
+REGSET R0 1
+CALL oidx
+JUMP b.done
+b.store:
+REGSET R0 0
+CALL isnum
+REGCOPY R10 R0
+REGSET R0 1
+CALL isnum
+ADD R10 R10 R0
+IFEQ R10 R30 b.store.regs
+REGSET R0 75
+CALL opnew
+REGSET R0 0
+CALL oval
+REGSET R0 1
+CALL oval
+JUMP b.done
+b.store.regs:
+REGSET R0 62
+CALL opnew
+REGSET R0 0
+CALL oidx
+REGSET R0 1
+CALL oidx
+JUMP b.done
+b.push:
+REGSET R10 45
+REGSET R11 78
+JUMP b.one
+b.charout:
+REGSET R10 59
+REGSET R11 77
+JUMP b.one
+b.putc:
+REGSET R10 65
+REGSET R11 76
+b.one:
+; eragigai bakarra: erregistroa (R10 aldaera) edo zenbakia (R11 aldaera)
+REGSET R0 0
+CALL isnum
+IFEQ R0 R30 b.one.regs
+REGCOPY R0 R11
+CALL opnew
+REGSET R0 0
+CALL oval
+JUMP b.done
+b.one.regs:
+REGCOPY R0 R10
+CALL opnew
+REGSET R0 0
+CALL oidx
+JUMP b.done
+b.argbyte:
+REGSET R0 1
+CALL isnum
+REGCOPY R10 R0
+REGSET R0 2
+CALL isnum
+ADD R10 R10 R0
+IFEQ R10 R30 b.argbyte.regs
+REGSET R0 79
+CALL opnew
+REGSET R0 0
+CALL oidx
+REGSET R0 1
+CALL oval
+REGSET R0 2
+CALL oval
+JUMP b.done
+b.argbyte.regs:
+REGSET R0 70
+CALL opnew
+REGSET R0 0
+CALL oidx
+REGSET R0 1
+CALL oidx
+REGSET R0 2
+CALL oidx
+JUMP b.done
 b.done:
 POP R11
 POP R10
 POP R9
 POP R8
 RETSUB
+
+; isnum: R0 = eragigaia -> R0 = 1 parentesi arteko zenbaki bat bada (12. mota). aldatzen ditu R0-R4
+isnum:
+CALL vget
+REGSET R1 12
+IFEQ R0 R1 isws.yes
+REGSET R0 0
+RETSUB
+
+; oval: R0 = eragigaia -> Val: Reg (0, u32) edo Num (1, f64). aldatzen ditu R0-R7
+oval:
+CALL vget
+REGSET R4 12
+IFEQ R0 R4 oval.num
+PUSH R1
+REGSET R0 0
+CALL ou32
+POP R0
+JUMP ou32
+oval.num:
+PUSH R1
+REGSET R0 1
+CALL ou32
+POP R0
+JUMP of64
 
 ; otext: R0 = eragigaia (testua, falta bada hutsa) -> String. aldatzen ditu R0-R7
 otext:
@@ -8428,7 +8931,8 @@ JUMP pubytes.next
 pubytes.done:
 RETSUB
 
-; output: "QOAX", formatuaren bertsioa (1, edo 2 0.4.3-ko aginduekin), eta Program bincode-rekin
+; output: "QOAX", formatuaren bertsioa (1; 2 0.4.3-ko aginduekin; 3 0.4.4-ko (zenbaki) eragigaiekin), eta
+; Program bincode-rekin
 output:
 PUSH R8
 PUSH R9
@@ -8972,6 +9476,85 @@ REGSET R1 65
 IFEQ R5 R1 message.65
 REGSET R1 66
 IFEQ R5 R1 message.66
+REGSET R1 70
+IFEQ R5 R1 message.70
+REGSET R1 71
+IFEQ R5 R1 message.71
+REGSET R1 72
+IFEQ R5 R1 message.72
+REGSET R1 73
+IFEQ R5 R1 message.73
+REGSET R1 74
+IFEQ R5 R1 message.74
+RETSUB
+message.70:
+IFEQ R28 R31 message.70.eu
+PRINT "CONST takes a name and a value, like CONST newline 10"
+RETSUB
+message.70.eu:
+PRINT "CONST-ek izen bat eta balio bat hartzen ditu, CONST newline 10 bezala"
+RETSUB
+message.71:
+IFEQ R28 R31 message.71.eu
+PRINT "'"
+REGSET R0 4
+CALL mtext
+PRINT "' cannot name a constant: use letters, digits and _, not an instruction, an operand like q3, or a constant like pi"
+RETSUB
+message.71.eu:
+PRINT "'"
+REGSET R0 4
+CALL mtext
+PRINT "' ezin da konstante-izena izan: erabili letrak, digituak eta _, ez agindu bat, q3 bezalako eragigai bat edo pi bezalako konstante bat"
+RETSUB
+message.72:
+IFEQ R28 R31 message.72.eu
+PRINT "constant '"
+REGSET R0 4
+CALL mtext
+PRINT "' is defined twice"
+RETSUB
+message.72.eu:
+PRINT "'"
+REGSET R0 4
+CALL mtext
+PRINT "' konstantea bi aldiz definituta dago"
+RETSUB
+message.73:
+IFEQ R28 R31 message.73.eu
+PRINT "'"
+REGSET R0 4
+CALL mtext
+PRINT "' is both a constant and a register; rename one of them"
+RETSUB
+message.73.eu:
+PRINT "'"
+REGSET R0 4
+CALL mtext
+PRINT "' konstantea eta erregistroa da aldi berean; aldatu baten izena"
+RETSUB
+message.74:
+IFEQ R28 R31 message.74.eu
+REGSET R0 4
+CALL mtext
+PRINT " needs R"
+REGSET R0 6
+CALL mnum
+PRINT "..R"
+REGSET R0 7
+CALL mnum
+PRINT ", but the registers are R0..R31"
+RETSUB
+message.74.eu:
+REGSET R0 4
+CALL mtext
+PRINT "-k R"
+REGSET R0 6
+CALL mnum
+PRINT "..R"
+REGSET R0 7
+CALL mnum
+PRINT " behar ditu, baina erregistroak R0..R31 dira"
 RETSUB
 message.1:
 IFEQ R28 R31 message.1.eu
@@ -10122,10 +10705,13 @@ LOAD R0 R0
 PRINTF "{}" R0
 RETSUB
 
-; mchar: R0 = gelaxka -> karaktere bat (kode-puntua). aldatzen ditu R0
+; mchar: R0 = gelaxka -> karaktere bat (kode-puntua; r erregistroa R gisa). aldatzen ditu R0
 mchar:
 ADD R0 R6 R0
 LOAD R0 R0
+IFNE R0 (114) mchar.out
+REGSET R0 82
+mchar.out:
 CHAROUT R0
 RETSUB
 

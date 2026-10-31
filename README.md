@@ -167,8 +167,8 @@ both languages. It assembles itself, and the copy it builds is identical to the 
 qoa compile --assembler tools/asm.qoa program.qoa
 ```
 
-It is about 19 times slower than the Rust assembler (27,000 lines per second instead of 500,000), still
-under half a second for its own 10,000 lines. The instructions it needed (memory with `LOAD`/`STORE`, bytes
+It is about 17 times slower than the Rust assembler (27,000 lines per second instead of 470,000), still
+under half a second for its own 11,000 lines. The instructions it needed (memory with `LOAD`/`STORE`, bytes
 with `GETC`/`PUTC`, arguments, standard error, exit status) work in any QOA program, and `qoa run --quiet`
 runs a program as a tool. What is in QOA, what stays in Rust and why: [docs/self-hosting.md](docs/self-hosting.md).
 

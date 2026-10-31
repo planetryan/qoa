@@ -1,0 +1,4 @@
+; nahita huts egiten duen proba
+; expect-error: two (R5..R6) overlaps acc (R4..R5)
+RREG acc 2 4
+RREG two 2 5

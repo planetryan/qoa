@@ -93,8 +93,10 @@ used without braces.
 must have the same size and go element by element, and single elements repeat: with `A{2}` and `B{2}`,
 `CX/A,B` is `CNOT q0 q2` and `CNOT q1 q3`.
 
-**A bare number is never an address.** In plain QOA `3` in a qubit slot means q3 and in a register slot
-R3; in a glyph program that is an error, because `ADD/#1,#1,1` looks like "add one" but would add R1.
+**A bare number is never an address.** In a glyph program a number is a number: `ADD/#1,#1,1` adds one,
+`IFEQ/#1,10,done` compares R1 with ten, and `STORE/7,#3` stores seven at the address in R3 (in plain QOA
+these are `ADD R1 R1 (1)`, `IFEQ R1 (10) done` and `STORE (7) R3`). Where only a qubit, a mode, a bit or a
+register to write to fits, a bare number is an error, because plain QOA would read `3` there as q3 or R3.
 Write `#1`, `Q[1]` or `q1`.
 
 ### Instructions

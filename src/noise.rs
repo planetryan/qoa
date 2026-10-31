@@ -445,7 +445,16 @@ pub fn native(op: &Op) -> Native {
         | Op::Exit { .. }
         | Op::GetLang { .. }
         | Op::ArgCount { .. }
-        | Op::ArgByte { .. } => Native::Free,
+        | Op::ArgByte { .. }
+        | Op::BinV { .. }
+        | Op::UnV { .. }
+        | Op::BranchV { .. }
+        | Op::LoadV { .. }
+        | Op::StoreV { .. }
+        | Op::PutByteV { .. }
+        | Op::CharOutV { .. }
+        | Op::PushV { .. }
+        | Op::ArgByteV { .. } => Native::Free,
     }
 }
 

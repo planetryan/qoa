@@ -194,6 +194,16 @@ pub enum Count {
     Reg(u32),
 }
 
+// erregistro bat edo zenbaki bat (`ADD R1 R1 (1)`: parentesi arteko zenbakia erregistro baten lekuan).
+// 0.4.3 arteko eragiketek erregistroak bakarrik dituzte; zenbaki bat duten forma berriak (BinV, BranchV, ...)
+// formatuaren 2. bertsioan daude, eta mihiztatzaileak forma zaharra idazten du eragigai guztiak erregistroak
+// direnean, programa zaharrek byte berberak izan ditzaten
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub enum Val {
+    Reg(u32),
+    Num(f64),
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum BinOp {
     Add,
@@ -524,6 +534,47 @@ pub enum Op {
         arg: u32,
         index: u32,
     },
+
+    // ---- 0.4.4: eragigai bat zenbaki bat denean (Val), goiko eragiketa berak ----
+    BinV {
+        op: BinOp,
+        dst: u32,
+        a: Val,
+        b: Val,
+    },
+    UnV {
+        op: UnOp,
+        dst: u32,
+        src: Val,
+    },
+    BranchV {
+        cmp: Cmp,
+        a: Val,
+        b: Val,
+        to: usize,
+    },
+    LoadV {
+        dst: u32,
+        addr: Val,
+    },
+    StoreV {
+        src: Val,
+        addr: Val,
+    },
+    PutByteV {
+        v: Val,
+    },
+    CharOutV {
+        v: Val,
+    },
+    PushV {
+        v: Val,
+    },
+    ArgByteV {
+        dst: u32,
+        arg: Val,
+        index: Val,
+    },
 }
 
 impl Op {
@@ -631,14 +682,36 @@ impl Op {
                 | Op::GetLang { .. }
                 | Op::ArgCount { .. }
                 | Op::ArgByte { .. }
+                | Op::BinV { .. }
+                | Op::UnV { .. }
+                | Op::BranchV { .. }
+                | Op::LoadV { .. }
+                | Op::StoreV { .. }
+                | Op::PutByteV { .. }
+                | Op::CharOutV { .. }
+                | Op::PushV { .. }
+                | Op::ArgByteV { .. }
         )
     }
 
-    // 0.4.2-k irakur ez ditzakeen eragiketak: hauek dituen programa formatuaren 2. bertsioan idazten da
-    pub fn needs_format_2(&self) -> bool {
+    // eragiketa hau eduki dezakeen formatu-bertsio txikiena: 1 (QOA 0.4.2-k irakurtzen du), 2 (QOA 0.4.3-ko
+    // aginduak: memoria, byteak, SIN/COS/TAN/POW...) edo 3 (QOA 0.4.4-ko (zenbaki) eragigaiak)
+    pub fn format_needed(&self) -> u16 {
         match self {
-            Op::Bin { op, .. } => *op == BinOp::Pow,
-            Op::Un { op, .. } => matches!(op, UnOp::Sin | UnOp::Cos | UnOp::Tan),
+            Op::BinV { .. }
+            | Op::UnV { .. }
+            | Op::BranchV { .. }
+            | Op::LoadV { .. }
+            | Op::StoreV { .. }
+            | Op::PutByteV { .. }
+            | Op::CharOutV { .. }
+            | Op::PushV { .. }
+            | Op::ArgByteV { .. } => 3,
+            Op::Bin { op, .. } if *op == BinOp::Pow => 2,
+            Op::Un {
+                op: UnOp::Sin | UnOp::Cos | UnOp::Tan,
+                ..
+            } => 2,
             Op::Load { .. }
             | Op::Store { .. }
             | Op::StoreText { .. }
@@ -648,8 +721,20 @@ impl Op {
             | Op::Exit { .. }
             | Op::GetLang { .. }
             | Op::ArgCount { .. }
-            | Op::ArgByte { .. } => true,
-            _ => false,
+            | Op::ArgByte { .. } => 2,
+            _ => 1,
+        }
+    }
+
+    // jauzi-helburua duen eragiketa baten helburua (Jump, JumpIf, Branch, BranchV, Call)
+    pub fn jump_target(&self) -> Option<usize> {
+        match self {
+            Op::Jump { to }
+            | Op::JumpIf { to, .. }
+            | Op::Branch { to, .. }
+            | Op::BranchV { to, .. }
+            | Op::Call { to } => Some(*to),
+            _ => None,
         }
     }
 
@@ -659,6 +744,7 @@ impl Op {
             Op::Jump { .. }
                 | Op::JumpIf { .. }
                 | Op::Branch { .. }
+                | Op::BranchV { .. }
                 | Op::Call { .. }
                 | Op::Return
                 | Op::LoopStart { .. }
@@ -762,17 +848,14 @@ impl Program {
     // ---- formatu bitarra ----
 
     pub const MAGIC: &'static [u8; 4] = b"QOAX";
-    // irakur daitekeen bertsio berriena. 1. bertsioa 2.aren azpimultzoa da: 0.4.3-ko eragiketak (memoria,
-    // byte-sarrera/irteera, SIN/COS/TAN/POW) erabiltzen ez dituen programa 1. bertsioan idazten da, QOA
-    // zaharragoek ere irakur dezaten
-    pub const FORMAT_VERSION: u16 = 2;
+    // irakur daitekeen bertsio berriena. bertsio bakoitza hurrengoaren azpimultzoa da, eta programa bat
+    // bere eragiketek behar duten bertsio txikienean idazten da, QOA zaharragoek ere irakur dezaten: 1
+    // (0.4.2), 2 (0.4.3-ko aginduekin) edo 3 (0.4.4-ko (zenbaki) eragigaiekin). QOA zahar batek bertsio
+    // berriago bat ikustean argi esaten du ezin duela irakurri, "hondatua" esan beharrean
+    pub const FORMAT_VERSION: u16 = 3;
 
     pub fn format_version(&self) -> u16 {
-        if self.ops.iter().any(Op::needs_format_2) {
-            2
-        } else {
-            1
-        }
+        self.ops.iter().map(Op::format_needed).max().unwrap_or(1)
     }
 
     pub fn to_bytes(&self) -> Vec<u8> {
@@ -814,11 +897,14 @@ impl Program {
         }
         let p: Program = bincode::deserialize(&data[6..])
             .map_err(|e| t!("corrupt QOA binary: {}", "QOA bitar hondatua: {}", e))?;
-        if version < p.format_version() {
+        let needed = p.format_version();
+        if version < needed {
+            let release = if needed == 2 { "0.4.3" } else { "0.4.4" };
             return Err(t!(
-                "corrupt QOA binary: version {} cannot hold QOA 0.4.3 instructions",
-                "QOA bitar hondatua: {}. bertsioak ezin ditu QOA 0.4.3-ko aginduak izan",
-                version
+                "corrupt QOA binary: version {} cannot hold QOA {} instructions",
+                "QOA bitar hondatua: {}. bertsioak ezin ditu QOA {}-ko aginduak izan",
+                version,
+                release
             ));
         }
         Ok(p)

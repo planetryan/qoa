@@ -62,16 +62,16 @@ QOA is possible future work.
 
 ## How it compares with Rust
 
-Measured on the assembler's own source (10,400 lines) on a 4-core cloud machine:
+Measured on the assembler's own source (11,000 lines) on a 4-core cloud machine:
 
 | | Rust (`src/asm.rs`) | QOA (`tools/asm.qoa`) |
 |---|---|---|
 | output | reference | identical bytes, identical messages |
-| time | 21 ms | 390 ms (about 19 times slower) |
-| speed | about 500,000 lines per second | about 27,000 lines per second |
-| size | about 2,500 lines for the assembler and expressions, plus the instruction table | about 10,100 lines, plus about 300 lines of tables generated from Rust |
+| time | 23 ms | 405 ms (about 17 times slower) |
+| speed | about 470,000 lines per second | about 27,000 lines per second |
+| size | about 2,700 lines for the assembler and expressions, plus the instruction table | about 10,700 lines, plus about 300 lines of tables generated from Rust |
 
-So Rust is about 19 times faster and about 4 times shorter for the same logic. That is the cost of
+So Rust is about 17 times faster and about 4 times shorter for the same logic. That is the cost of
 assembly-style code on an interpreter: QOA has 32 number registers, numbered memory cells and jumps, and no
 types, structures or strings. Every field access, comparison and constant is a separate instruction. In
 return, the whole assembler is a QOA program, and anything that runs QOA can rebuild QOA's programs. A
@@ -120,7 +120,9 @@ program that works as a tool:
 | `SIN`, `COS`, `TAN`, `POW` | the remaining functions expressions use |
 
 A program that uses any of them is written as `.qx` format version 2; all other programs stay version 1,
-which QOA 0.4.2 still reads. [ISA.md](ISA.md) describes them all.
+which QOA 0.4.2 still reads. QOA 0.4.4 added numbers in parentheses (`ADD R1 R1 (1)`), `CONST` and `RREG`,
+which the assembler written in QOA understands and uses too; a program with a number in parentheses is
+format version 3. [ISA.md](ISA.md) describes them all.
 
 ## Limits
 
