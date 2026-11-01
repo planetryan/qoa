@@ -2,6 +2,8 @@
 // programak .qoa (iturburua), .qg (glifo-sintaxia), .qasm (openqasm, zuzenean inportatua) edo .qx (konpilatua)
 // izan daitezke.
 // laguntza-testuak eta mezuak euskaraz edo ingelesez daude (ikus src/lang.rs).
+// komando-lerroko tresnak ez du `unsafe`-rik, eta ezin du izan
+#![forbid(unsafe_code)]
 
 mod visualizer;
 

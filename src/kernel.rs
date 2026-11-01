@@ -15,6 +15,8 @@
 //
 // egiaztapena: tests/reference.rs (ate bakoitza erreferentziazko simulagailuaren aurka) eta tests/kernel.rs
 // (sortak banan-banako aplikazioaren aurka, bloke-tamaina txikiekin etapa guztiak behartuz).
+// unsafe hemen: hari bakoitzak egoeraren bloke disjuntuak biltzen eta itzultzen ditu erakusle partekatu batekin
+#![allow(unsafe_code)]
 
 use crate::simd::{self, Spans};
 use num_complex::Complex64 as C;

@@ -31,13 +31,18 @@ konpara daiteke.
 1. **Lasterketa jarraituak.** q qubitaren ate batek (i, i + 2^q) anplitude-bikoteak nahasten ditu. Bikote
    horiek lasterketa jarraituetan daude, eta kontrolek lasterketa osoak hautatzen dituzte, beraz kernelek ez
    dute inoiz elementuz elementu erabakitzen ([src/kernel.rs](../src/kernel.rs)).
-2. **Eskuz idatzitako SIMD mihiztadura** hiru barne-begiztetarako (2x2 matrizea lasterketa parekoetan, bera
-   bektore-erregistro baten barruan 0. eta 1. qubitetarako, eta eskalatze diagonala),
-   [src/simd.rs](../src/simd.rs)-en: AVX-512 eta AVX2+FMA x86-64-n, NEON ARM-n, RVV 1.0 RISC-V-n
-   (bektore-luzerarekiko agnostikoa). Onena exekuzio-garaian aukeratzen da;
+2. **SIMD kernelak** hiru barne-begiztetarako (2x2 matrizea lasterketa parekoetan, bera bektore-erregistro
+   baten barruan 0. eta 1. qubitetarako, eta eskalatze diagonala), [src/simd.rs](../src/simd.rs)-en:
+   AVX-512 eta AVX2+FMA x86-64-n eta NEON ARM-n, rust seguruan idatzita bektore-funtzio intrintsekoekin eta
+   mugak egiaztatutako slice-en gainean, eta RVV 1.0 RISC-V-n (bektore-luzerarekiko agnostikoa)
+   mihiztaduran, rust egonkorrak oraindik ez baitu RVV-rik onartzen. Onena exekuzio-garaian aukeratzen da;
    `QOA_SIMD=scalar|avx2|avx512|neon|rvv`-k bat behartzen du. 0. eta 1. qubitetako kontrolak erreika
    bakoitzeko koefiziente bihurtzen dira (identitatea kontrola itzalita dagoenean), beraz ez dute ezer
-   gehiago kostatzen.
+   gehiago kostatzen. x86 eta ARM kerneletan geratzen den `unsafe` bakarra prozesadorearen ezaugarri
+   baterako konpilatutako kernel bati deitzea da, prozesadoreak ezaugarri hori duela egiaztatu ondoren,
+   eta bektore bat kargatzea edo gordetzea haren memoria zehazki hartzen duen erreferentzia baten bidez.
+   QOA 0.4.4-n kernel hauek eskuz idatzitako mihiztadura ordezkatu zuten; agindu berberak exekutatzen
+   dituzte ordena berean, emaitza berberak ematen dituzte bitez bit, eta abiadura berean dabiltza.
 3. **Ate-fusioa.** Qubit bereko ate jarraituak matrize bakar bihurtzen dira, tartean beste qubitetako ateak
    egon arren; identitate gisa ateratzen diren biderkadurak kentzen dira.
 4. **Cache-blokeak.** Makina birtualak ateak ilaran jartzen ditu banan-banan aplikatu beharrean, zerbaitek
@@ -101,13 +106,13 @@ hiru exekuzioetatik onena.
 ```sh
 cargo bench --bench bandwidth                  # muga eta kernelak 20, 24, 27 qubitekin
 cargo bench --bench bandwidth -- 23 28         # beste tamaina batzuk
-QOA_SIMD=scalar cargo bench --bench bandwidth  # mihiztadurarik gabe
+QOA_SIMD=scalar cargo bench --bench bandwidth  # bektore-kernelik gabe
 cargo bench --bench benchmark                  # criterion: kernelak, optika, programa osoak
 ```
 
 Bide azkarren zuzentasuna:
 
-- `tests/simd.rs`-k makinan dagoen mihiztadurako kernel bakoitza bertsio eskalarrarekin konparatzen du,
+- `tests/simd.rs`-k makinan dagoen bektore-kernel bakoitza bertsio eskalarrarekin konparatzen du,
   ausazko lasterketa-antolaketekin eta erreika bakoitzeko koefizienteekin, eta egiaztatzen du lasterketetatik
   kanpo ez dela ezer idazten.
 - `tests/kernel.rs`-k sortak (fusioa, tokiko eta bildutako blokeak, bloke-tamaina guztiekin, kontrolak

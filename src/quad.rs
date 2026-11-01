@@ -12,6 +12,8 @@
 //
 // baturak zati finkoetan egiten dira eta ordena berean batzen dira, beraz emaitza ez dago hari-kopuruaren
 // menpe.
+// unsafe hemen: fma eta avx2-rekin konpilatutako kernelei deitzea, prozesadoreak badituela egiaztatu ondoren
+#![allow(unsafe_code)]
 
 use crate::kernel::QGate;
 use crate::program::Gate;

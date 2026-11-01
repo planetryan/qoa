@@ -29,11 +29,16 @@ GB/s for a gate is 2 x state size / time (read and write), so it can be compared
 1. **Contiguous runs.** A gate on qubit q mixes amplitude pairs (i, i + 2^q). Those pairs come in contiguous
    runs, and controls select whole runs, so the kernels never decide element by element
    ([src/kernel.rs](../src/kernel.rs)).
-2. **Hand-written SIMD assembly** for the three inner loops (2x2 matrix on paired runs, the same inside a
-   vector register for qubits 0 and 1, and diagonal scaling), in [src/simd.rs](../src/simd.rs): AVX-512 and
-   AVX2+FMA on x86-64, NEON on ARM, RVV 1.0 on RISC-V (vector-length agnostic). The best one is picked at run
-   time; `QOA_SIMD=scalar|avx2|avx512|neon|rvv` forces one. Controls on qubits 0 and 1 become per-lane
-   coefficients (identity where the control is off), so they cost nothing extra.
+2. **SIMD kernels** for the three inner loops (2x2 matrix on paired runs, the same inside a vector register
+   for qubits 0 and 1, and diagonal scaling), in [src/simd.rs](../src/simd.rs): AVX-512 and AVX2+FMA on
+   x86-64 and NEON on ARM, written in safe Rust with vector intrinsics on bounds-checked slices, and RVV 1.0
+   on RISC-V (vector-length agnostic) in assembly, because stable Rust has no RVV support yet. The best one
+   is picked at run time; `QOA_SIMD=scalar|avx2|avx512|neon|rvv` forces one. Controls on qubits 0 and 1
+   become per-lane coefficients (identity where the control is off), so they cost nothing extra. The only
+   `unsafe` left in the x86 and ARM kernels is calling a kernel compiled for a processor feature after
+   checking that the processor has it, and loading or storing one vector through a reference that covers
+   exactly its memory. In QOA 0.4.4 these kernels replaced hand-written assembly; they run the same
+   instructions in the same order, give bit-for-bit the same results, and run at the same speed.
 3. **Gate fusion.** Consecutive single-qubit gates on the same qubit become one matrix, even with gates on
    other qubits in between; products that come out as the identity are dropped.
 4. **Cache blocking.** The VM queues gates instead of applying them one by one, until something needs the
@@ -96,13 +101,13 @@ a warm-up.
 ```sh
 cargo bench --bench bandwidth                  # ceiling and kernels at 20, 24, 27 qubits
 cargo bench --bench bandwidth -- 23 28         # other sizes
-QOA_SIMD=scalar cargo bench --bench bandwidth  # without the assembly
+QOA_SIMD=scalar cargo bench --bench bandwidth  # without the vector kernels
 cargo bench --bench benchmark                  # criterion: kernels, optics, whole programs
 ```
 
 Correctness of the fast paths:
 
-- `tests/simd.rs` compares every assembly kernel available on the machine with the scalar version, over
+- `tests/simd.rs` compares every vector kernel available on the machine with the scalar version, over
   random run layouts and per-lane coefficients, and checks that nothing outside the runs is written.
 - `tests/kernel.rs` compares batches (fusion, in-place and gathered blocks, with every block size, controls
   anywhere, swaps, states with optical modes) with a naive reference, and `tests/reference.rs` checks every

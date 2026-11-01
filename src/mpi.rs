@@ -1,5 +1,7 @@
 // fitxategi honek MPI taldea ematen du (`qoa run --mpi`, `mpi` ezaugarriarekin konpilatuta): src/mpi_shim.c-ko
 // funtzioak `Team` trait-aren atzean. prozesu bakoitzak `World` bakarra du; erortzean MPI amaitzen da.
+// unsafe hemen: MPI liburutegiari deiak (kanpoko C funtzioak)
+#![allow(unsafe_code)]
 
 use crate::team::Team;
 

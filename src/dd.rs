@@ -6,6 +6,8 @@
 // (x86 eta arm-en ez dago), eta zehaztasun gehigarria behar den lekuetan bakarrik ordaintzen da.
 //
 // FMA-rik gabeko prozesadoreetan, two_prod-ek dekker-en zatiketa erabiltzen du (zehatza hura ere).
+// unsafe hemen: fma-rekin konpilatutako batura-funtzioari deitzea, prozesadoreak fma duela egiaztatu ondoren
+#![allow(unsafe_code)]
 
 use num_complex::Complex64 as C;
 

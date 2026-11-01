@@ -12,6 +12,8 @@
 // baturak (araua, neurketa-probabilitateak, banaketak, itxarondako balioak) double-double aritmetikan
 // egiten dira (src/dd.rs): emaitza f64 baten zehaztasunera arte zuzena da egoeraren tamaina edozein dela
 // ere, eta ez dago hari-kopuruaren araberako biribiltzearen menpe.
+// unsafe hemen: hari bakoitzak egoeraren talde disjuntuak biltzen eta itzultzen ditu erakusle partekatu batekin
+#![allow(unsafe_code)]
 
 use crate::dd::{self, Dd};
 use crate::fock::Mat;

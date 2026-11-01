@@ -275,9 +275,10 @@ cargo test --release -- --ignored          # mugak ere bai: 28 qubit (4 GiB), fo
 Simulazio handi bat memoriaren banda-zabalerak mugatzen du, ez aritmetikak: ate bakoitzak egoera-bektore
 osoa irakurri eta idazten du (28 qubit 4 GiB dira). QOA-k hiru gauza egiten ditu horren aurka:
 
-- **Eskuz idatzitako SIMD mihiztadura** barne-begiztetarako: AVX-512 eta AVX2 x86-64-n, NEON ARM-n, RVV 1.0
-  RISC-V-n, exekuzio-garaian aukeratuta (`QOA_SIMD=scalar`-ek desaktibatzen du). Bertsio bakoitza
-  bertsio eskalar soil baten aurka egiaztatzen da, ARM eta RISC-V-n ere qemu bidez.
+- **SIMD kernelak** barne-begiztetarako: AVX-512 eta AVX2 x86-64-n eta NEON ARM-n rust seguruan
+  bektore-funtzio intrintsekoekin, RVV 1.0 RISC-V-n mihiztaduran, exekuzio-garaian aukeratuta
+  (`QOA_SIMD=scalar`-ek desaktibatzen ditu). Bertsio bakoitza bertsio eskalar soil baten aurka egiaztatzen
+  da, ARM eta RISC-V-n ere qemu bidez.
 - **Ate-fusioa**: qubit bereko ate jarraituak matrize bakar bihurtzen dira, tartean beste qubitetako ateak
   egon arren.
 - **Cache-blokeak**: qubit baxuetako ate-segida bat blokez bloke aplikatzen da bloke bakoitza cache-n

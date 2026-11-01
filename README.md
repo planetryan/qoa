@@ -265,9 +265,9 @@ cargo test --release -- --ignored          # also the limits: 28 qubits (4 GiB),
 A large simulation is limited by memory bandwidth, not arithmetic: every gate reads and writes the whole
 state vector (28 qubits is 4 GiB). QOA does three things about it:
 
-- **Hand-written SIMD assembly** for the inner loops: AVX-512 and AVX2 on x86-64, NEON on ARM, RVV 1.0 on
-  RISC-V, picked at run time (`QOA_SIMD=scalar` turns it off). Every version is checked against a plain
-  scalar one, on ARM and RISC-V under qemu too.
+- **SIMD kernels** for the inner loops: AVX-512 and AVX2 on x86-64 and NEON on ARM in safe Rust with vector
+  intrinsics, RVV 1.0 on RISC-V in assembly, picked at run time (`QOA_SIMD=scalar` turns them off). Every
+  version is checked against a plain scalar one, on ARM and RISC-V under qemu too.
 - **Gate fusion**: consecutive gates on the same qubit become one matrix, even with gates on other qubits in
   between.
 - **Cache blocking**: a run of gates on the low qubits is applied block by block while each block sits in

@@ -7,6 +7,8 @@
 // taula bat irakurtzen du.
 //
 // igoera eta jaitsiera bitarteko buffer batetik (host-visible) pasatzen dira, 64 MiB-eko zatietan.
+// unsafe hemen: vulkan kontrolatzaileari deiak (kanpoko C funtzioak)
+#![allow(unsafe_code)]
 
 use crate::gpu::{GpuGate, Stage, TILE_BITS};
 use crate::{t, ts};

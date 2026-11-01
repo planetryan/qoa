@@ -15,6 +15,8 @@
 //     zenbaki bera dute (programa bera, hazi bera), beraz emaitza bera ateratzen dute
 //
 // prozesu-kopurua 2-ren berretura izan behar da.
+// unsafe hemen: anplitudeak byte gisa ikustea MPI-ra bidaltzeko (Complex64 #[repr(C)] da, bi f64)
+#![allow(unsafe_code)]
 
 use crate::dd::{self, Dd};
 use crate::kernel::{self, QGate};

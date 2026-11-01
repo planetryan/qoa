@@ -6,6 +6,8 @@
 // libOpenCL exekuzioan kargatzen da (libloading), beraz konpilatzeko ez da ezer behar, eta gailurik gabeko
 // makinetan errore argi bat ematen du. egoera gehienez 16 zatitan doa (OpenCL-k buffer bakoitzaren tamaina
 // mugatzen du: CL_DEVICE_MAX_MEM_ALLOC_SIZE).
+// unsafe hemen: libOpenCL-ri deiak (exekuzioan kargatutako kanpoko C funtzioak)
+#![allow(unsafe_code)]
 
 use crate::gpu::{GpuGate, Stage, TILE_BITS};
 use crate::{t, ts};

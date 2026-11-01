@@ -1,5 +1,11 @@
 // qoa liburutegia: mihiztatzailea, simulagailua eta inportazio/esportazioa.
 // rust egonkorrean konpilatzen da, nightly ezaugarririk gabe.
+//
+// `unsafe` debekatuta dago crate osoan, behar duten modulu gutxietan izan ezik, eta horiek beren buruan
+// adierazten dute (`#![allow(unsafe_code)]`) zergatik: simd (prozesadorearen ezaugarriak eta bektore-
+// kargak), kernel eta state (hari bakoitzak bere bloke disjuntuak), dd eta quad (fma-ren dispatch-a),
+// dist (MPI-ra bidaltzeko byteak), eta mpi, opencl eta vulkan (kanpoko liburutegiak)
+#![deny(unsafe_code)]
 
 // QOA 64 bitekoa da bakarrik: fisika 64 biteko koma higikorrean kalkulatzen du eta egoera handiek 64 biteko
 // helbide-espazioa behar dute (2^32 anplitude = 64 GiB)

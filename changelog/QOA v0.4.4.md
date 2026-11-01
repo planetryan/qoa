@@ -50,6 +50,14 @@ deep, and requires a clear error (or a normal run) every time, never a crash. Th
 * An OpenQASM gate definition with a `)` before its `(` or a `}` before its `{` is an error instead of a crash.
 * `qoa ... | head` ends quietly like any command-line tool (status 141), and an output that cannot be written,
   such as a full disk, stops the program with a clear message instead of losing the output silently.
+* **The x86 and ARM vector kernels are safe Rust.** AVX-512, AVX2 and NEON no longer use hand-written
+  assembly with raw pointers: they are vector intrinsics on bounds-checked slices. They run the same
+  instructions in the same order, so results are bit-for-bit the same (checked against the old assembly on
+  x86 and, under qemu, on ARM), and at the same speed. The only `unsafe` left there is calling a kernel built
+  for a processor feature after checking the processor has it, and loading or storing one vector through a
+  reference that covers exactly its memory. RISC-V's RVV kernels stay in assembly, because stable Rust has
+  no RVV support yet. `unsafe` is now forbidden in the whole crate except in the few modules that need it,
+  each saying why, and in the `qoa` command-line tool it is forbidden outright.
 
 ## Changed
 
@@ -129,6 +137,16 @@ beti, inoiz ez huts egite bat. Bilaketa horrek hauek aurkitu eta konpondu zituen
 * `qoa ... | head` isilik amaitzen da edozein komando-lerroko tresna bezala (141 egoera), eta idatzi ezin
   den irteera batek (disko betea, adibidez) programa gelditzen du mezu argi batekin, irteera isilik galdu
   beharrean.
+* **x86 eta ARM bektore-kernelak rust seguruak dira.** AVX-512, AVX2 eta NEON-ek ez dute gehiago erakusle
+  gordinekin eskuz idatzitako mihiztadurarik erabiltzen: bektore-funtzio intrintsekoak dira, mugak
+  egiaztatutako slice-en gainean. Agindu berberak exekutatzen dituzte ordena berean, beraz emaitzak bitez bit
+  berdinak dira (mihiztadura zaharraren aurka egiaztatuta x86-n eta, qemu bidez, ARM-n), eta abiadura berean.
+  Han geratzen den `unsafe` bakarra prozesadorearen ezaugarri baterako eraikitako kernel bati deitzea da,
+  prozesadoreak ezaugarri hori duela egiaztatu ondoren, eta bektore bat kargatzea edo gordetzea haren
+  memoria zehazki hartzen duen erreferentzia baten bidez. RISC-V-ren RVV kernelak mihiztaduran geratzen dira,
+  rust egonkorrak oraindik ez baitu RVV-rik onartzen. `unsafe` debekatuta dago orain crate osoan, behar
+  duten modulu gutxietan izan ezik (bakoitzak zergatik esaten du), eta `qoa` komando-lerroko tresnan
+  erabat debekatuta dago.
 
 ## Aldatua
 

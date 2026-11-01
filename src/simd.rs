@@ -1,7 +1,17 @@
-// fitxategi honek simulagailuaren barne-begizta beroenak ditu, arkitektura bakoitzeko eskuz idatzitako
-// mihiztaduran (`asm!`): avx-512 eta avx2+fma (x86-64), neon (aarch64), rvv 1.0 (riscv64), eta
+// fitxategi honek simulagailuaren barne-begizta beroenak ditu, arkitektura bakoitzeko bektore-aginduekin:
+// avx-512 eta avx2+fma (x86-64) eta neon (aarch64) rust seguruan, core::arch-en funtzio intrintsekoekin;
+// rvv 1.0 (riscv64) mihiztaduran (`asm!`), rust egonkorrak ez baitu oraindik rvv-rik onartzen; eta
 // erreferentziazko bertsio eskalarra. makinak duen onena exekuzio-garaian aukeratzen da behin;
 // `QOA_SIMD=scalar` (edo avx2, avx512, neon, rvv) ingurune-aldagaiak bat behartzen du.
+//
+// segurtasuna: x86 eta arm kernelek memoria slice-en bidez bakarrik ukitzen dute (rust-ek mugak egiaztatuta),
+// eta bektore-aritmetika funtzio intrintseko seguruekin egiten dute. `unsafe` bi lekutan bakarrik dago:
+// prozesadorearen ezaugarriekin konpilatutako funtzio bati deitzea, ezaugarri hori makina honetan dagoela
+// egiaztatu ondoren (`Isa::is_available`), eta bektore bat erreferentzia batetik kargatzea edo hara
+// gordetzea (erreferentziak bektorearen memoria osoa bermatzen du; rust egonkorrak ez du karga/gordeketa
+// segururik). rvv-k erakusle gordinak behar ditu; haien mugak goian egiaztatzen dira.
+// bertsio guztiek mihiztadurako bertsio zaharrek egiten zituzten eragiketa berberak egiten dituzte ordena
+// berean, beraz emaitzak bitez bit berdinak dira.
 //
 // hiru kernel, guztiak "lasterketa"-sorten gainean (`Spans`): `count` lasterketa, bakoitza `len`
 // anplitudekoa, `stride`-ko tartearekin. horrela dei bakar batek bloke oso bat prozesatzen du, eta deiaren
@@ -17,8 +27,11 @@
 // (1 * x + 0 * y, zehatza). horregatik `len` 4ren multiploa da beti.
 //
 // anplitudeak `Complex64` dira memorian: [re, im] tartekatuta. x86-n konplexuen biderketa fmaddsub-ekin
-// egiten da; neon eta rvv-k re eta im banatzen dituzte kargatzean (ld2, vlseg2). probek bertsio guztiak
-// eskalarraren aurka egiaztatzen dituzte (tests/simd.rs), aarch64 eta riscv64 qemu-n barne.
+// egiten da; neon eta rvv-k re eta im banatzen dituzte kargatzean. probek bertsio guztiak eskalarraren
+// aurka egiaztatzen dituzte (tests/simd.rs), aarch64 eta riscv64 qemu-n barne.
+// unsafe hemen: prozesadorearen ezaugarriekin konpilatutako kernelei deitzea (egiaztatu ondoren), bektore
+// bat erreferentzia batetik kargatzea edo gordetzea, eta rvv-ren mihiztadura
+#![allow(unsafe_code)]
 
 use num_complex::Complex64 as C;
 use std::sync::OnceLock;
@@ -140,6 +153,90 @@ pub fn uniform_mat2(m: &[C; 4]) -> Mat2Lanes {
     [*m; 4]
 }
 
+// lo/hi lasterketa-bikoteak 4 anplitudeko taldetan: bi slice bereizitan (`Two`), edo slice berean `hi_off`
+// aurrerago (`One`). taldeak slice-en zatiak dira, beraz ezin dira mugetatik atera
+trait Pairs {
+    fn each(self, sp: Spans, f: impl FnMut(&mut [C; 4], &mut [C; 4]));
+    // rvv-ren mihiztadurarentzat: lehen lo eta hi elementuen helbideak (mugak goian egiaztatuta)
+    #[cfg(all(target_arch = "riscv64", not(target_feature = "v")))]
+    fn raw(self) -> (*mut C, *mut C);
+}
+
+struct Two<'a>(&'a mut [C], &'a mut [C]);
+struct One<'a>(&'a mut [C], usize);
+
+// lasterketa bakoitza: `stride`-ko zatiak `start`-etik, bakoitzaren lehen `len` elementuak
+// (azken lasterketaren ondoren `stride`-ra iristeko lekurik ez badago ere: azkena bere luzerarekin)
+#[inline(always)]
+fn runs(v: &mut [C], sp: Spans) -> impl Iterator<Item = &mut [[C; 4]]> {
+    let (full, last) = v[sp.start..sp.end()].split_at_mut((sp.count - 1) * sp.stride);
+    full.chunks_exact_mut(sp.stride)
+        .map(move |r| r.split_at_mut(sp.len).0)
+        .chain(std::iter::once(last))
+        .map(|r| r.as_chunks_mut::<4>().0)
+}
+
+impl Pairs for Two<'_> {
+    #[inline(always)]
+    fn each(self, sp: Spans, mut f: impl FnMut(&mut [C; 4], &mut [C; 4])) {
+        let Two(lo, hi) = self;
+        for (x, y) in runs(lo, sp).zip(runs(hi, sp)) {
+            for (x, y) in x.iter_mut().zip(y) {
+                f(x, y);
+            }
+        }
+    }
+
+    #[cfg(all(target_arch = "riscv64", not(target_feature = "v")))]
+    fn raw(self) -> (*mut C, *mut C) {
+        (self.0.as_mut_ptr(), self.1.as_mut_ptr())
+    }
+}
+
+impl Pairs for One<'_> {
+    #[inline(always)]
+    fn each(self, sp: Spans, mut f: impl FnMut(&mut [C; 4], &mut [C; 4])) {
+        let One(v, off) = self;
+        if off + sp.len <= sp.stride {
+            // ohikoena: hi lasterketa lo-ren zati berean (lo, hi, hutsunea)
+            for r in v[sp.start..].chunks_mut(sp.stride).take(sp.count) {
+                let (lo, hi) = r.split_at_mut(off);
+                let x = lo[..sp.len].as_chunks_mut::<4>().0;
+                let y = hi[..sp.len].as_chunks_mut::<4>().0;
+                for (x, y) in x.iter_mut().zip(y) {
+                    f(x, y);
+                }
+            }
+            return;
+        }
+        for s in 0..sp.count {
+            let b = sp.start + s * sp.stride;
+            let (left, right) = v.split_at_mut(b + off);
+            let x = left[b..b + sp.len].as_chunks_mut::<4>().0;
+            let y = right[..sp.len].as_chunks_mut::<4>().0;
+            for (x, y) in x.iter_mut().zip(y) {
+                f(x, y);
+            }
+        }
+    }
+
+    #[cfg(all(target_arch = "riscv64", not(target_feature = "v")))]
+    fn raw(self) -> (*mut C, *mut C) {
+        let p = self.0.as_mut_ptr();
+        (p, p.wrapping_add(self.1))
+    }
+}
+
+// lasterketa bakoitzeko 4 anplitudeko taldeak (swizzle eta scale)
+#[inline(always)]
+fn groups(v: &mut [C], sp: Spans, mut f: impl FnMut(&mut [C; 4])) {
+    for r in runs(v, sp) {
+        for x in r {
+            f(x);
+        }
+    }
+}
+
 // lo eta hi bi slice bereizitan, lasterketa berak bietan
 pub fn mat2(lo: &mut [C], hi: &mut [C], sp: Spans, k: &Mat2Lanes) {
     mat2_with(active(), lo, hi, sp, k)
@@ -161,22 +258,40 @@ pub fn scale(v: &mut [C], sp: Spans, k: &ScaleLanes) {
 pub fn mat2_with(isa: Isa, lo: &mut [C], hi: &mut [C], sp: Spans, k: &Mat2Lanes) {
     sp.check(lo.len());
     sp.check(hi.len());
-    if sp.is_empty() {
-        return;
-    }
-    // segurtasuna: lasterketa guztiak bi slice-en barruan daude (goian egiaztatua)
-    unsafe { mat2_raw(isa, lo.as_mut_ptr(), hi.as_mut_ptr(), sp, k) }
+    mat2_pairs(isa, Two(lo, hi), sp, k)
 }
 
 pub fn mat2_in_with(isa: Isa, v: &mut [C], hi_off: usize, sp: Spans, k: &Mat2Lanes) {
     sp.check(v.len());
     sp.check(v.len().saturating_sub(hi_off));
+    assert!(
+        sp.is_empty() || hi_off >= sp.len,
+        "mat2_in: hi lasterketak lo-ren ondoren hasi behar du"
+    );
+    mat2_pairs(isa, One(v, hi_off), sp, k)
+}
+
+fn mat2_pairs(isa: Isa, p: impl Pairs, sp: Spans, k: &Mat2Lanes) {
+    assert!(isa.is_available(), "{} ez dago makina honetan", isa.name());
     if sp.is_empty() {
         return;
     }
-    let p = v.as_mut_ptr();
-    // segurtasuna: lo eta hi (hi_off aurrerago) lasterketak slice-aren barruan daude (goian egiaztatua)
-    unsafe { mat2_raw(isa, p, p.add(hi_off), sp, k) }
+    match isa {
+        // segurtasuna (hiru hauetan): isa-ren ezaugarriak makina honetan daude (goian egiaztatua)
+        #[cfg(target_arch = "x86_64")]
+        Isa::Avx512 => unsafe { x86::mat2_avx512(p, sp, &x86::mat2_coefficients(k)) },
+        #[cfg(target_arch = "x86_64")]
+        Isa::Avx2 => unsafe { x86::mat2_avx2(p, sp, &x86::mat2_coefficients(k)) },
+        #[cfg(target_arch = "aarch64")]
+        Isa::Neon => unsafe { arm::mat2(p, sp, &arm::mat2_coefficients(k)) },
+        #[cfg(all(target_arch = "riscv64", not(target_feature = "v")))]
+        Isa::Rvv => {
+            let (lo, hi) = p.raw();
+            // segurtasuna: lasterketak bi slice-en barruan daude (mat2_with / mat2_in_with), V badago
+            unsafe { rv::mat2(lo, hi, sp, k) }
+        }
+        _ => scalar::mat2(p, sp, k),
+    }
 }
 
 pub fn swizzle_with(isa: Isa, v: &mut [C], half: usize, sp: Spans, k: &SwizzleLanes) {
@@ -186,20 +301,18 @@ pub fn swizzle_with(isa: Isa, v: &mut [C], half: usize, sp: Spans, k: &SwizzleLa
     if sp.is_empty() {
         return;
     }
-    let p = v.as_mut_ptr();
-    // segurtasuna: lasterketak slice-aren barruan, isa makina honetan (goian egiaztatua)
-    unsafe {
-        match isa {
-            #[cfg(target_arch = "x86_64")]
-            Isa::Avx512 => x86::swizzle_avx512(p, half, sp, &x86::swizzle_coefficients(k)),
-            #[cfg(target_arch = "x86_64")]
-            Isa::Avx2 => x86::swizzle_avx2(p, half, sp, &x86::swizzle_coefficients(k)),
-            #[cfg(target_arch = "aarch64")]
-            Isa::Neon => arm::swizzle(p, half, sp, &arm::swizzle_coefficients(k)),
-            #[cfg(all(target_arch = "riscv64", not(target_feature = "v")))]
-            Isa::Rvv => rv::swizzle(p, half, sp, k),
-            _ => scalar::swizzle(p, half, sp, k),
-        }
+    match isa {
+        // segurtasuna (hiru hauetan): isa-ren ezaugarriak makina honetan daude (goian egiaztatua)
+        #[cfg(target_arch = "x86_64")]
+        Isa::Avx512 => unsafe { x86::swizzle_avx512(v, half, sp, &x86::swizzle_coefficients(k)) },
+        #[cfg(target_arch = "x86_64")]
+        Isa::Avx2 => unsafe { x86::swizzle_avx2(v, half, sp, &x86::swizzle_coefficients(k)) },
+        #[cfg(target_arch = "aarch64")]
+        Isa::Neon => unsafe { arm::swizzle(v, half, sp, &arm::swizzle_coefficients(k)) },
+        #[cfg(all(target_arch = "riscv64", not(target_feature = "v")))]
+        // segurtasuna: lasterketak slice-aren barruan, V badago (goian egiaztatua)
+        Isa::Rvv => unsafe { rv::swizzle(v.as_mut_ptr(), half, sp, k) },
+        _ => scalar::swizzle(v, half, sp, k),
     }
 }
 
@@ -209,84 +322,51 @@ pub fn scale_with(isa: Isa, v: &mut [C], sp: Spans, k: &ScaleLanes) {
     if sp.is_empty() {
         return;
     }
-    let p = v.as_mut_ptr();
-    // segurtasuna: lasterketak slice-aren barruan, isa makina honetan (goian egiaztatua)
-    unsafe {
-        match isa {
-            #[cfg(target_arch = "x86_64")]
-            Isa::Avx512 => x86::scale_avx512(p, sp, &x86::scale_coefficients(k)),
-            #[cfg(target_arch = "x86_64")]
-            Isa::Avx2 => x86::scale_avx2(p, sp, &x86::scale_coefficients(k)),
-            #[cfg(target_arch = "aarch64")]
-            Isa::Neon => arm::scale(p, sp, &arm::scale_coefficients(k)),
-            #[cfg(all(target_arch = "riscv64", not(target_feature = "v")))]
-            Isa::Rvv => rv::scale(p, sp, k),
-            _ => scalar::scale(p, sp, k),
-        }
+    match isa {
+        // segurtasuna (hiru hauetan): isa-ren ezaugarriak makina honetan daude (goian egiaztatua)
+        #[cfg(target_arch = "x86_64")]
+        Isa::Avx512 => unsafe { x86::scale_avx512(v, sp, &x86::scale_coefficients(k)) },
+        #[cfg(target_arch = "x86_64")]
+        Isa::Avx2 => unsafe { x86::scale_avx2(v, sp, &x86::scale_coefficients(k)) },
+        #[cfg(target_arch = "aarch64")]
+        Isa::Neon => unsafe { arm::scale(v, sp, &arm::scale_coefficients(k)) },
+        #[cfg(all(target_arch = "riscv64", not(target_feature = "v")))]
+        // segurtasuna: lasterketak slice-aren barruan, V badago (goian egiaztatua)
+        Isa::Rvv => unsafe { rv::scale(v.as_mut_ptr(), sp, k) },
+        _ => scalar::scale(v, sp, k),
     }
 }
 
-// segurtasuna: deitzaileak egiaztatzen du lasterketak `lo` eta `hi`-tik hasitako memorian daudela
-unsafe fn mat2_raw(isa: Isa, lo: *mut C, hi: *mut C, sp: Spans, k: &Mat2Lanes) {
-    assert!(isa.is_available(), "{} ez dago makina honetan", isa.name());
-    unsafe {
-        match isa {
-            #[cfg(target_arch = "x86_64")]
-            Isa::Avx512 => x86::mat2_avx512(lo, hi, sp, &x86::mat2_coefficients(k)),
-            #[cfg(target_arch = "x86_64")]
-            Isa::Avx2 => x86::mat2_avx2(lo, hi, sp, &x86::mat2_coefficients(k)),
-            #[cfg(target_arch = "aarch64")]
-            Isa::Neon => arm::mat2(lo, hi, sp, &arm::mat2_coefficients(k)),
-            #[cfg(all(target_arch = "riscv64", not(target_feature = "v")))]
-            Isa::Rvv => rv::mat2(lo, hi, sp, k),
-            _ => scalar::mat2(lo, hi, sp, k),
-        }
-    }
-}
-
-// erreferentzia: beste bertsio guztiak honen aurka egiaztatzen dira. erakusle gordinekin, bertsio
-// guztiek interfaze bera izan dezaten; deitzaileak egiaztatzen ditu mugak
+// erreferentzia: beste bertsio guztiak honen aurka egiaztatzen dira
 mod scalar {
-    use super::{C, Mat2Lanes, ScaleLanes, Spans, SwizzleLanes};
+    use super::{C, Mat2Lanes, Pairs, ScaleLanes, Spans, SwizzleLanes, groups};
 
-    pub unsafe fn mat2(lo: *mut C, hi: *mut C, sp: Spans, k: &Mat2Lanes) {
-        for s in 0..sp.count {
-            for j in 0..sp.len {
-                let i = sp.start + s * sp.stride + j;
-                let m = &k[j & 3];
-                // segurtasuna: i lasterketen barruan dago (deitzaileak egiaztatua)
-                unsafe {
-                    let (x, y) = (*lo.add(i), *hi.add(i));
-                    *lo.add(i) = m[0] * x + m[1] * y;
-                    *hi.add(i) = m[2] * x + m[3] * y;
-                }
+    pub fn mat2(p: impl Pairs, sp: Spans, k: &Mat2Lanes) {
+        p.each(sp, |x, y| {
+            for j in 0..4 {
+                let m = &k[j];
+                let (a, b) = (x[j], y[j]);
+                x[j] = m[0] * a + m[1] * b;
+                y[j] = m[2] * a + m[3] * b;
             }
-        }
+        });
     }
 
-    pub unsafe fn swizzle(p: *mut C, half: usize, sp: Spans, k: &SwizzleLanes) {
-        for s in 0..sp.count {
-            let base = sp.start + s * sp.stride;
-            for g in (0..sp.len).step_by(4) {
-                // segurtasuna: 4ko taldea lasterketaren barruan dago (len 4ren multiploa)
-                unsafe {
-                    let x: [C; 4] = std::array::from_fn(|j| *p.add(base + g + j));
-                    for (j, kj) in k.iter().enumerate() {
-                        *p.add(base + g + j) = kj[0] * x[j] + kj[1] * x[j ^ half];
-                    }
-                }
+    pub fn swizzle(v: &mut [C], half: usize, sp: Spans, k: &SwizzleLanes) {
+        groups(v, sp, |x| {
+            let old = *x;
+            for (j, kj) in k.iter().enumerate() {
+                x[j] = kj[0] * old[j] + kj[1] * old[j ^ half];
             }
-        }
+        });
     }
 
-    pub unsafe fn scale(p: *mut C, sp: Spans, k: &ScaleLanes) {
-        for s in 0..sp.count {
-            for j in 0..sp.len {
-                let i = sp.start + s * sp.stride + j;
-                // segurtasuna: i lasterketen barruan dago
-                unsafe { *p.add(i) *= k[j & 3] }
+    pub fn scale(v: &mut [C], sp: Spans, k: &ScaleLanes) {
+        groups(v, sp, |x| {
+            for j in 0..4 {
+                x[j] *= k[j];
             }
-        }
+        });
     }
 }
 
@@ -299,16 +379,14 @@ mod scalar {
 // 2x2 matrizean bi biderketak batera: lo' = m00*lo + m01*hi
 //   t = swap(lo)*m00.im + swap(hi)*m01.im;  lo' = fmaddsub(lo, m00.re, t) + hi*m01.re
 //
-// koefizienteak memorian bektore osoka (8 f64 = 4 erreika, bakoitzaren balioa bi aldiz: re,re edo im,im).
-// avx-512-k zmm erregistroetan gordetzen ditu; avx2-k (16 erregistro bakarrik) memoriatik irakurtzen ditu
-// eragigai gisa, erdi baxua (0-1 erreikak) eta erdi altua (2-3) bereiz.
+// koefizienteak bektore osoka (8 f64 = 4 erreika, bakoitzaren balioa bi aldiz: re,re edo im,im). avx2-k
+// erdi baxua (0-1 erreikak) eta erdi altua (2-3) bereiz erabiltzen ditu.
 
 #[cfg(target_arch = "x86_64")]
 mod x86 {
-    use super::{C, Mat2Lanes, ScaleLanes, Spans, SwizzleLanes};
-    use std::arch::asm;
+    use super::{C, Mat2Lanes, Pairs, ScaleLanes, Spans, SwizzleLanes, groups};
+    use std::arch::x86_64::*;
 
-    #[repr(C, align(64))]
     pub struct Coef<const N: usize>([[f64; 8]; N]);
 
     // sarrera-zerrenda bakoitzeko bi bektore (re bikoiztua, im bikoiztua)
@@ -337,370 +415,181 @@ mod x86 {
         layout::<2, 1>(|l| [k[l]])
     }
 
-    // segurtasuna (guztietan): avx-512f / avx2+fma badaude, eta lasterketak erakusleen memorian daude
-    // (deitzaileak egiaztatua). len 4ren multiploa eta > 0, count > 0
+    // ---- kargak eta gordeketak: erreferentzia batek bektore oso baten memoria ematen du
+    //
+    // segurtasuna (lau hauetan): `&[C; N]` erreferentzia batek N konplexu irakurgarri (eta `&mut`-ek
+    // idazgarri) bermatzen ditu, hau da zehazki bektorearen 16 * N byteak (`Complex64` #[repr(C)] da, bi
+    // f64), eta loadu/storeu-k ez du lerrokatzerik behar. ez dago beste erakuslerik: indize eta muga guztiak
+    // rust seguruan doaz
+
+    #[inline]
     #[target_feature(enable = "avx512f")]
-    pub unsafe fn mat2_avx512(lo: *mut C, hi: *mut C, sp: Spans, k: &Coef<8>) {
-        unsafe {
-            asm!(
-                "vmovapd zmm8, zmmword ptr [{k}]",
-                "vmovapd zmm9, zmmword ptr [{k} + 64]",
-                "vmovapd zmm10, zmmword ptr [{k} + 128]",
-                "vmovapd zmm11, zmmword ptr [{k} + 192]",
-                "vmovapd zmm12, zmmword ptr [{k} + 256]",
-                "vmovapd zmm13, zmmword ptr [{k} + 320]",
-                "vmovapd zmm14, zmmword ptr [{k} + 384]",
-                "vmovapd zmm15, zmmword ptr [{k} + 448]",
-                "3:",
-                "mov {a}, {pa}",
-                "mov {b}, {pb}",
-                "mov {n}, {len}",
-                "2:",
-                "vmovupd zmm0, zmmword ptr [{a}]",
-                "vmovupd zmm1, zmmword ptr [{b}]",
-                "vpermilpd zmm2, zmm0, 0x55",
-                "vpermilpd zmm3, zmm1, 0x55",
-                "vmulpd zmm4, zmm2, zmm9",
-                "vfmadd231pd zmm4, zmm3, zmm11",
-                "vfmaddsub231pd zmm4, zmm0, zmm8",
-                "vfmadd231pd zmm4, zmm1, zmm10",
-                "vmulpd zmm5, zmm2, zmm13",
-                "vfmadd231pd zmm5, zmm3, zmm15",
-                "vfmaddsub231pd zmm5, zmm0, zmm12",
-                "vfmadd231pd zmm5, zmm1, zmm14",
-                "vmovupd zmmword ptr [{a}], zmm4",
-                "vmovupd zmmword ptr [{b}], zmm5",
-                "add {a}, 64",
-                "add {b}, 64",
-                "sub {n}, 4",
-                "jnz 2b",
-                "add {pa}, {stride}",
-                "add {pb}, {stride}",
-                "dec {cnt}",
-                "jnz 3b",
-                "vzeroupper",
-                k = in(reg) k.0.as_ptr(),
-                pa = inout(reg) lo.add(sp.start) => _,
-                pb = inout(reg) hi.add(sp.start) => _,
-                len = in(reg) sp.len,
-                stride = in(reg) sp.stride * 16,
-                cnt = inout(reg) sp.count => _,
-                a = out(reg) _,
-                b = out(reg) _,
-                n = out(reg) _,
-                out("zmm0") _, out("zmm1") _, out("zmm2") _, out("zmm3") _, out("zmm4") _,
-                out("zmm5") _, out("zmm8") _, out("zmm9") _, out("zmm10") _, out("zmm11") _,
-                out("zmm12") _, out("zmm13") _, out("zmm14") _, out("zmm15") _,
-                options(nostack),
-            );
-        }
+    fn ld8(x: &[C; 4]) -> __m512d {
+        unsafe { _mm512_loadu_pd(x.as_ptr().cast()) }
     }
 
-    // 2x2 matrizearen aritmetika ymm-tan: sarrerak ymm0 (lo) eta ymm1 (hi), koefizienteak [k + o + ...]
-    // (o = 0 erreika 0-1etarako, 32 erreika 2-3etarako), emaitzak ymm4 eta ymm5
-    macro_rules! avx2_mat2_math {
-        ($o:literal) => {
-            concat!(
-                "vpermilpd ymm2, ymm0, 0x5\n",
-                "vpermilpd ymm3, ymm1, 0x5\n",
-                "vmulpd ymm4, ymm2, ymmword ptr [{k} + 64 + ",
-                $o,
-                "]\n",
-                "vfmadd231pd ymm4, ymm3, ymmword ptr [{k} + 192 + ",
-                $o,
-                "]\n",
-                "vfmaddsub231pd ymm4, ymm0, ymmword ptr [{k} + ",
-                $o,
-                "]\n",
-                "vfmadd231pd ymm4, ymm1, ymmword ptr [{k} + 128 + ",
-                $o,
-                "]\n",
-                "vmulpd ymm5, ymm2, ymmword ptr [{k} + 320 + ",
-                $o,
-                "]\n",
-                "vfmadd231pd ymm5, ymm3, ymmword ptr [{k} + 448 + ",
-                $o,
-                "]\n",
-                "vfmaddsub231pd ymm5, ymm0, ymmword ptr [{k} + 256 + ",
-                $o,
-                "]\n",
-                "vfmadd231pd ymm5, ymm1, ymmword ptr [{k} + 384 + ",
-                $o,
-                "]\n",
-            )
-        };
+    #[inline]
+    #[target_feature(enable = "avx512f")]
+    fn st8(x: &mut [C; 4], v: __m512d) {
+        unsafe { _mm512_storeu_pd(x.as_mut_ptr().cast(), v) }
     }
 
-    #[target_feature(enable = "avx2,fma")]
-    pub unsafe fn mat2_avx2(lo: *mut C, hi: *mut C, sp: Spans, k: &Coef<8>) {
-        unsafe {
-            asm!(
-                "3:",
-                "mov {a}, {pa}",
-                "mov {b}, {pb}",
-                "mov {n}, {len}",
-                "2:",
-                "vmovupd ymm0, ymmword ptr [{a}]",
-                "vmovupd ymm1, ymmword ptr [{b}]",
-                avx2_mat2_math!("0"),
-                "vmovupd ymmword ptr [{a}], ymm4",
-                "vmovupd ymmword ptr [{b}], ymm5",
-                "vmovupd ymm0, ymmword ptr [{a} + 32]",
-                "vmovupd ymm1, ymmword ptr [{b} + 32]",
-                avx2_mat2_math!("32"),
-                "vmovupd ymmword ptr [{a} + 32], ymm4",
-                "vmovupd ymmword ptr [{b} + 32], ymm5",
-                "add {a}, 64",
-                "add {b}, 64",
-                "sub {n}, 4",
-                "jnz 2b",
-                "add {pa}, {stride}",
-                "add {pb}, {stride}",
-                "dec {cnt}",
-                "jnz 3b",
-                "vzeroupper",
-                k = in(reg) k.0.as_ptr(),
-                pa = inout(reg) lo.add(sp.start) => _,
-                pb = inout(reg) hi.add(sp.start) => _,
-                len = in(reg) sp.len,
-                stride = in(reg) sp.stride * 16,
-                cnt = inout(reg) sp.count => _,
-                a = out(reg) _,
-                b = out(reg) _,
-                n = out(reg) _,
-                out("ymm0") _, out("ymm1") _, out("ymm2") _, out("ymm3") _, out("ymm4") _,
-                out("ymm5") _,
-                options(nostack),
-            );
-        }
+    #[inline]
+    #[target_feature(enable = "avx")]
+    fn ld4(x: &[C; 2]) -> __m256d {
+        unsafe { _mm256_loadu_pd(x.as_ptr().cast()) }
     }
 
-    // swizzle avx-512: zmm batek 4 anplitude (talde oso bat); bikotekidea vshuff64x2-rekin:
-    // half 1 -> 128 biteko erdiak [1 0 3 2] (0xb1), half 2 -> [2 3 0 1] (0x4e)
-    macro_rules! avx512_swizzle {
-        ($imm:literal, $p:expr, $sp:expr, $k:expr) => {
-            asm!(
-                "vmovapd zmm8, zmmword ptr [{k}]",
-                "vmovapd zmm9, zmmword ptr [{k} + 64]",
-                "vmovapd zmm10, zmmword ptr [{k} + 128]",
-                "vmovapd zmm11, zmmword ptr [{k} + 192]",
-                "3:",
-                "mov {a}, {pa}",
-                "mov {n}, {len}",
-                "2:",
-                "vmovupd zmm0, zmmword ptr [{a}]",
-                concat!("vshuff64x2 zmm1, zmm0, zmm0, ", $imm),
-                "vpermilpd zmm2, zmm0, 0x55",
-                "vpermilpd zmm3, zmm1, 0x55",
-                "vmulpd zmm4, zmm2, zmm9",
-                "vfmadd231pd zmm4, zmm3, zmm11",
-                "vfmaddsub231pd zmm4, zmm0, zmm8",
-                "vfmadd231pd zmm4, zmm1, zmm10",
-                "vmovupd zmmword ptr [{a}], zmm4",
-                "add {a}, 64",
-                "sub {n}, 4",
-                "jnz 2b",
-                "add {pa}, {stride}",
-                "dec {cnt}",
-                "jnz 3b",
-                "vzeroupper",
-                k = in(reg) $k.0.as_ptr(),
-                pa = inout(reg) $p.add($sp.start) => _,
-                len = in(reg) $sp.len,
-                stride = in(reg) $sp.stride * 16,
-                cnt = inout(reg) $sp.count => _,
-                a = out(reg) _,
-                n = out(reg) _,
-                out("zmm0") _, out("zmm1") _, out("zmm2") _, out("zmm3") _, out("zmm4") _,
-                out("zmm8") _, out("zmm9") _, out("zmm10") _, out("zmm11") _,
-                options(nostack),
-            )
-        };
+    #[inline]
+    #[target_feature(enable = "avx")]
+    fn st4(x: &mut [C; 2], v: __m256d) {
+        unsafe { _mm256_storeu_pd(x.as_mut_ptr().cast(), v) }
+    }
+
+    // talde bat bi erreika-bikotetan (0-1, 2-3)
+    #[inline(always)]
+    fn halves(x: &mut [C; 4]) -> &mut [[C; 2]; 2] {
+        let (h, _) = x.as_chunks_mut::<2>();
+        h.try_into().expect("4 = 2 + 2")
+    }
+
+    // ---- avx-512: zmm batek talde oso bat (4 anplitude)
+
+    #[inline]
+    #[target_feature(enable = "avx512f")]
+    fn coef8(k: &[f64; 8]) -> __m512d {
+        _mm512_setr_pd(k[0], k[1], k[2], k[3], k[4], k[5], k[6], k[7])
+    }
+
+    // lo' = m0 x + m1 y, koefizienteak [m0.re, m0.im, m1.re, m1.im] zmm gisa
+    #[inline]
+    #[target_feature(enable = "avx512f")]
+    fn mul2_512(x: __m512d, y: __m512d, c: &[__m512d]) -> __m512d {
+        let xs = _mm512_permute_pd::<0x55>(x);
+        let ys = _mm512_permute_pd::<0x55>(y);
+        let t = _mm512_fmadd_pd(ys, c[3], _mm512_mul_pd(xs, c[1]));
+        let t = _mm512_fmaddsub_pd(x, c[0], t);
+        _mm512_fmadd_pd(y, c[2], t)
     }
 
     #[target_feature(enable = "avx512f")]
-    pub unsafe fn swizzle_avx512(p: *mut C, half: usize, sp: Spans, k: &Coef<4>) {
-        unsafe {
-            if half == 1 {
-                avx512_swizzle!("0xb1", p, sp, k);
+    pub fn mat2_avx512(p: impl Pairs, sp: Spans, k: &Coef<8>) {
+        let c: [__m512d; 8] = std::array::from_fn(|i| coef8(&k.0[i]));
+        p.each(sp, |x4, y4| {
+            let (x, y) = (ld8(x4), ld8(y4));
+            st8(x4, mul2_512(x, y, &c[..4]));
+            st8(y4, mul2_512(x, y, &c[4..]));
+        });
+    }
+
+    // bikotekidea vshuff64x2-rekin: half 1 -> 128 biteko erdiak [1 0 3 2] (0xb1), half 2 -> [2 3 0 1] (0x4e)
+    #[target_feature(enable = "avx512f")]
+    pub fn swizzle_avx512(v: &mut [C], half: usize, sp: Spans, k: &Coef<4>) {
+        let c: [__m512d; 4] = std::array::from_fn(|i| coef8(&k.0[i]));
+        groups(v, sp, |x4| {
+            let x = ld8(x4);
+            let y = if half == 1 {
+                _mm512_shuffle_f64x2::<0xb1>(x, x)
             } else {
-                avx512_swizzle!("0x4e", p, sp, k);
-            }
-        }
-    }
-
-    // swizzle avx2: talde bat bi ymm-tan (ymm0 = 0-1 erreikak, ymm6 = 2-3). bikotekideak: half 1 -> ymm
-    // bakoitzaren erdiak trukatuta (vperm2f128); half 2 -> beste ymm-a bera
-    macro_rules! avx2_swizzle_math {
-        ($x:literal, $y:literal, $o:literal) => {
-            concat!(
-                "vpermilpd ymm2, ",
-                $x,
-                ", 0x5\n",
-                "vpermilpd ymm3, ",
-                $y,
-                ", 0x5\n",
-                "vmulpd ymm4, ymm2, ymmword ptr [{k} + 64 + ",
-                $o,
-                "]\n",
-                "vfmadd231pd ymm4, ymm3, ymmword ptr [{k} + 192 + ",
-                $o,
-                "]\n",
-                "vfmaddsub231pd ymm4, ",
-                $x,
-                ", ymmword ptr [{k} + ",
-                $o,
-                "]\n",
-                "vfmadd231pd ymm4, ",
-                $y,
-                ", ymmword ptr [{k} + 128 + ",
-                $o,
-                "]\n",
-            )
-        };
-    }
-
-    macro_rules! avx2_swizzle {
-        ($pre:expr, $y0:literal, $y1:literal, $p:expr, $sp:expr, $k:expr) => {
-            asm!(
-                "3:",
-                "mov {a}, {pa}",
-                "mov {n}, {len}",
-                "2:",
-                "vmovupd ymm0, ymmword ptr [{a}]",
-                "vmovupd ymm6, ymmword ptr [{a} + 32]",
-                $pre,
-                avx2_swizzle_math!("ymm0", $y0, "0"),
-                "vmovapd ymm5, ymm4",
-                avx2_swizzle_math!("ymm6", $y1, "32"),
-                "vmovupd ymmword ptr [{a}], ymm5",
-                "vmovupd ymmword ptr [{a} + 32], ymm4",
-                "add {a}, 64",
-                "sub {n}, 4",
-                "jnz 2b",
-                "add {pa}, {stride}",
-                "dec {cnt}",
-                "jnz 3b",
-                "vzeroupper",
-                k = in(reg) $k.0.as_ptr(),
-                pa = inout(reg) $p.add($sp.start) => _,
-                len = in(reg) $sp.len,
-                stride = in(reg) $sp.stride * 16,
-                cnt = inout(reg) $sp.count => _,
-                a = out(reg) _,
-                n = out(reg) _,
-                out("ymm0") _, out("ymm1") _, out("ymm2") _, out("ymm3") _, out("ymm4") _,
-                out("ymm5") _, out("ymm6") _, out("ymm7") _,
-                options(nostack),
-            )
-        };
-    }
-
-    #[target_feature(enable = "avx2,fma")]
-    pub unsafe fn swizzle_avx2(p: *mut C, half: usize, sp: Spans, k: &Coef<4>) {
-        unsafe {
-            if half == 1 {
-                avx2_swizzle!(
-                    "vperm2f128 ymm1, ymm0, ymm0, 0x01\nvperm2f128 ymm7, ymm6, ymm6, 0x01",
-                    "ymm1",
-                    "ymm7",
-                    p,
-                    sp,
-                    k
-                );
-            } else {
-                avx2_swizzle!("", "ymm6", "ymm0", p, sp, k);
-            }
-        }
+                _mm512_shuffle_f64x2::<0x4e>(x, x)
+            };
+            st8(x4, mul2_512(x, y, &c));
+        });
     }
 
     #[target_feature(enable = "avx512f")]
-    pub unsafe fn scale_avx512(p: *mut C, sp: Spans, k: &Coef<2>) {
-        unsafe {
-            asm!(
-                "vmovapd zmm8, zmmword ptr [{k}]",
-                "vmovapd zmm9, zmmword ptr [{k} + 64]",
-                "3:",
-                "mov {a}, {pa}",
-                "mov {n}, {len}",
-                "2:",
-                "vmovupd zmm0, zmmword ptr [{a}]",
-                "vpermilpd zmm1, zmm0, 0x55",
-                "vmulpd zmm1, zmm1, zmm9",
-                "vfmaddsub231pd zmm1, zmm0, zmm8",
-                "vmovupd zmmword ptr [{a}], zmm1",
-                "add {a}, 64",
-                "sub {n}, 4",
-                "jnz 2b",
-                "add {pa}, {stride}",
-                "dec {cnt}",
-                "jnz 3b",
-                "vzeroupper",
-                k = in(reg) k.0.as_ptr(),
-                pa = inout(reg) p.add(sp.start) => _,
-                len = in(reg) sp.len,
-                stride = in(reg) sp.stride * 16,
-                cnt = inout(reg) sp.count => _,
-                a = out(reg) _,
-                n = out(reg) _,
-                out("zmm0") _, out("zmm1") _, out("zmm8") _, out("zmm9") _,
-                options(nostack),
-            );
-        }
+    pub fn scale_avx512(v: &mut [C], sp: Spans, k: &Coef<2>) {
+        let (re, im) = (coef8(&k.0[0]), coef8(&k.0[1]));
+        groups(v, sp, |x4| {
+            let x = ld8(x4);
+            let t = _mm512_mul_pd(_mm512_permute_pd::<0x55>(x), im);
+            st8(x4, _mm512_fmaddsub_pd(x, re, t));
+        });
+    }
+
+    // ---- avx2: ymm batek 2 anplitude (erreika-bikote bat)
+
+    // koefiziente-errenkada baten erdia: o = 0 (0-1 erreikak) edo 4 (2-3)
+    #[inline]
+    #[target_feature(enable = "avx")]
+    fn coef4(k: &[f64; 8], o: usize) -> __m256d {
+        _mm256_setr_pd(k[o], k[o + 1], k[o + 2], k[o + 3])
+    }
+
+    #[inline]
+    #[target_feature(enable = "avx2,fma")]
+    fn mul2_256(x: __m256d, y: __m256d, c: &[__m256d]) -> __m256d {
+        let xs = _mm256_permute_pd::<0x5>(x);
+        let ys = _mm256_permute_pd::<0x5>(y);
+        let t = _mm256_fmadd_pd(ys, c[3], _mm256_mul_pd(xs, c[1]));
+        let t = _mm256_fmaddsub_pd(x, c[0], t);
+        _mm256_fmadd_pd(y, c[2], t)
     }
 
     #[target_feature(enable = "avx2,fma")]
-    pub unsafe fn scale_avx2(p: *mut C, sp: Spans, k: &Coef<2>) {
-        unsafe {
-            asm!(
-                "3:",
-                "mov {a}, {pa}",
-                "mov {n}, {len}",
-                "2:",
-                "vmovupd ymm0, ymmword ptr [{a}]",
-                "vpermilpd ymm1, ymm0, 0x5",
-                "vmulpd ymm1, ymm1, ymmword ptr [{k} + 64]",
-                "vfmaddsub231pd ymm1, ymm0, ymmword ptr [{k}]",
-                "vmovupd ymmword ptr [{a}], ymm1",
-                "vmovupd ymm0, ymmword ptr [{a} + 32]",
-                "vpermilpd ymm1, ymm0, 0x5",
-                "vmulpd ymm1, ymm1, ymmword ptr [{k} + 96]",
-                "vfmaddsub231pd ymm1, ymm0, ymmword ptr [{k} + 32]",
-                "vmovupd ymmword ptr [{a} + 32], ymm1",
-                "add {a}, 64",
-                "sub {n}, 4",
-                "jnz 2b",
-                "add {pa}, {stride}",
-                "dec {cnt}",
-                "jnz 3b",
-                "vzeroupper",
-                k = in(reg) k.0.as_ptr(),
-                pa = inout(reg) p.add(sp.start) => _,
-                len = in(reg) sp.len,
-                stride = in(reg) sp.stride * 16,
-                cnt = inout(reg) sp.count => _,
-                a = out(reg) _,
-                n = out(reg) _,
-                out("ymm0") _, out("ymm1") _,
-                options(nostack),
-            );
-        }
+    pub fn mat2_avx2(p: impl Pairs, sp: Spans, k: &Coef<8>) {
+        let c: [[__m256d; 8]; 2] =
+            std::array::from_fn(|h| std::array::from_fn(|i| coef4(&k.0[i], 4 * h)));
+        p.each(sp, |x4, y4| {
+            let (xh, yh) = (halves(x4), halves(y4));
+            for (h, c) in c.iter().enumerate() {
+                let (x, y) = (ld4(&xh[h]), ld4(&yh[h]));
+                st4(&mut xh[h], mul2_256(x, y, &c[..4]));
+                st4(&mut yh[h], mul2_256(x, y, &c[4..]));
+            }
+        });
+    }
+
+    // talde bat bi ymm-tan (0-1 erreikak, 2-3). bikotekideak: half 1 -> ymm bakoitzaren erdiak trukatuta
+    // (vperm2f128); half 2 -> beste ymm-a bera
+    #[target_feature(enable = "avx2,fma")]
+    pub fn swizzle_avx2(v: &mut [C], half: usize, sp: Spans, k: &Coef<4>) {
+        let c: [[__m256d; 4]; 2] =
+            std::array::from_fn(|h| std::array::from_fn(|i| coef4(&k.0[i], 4 * h)));
+        groups(v, sp, |x4| {
+            let xh = halves(x4);
+            let (a, b) = (ld4(&xh[0]), ld4(&xh[1]));
+            let (pa, pb) = if half == 1 {
+                (
+                    _mm256_permute2f128_pd::<0x01>(a, a),
+                    _mm256_permute2f128_pd::<0x01>(b, b),
+                )
+            } else {
+                (b, a)
+            };
+            st4(&mut xh[0], mul2_256(a, pa, &c[0]));
+            st4(&mut xh[1], mul2_256(b, pb, &c[1]));
+        });
+    }
+
+    #[target_feature(enable = "avx2,fma")]
+    pub fn scale_avx2(v: &mut [C], sp: Spans, k: &Coef<2>) {
+        let c: [[__m256d; 2]; 2] =
+            std::array::from_fn(|h| std::array::from_fn(|i| coef4(&k.0[i], 4 * h)));
+        groups(v, sp, |x4| {
+            let xh = halves(x4);
+            for (h, c) in c.iter().enumerate() {
+                let x = ld4(&xh[h]);
+                let t = _mm256_mul_pd(_mm256_permute_pd::<0x5>(x), c[1]);
+                st4(&mut xh[h], _mm256_fmaddsub_pd(x, c[0], t));
+            }
+        });
     }
 }
 
 // ------------------------------------------------------------------ aarch64: neon
 //
-// ld2-k bi konplexu kargatzen ditu re eta im bereizita (v0 = [re0 re1], v1 = [im0 im1]). talde bat (4
-// anplitude) bi zatitan: 0-1 erreikak eta 2-3 erreikak, bakoitzak bere koefiziente-erregistroekin.
+// bi konplexu re eta im bereizita kargatzen dira (ld2: re = [re0 re1], im = [im0 im1]). talde bat
+// (4 anplitude) bi zatitan: 0-1 erreikak eta 2-3 erreikak, bakoitzak bere koefizienteekin.
 //   lo'.re = m00r*lr - m00i*li + m01r*hr - m01i*hi       lo'.im = m00r*li + m00i*lr + m01r*hi + m01i*hr
+// biderketa-batuketa bakoitza fusionatua da (fmla, fmls), mihiztadurako bertsio zaharrean bezala.
 
 #[cfg(target_arch = "aarch64")]
 mod arm {
-    use super::{C, Mat2Lanes, ScaleLanes, Spans, SwizzleLanes};
-    use std::arch::asm;
+    use super::{C, Mat2Lanes, Pairs, ScaleLanes, Spans, SwizzleLanes, groups};
+    use std::arch::aarch64::*;
 
     // erreika-bikote bakoitzeko (0-1, 2-3), sarrera bakoitzeko re eta im bektoreak: [erdia][sarrera][erreika]
-    #[repr(C, align(16))]
     pub struct Coef<const N: usize>([[[f64; 2]; N]; 2]);
 
     fn layout<const N: usize, const E: usize>(entries: impl Fn(usize) -> [C; E]) -> Coef<N> {
@@ -726,259 +615,103 @@ mod arm {
         layout::<2, 1>(|l| [k[l]])
     }
 
-    // 2x2: sarrera v0-v3 (lo.re lo.im hi.re hi.im), irteera v4-v7, koefizienteak 8 erregistro
-    macro_rules! neon_mat2_math {
-        ($m00r:literal, $m00i:literal, $m01r:literal, $m01i:literal,
-         $m10r:literal, $m10i:literal, $m11r:literal, $m11i:literal) => {
-            concat!(
-                "fmul v4.2d, v0.2d, ",
-                $m00r,
-                ".2d\n",
-                "fmls v4.2d, v1.2d, ",
-                $m00i,
-                ".2d\n",
-                "fmla v4.2d, v2.2d, ",
-                $m01r,
-                ".2d\n",
-                "fmls v4.2d, v3.2d, ",
-                $m01i,
-                ".2d\n",
-                "fmul v5.2d, v1.2d, ",
-                $m00r,
-                ".2d\n",
-                "fmla v5.2d, v0.2d, ",
-                $m00i,
-                ".2d\n",
-                "fmla v5.2d, v3.2d, ",
-                $m01r,
-                ".2d\n",
-                "fmla v5.2d, v2.2d, ",
-                $m01i,
-                ".2d\n",
-                "fmul v6.2d, v0.2d, ",
-                $m10r,
-                ".2d\n",
-                "fmls v6.2d, v1.2d, ",
-                $m10i,
-                ".2d\n",
-                "fmla v6.2d, v2.2d, ",
-                $m11r,
-                ".2d\n",
-                "fmls v6.2d, v3.2d, ",
-                $m11i,
-                ".2d\n",
-                "fmul v7.2d, v1.2d, ",
-                $m10r,
-                ".2d\n",
-                "fmla v7.2d, v0.2d, ",
-                $m10i,
-                ".2d\n",
-                "fmla v7.2d, v3.2d, ",
-                $m11r,
-                ".2d\n",
-                "fmla v7.2d, v2.2d, ",
-                $m11i,
-                ".2d\n",
-            )
-        };
+    #[inline]
+    #[target_feature(enable = "neon")]
+    fn pair(x: &[f64; 2]) -> float64x2_t {
+        vsetq_lane_f64::<1>(x[1], vdupq_n_f64(x[0]))
     }
 
-    // segurtasuna (guztietan): neon aarch64-ren oinarria da; lasterketak erakusleen memorian daude
-    // (deitzaileak egiaztatua), len 4ren multiploa eta > 0, count > 0
-    pub unsafe fn mat2(lo: *mut C, hi: *mut C, sp: Spans, k: &Coef<8>) {
-        unsafe {
-            asm!(
-                "ld1 {{v16.2d, v17.2d, v18.2d, v19.2d}}, [{k}], #64",
-                "ld1 {{v20.2d, v21.2d, v22.2d, v23.2d}}, [{k}], #64",
-                "ld1 {{v24.2d, v25.2d, v26.2d, v27.2d}}, [{k}], #64",
-                "ld1 {{v28.2d, v29.2d, v30.2d, v31.2d}}, [{k}]",
-                "3:",
-                "mov {a}, {pa}",
-                "mov {b}, {pb}",
-                "mov {n}, {len}",
-                "2:",
-                "ld2 {{v0.2d, v1.2d}}, [{a}]",
-                "ld2 {{v2.2d, v3.2d}}, [{b}]",
-                neon_mat2_math!("v16", "v17", "v18", "v19", "v20", "v21", "v22", "v23"),
-                "st2 {{v4.2d, v5.2d}}, [{a}], #32",
-                "st2 {{v6.2d, v7.2d}}, [{b}], #32",
-                "ld2 {{v0.2d, v1.2d}}, [{a}]",
-                "ld2 {{v2.2d, v3.2d}}, [{b}]",
-                neon_mat2_math!("v24", "v25", "v26", "v27", "v28", "v29", "v30", "v31"),
-                "st2 {{v4.2d, v5.2d}}, [{a}], #32",
-                "st2 {{v6.2d, v7.2d}}, [{b}], #32",
-                "subs {n}, {n}, #4",
-                "b.ne 2b",
-                "add {pa}, {pa}, {stride}",
-                "add {pb}, {pb}, {stride}",
-                "subs {cnt}, {cnt}, #1",
-                "b.ne 3b",
-                k = inout(reg) k.0.as_ptr() => _,
-                pa = inout(reg) lo.add(sp.start) => _,
-                pb = inout(reg) hi.add(sp.start) => _,
-                len = in(reg) sp.len,
-                stride = in(reg) sp.stride * 16,
-                cnt = inout(reg) sp.count => _,
-                a = out(reg) _,
-                b = out(reg) _,
-                n = out(reg) _,
-                out("v0") _, out("v1") _, out("v2") _, out("v3") _, out("v4") _, out("v5") _,
-                out("v6") _, out("v7") _, out("v16") _, out("v17") _, out("v18") _, out("v19") _,
-                out("v20") _, out("v21") _, out("v22") _, out("v23") _, out("v24") _, out("v25") _,
-                out("v26") _, out("v27") _, out("v28") _, out("v29") _, out("v30") _, out("v31") _,
-                options(nostack),
-            );
-        }
+    // bi konplexu -> (re, im), ld2-k bezala, eta alderantziz
+    //
+    // segurtasuna (bi hauetan): `&[C; 2]` erreferentzia batek bi konplexu irakurgarri (eta `&mut`-ek
+    // idazgarri) bermatzen ditu, hau da zehazki ld2/st2-k ukitzen dituen 32 byteak (`Complex64` #[repr(C)]
+    // da, bi f64). ez dago beste erakuslerik: indize eta muga guztiak rust seguruan doaz
+    #[inline]
+    #[target_feature(enable = "neon")]
+    fn ld2(x: &[C; 2]) -> (float64x2_t, float64x2_t) {
+        let v = unsafe { vld2q_f64(x.as_ptr().cast()) };
+        (v.0, v.1)
     }
 
-    // swizzle: x' = a x + b y. sarrera x (xr, xi) eta y (yr, yi) erregistro-izenak, irteera v4-v5
-    macro_rules! neon_swizzle_math {
-        ($xr:literal, $xi:literal, $yr:literal, $yi:literal,
-         $ar:literal, $ai:literal, $br:literal, $bi:literal) => {
-            concat!(
-                "fmul v4.2d, ",
-                $xr,
-                ".2d, ",
-                $ar,
-                ".2d\n",
-                "fmls v4.2d, ",
-                $xi,
-                ".2d, ",
-                $ai,
-                ".2d\n",
-                "fmla v4.2d, ",
-                $yr,
-                ".2d, ",
-                $br,
-                ".2d\n",
-                "fmls v4.2d, ",
-                $yi,
-                ".2d, ",
-                $bi,
-                ".2d\n",
-                "fmul v5.2d, ",
-                $xi,
-                ".2d, ",
-                $ar,
-                ".2d\n",
-                "fmla v5.2d, ",
-                $xr,
-                ".2d, ",
-                $ai,
-                ".2d\n",
-                "fmla v5.2d, ",
-                $yi,
-                ".2d, ",
-                $br,
-                ".2d\n",
-                "fmla v5.2d, ",
-                $yr,
-                ".2d, ",
-                $bi,
-                ".2d\n",
-            )
-        };
+    #[inline]
+    #[target_feature(enable = "neon")]
+    fn st2(x: &mut [C; 2], (re, im): (float64x2_t, float64x2_t)) {
+        unsafe { vst2q_f64(x.as_mut_ptr().cast(), float64x2x2_t(re, im)) }
     }
 
-    macro_rules! neon_swizzle {
-        ($pre:expr, $y0r:literal, $y0i:literal, $y1r:literal, $y1i:literal, $p:expr, $sp:expr, $k:expr) => {
-            asm!(
-                "ld1 {{v16.2d, v17.2d, v18.2d, v19.2d}}, [{k}], #64",
-                "ld1 {{v20.2d, v21.2d, v22.2d, v23.2d}}, [{k}]",
-                "3:",
-                "mov {a}, {pa}",
-                "mov {n}, {len}",
-                "2:",
-                "ld2 {{v0.2d, v1.2d}}, [{a}]",
-                "add {t}, {a}, #32",
-                "ld2 {{v2.2d, v3.2d}}, [{t}]",
-                $pre,
-                neon_swizzle_math!("v0", "v1", $y0r, $y0i, "v16", "v17", "v18", "v19"),
-                "mov v6.16b, v4.16b",
-                "mov v7.16b, v5.16b",
-                neon_swizzle_math!("v2", "v3", $y1r, $y1i, "v20", "v21", "v22", "v23"),
-                "st2 {{v6.2d, v7.2d}}, [{a}], #32",
-                "st2 {{v4.2d, v5.2d}}, [{a}], #32",
-                "subs {n}, {n}, #4",
-                "b.ne 2b",
-                "add {pa}, {pa}, {stride}",
-                "subs {cnt}, {cnt}, #1",
-                "b.ne 3b",
-                k = inout(reg) $k.0.as_ptr() => _,
-                pa = inout(reg) $p.add($sp.start) => _,
-                len = in(reg) $sp.len,
-                stride = in(reg) $sp.stride * 16,
-                cnt = inout(reg) $sp.count => _,
-                a = out(reg) _,
-                n = out(reg) _,
-                t = out(reg) _,
-                out("v0") _, out("v1") _, out("v2") _, out("v3") _, out("v4") _, out("v5") _,
-                out("v6") _, out("v7") _, out("v8") _, out("v9") _, out("v10") _, out("v11") _,
-                out("v16") _, out("v17") _, out("v18") _, out("v19") _,
-                out("v20") _, out("v21") _, out("v22") _, out("v23") _,
-                options(nostack),
-            )
-        };
+    // talde bat bi erreika-bikotetan (0-1, 2-3)
+    #[inline(always)]
+    fn halves(x: &mut [C; 4]) -> &mut [[C; 2]; 2] {
+        let (h, _) = x.as_chunks_mut::<2>();
+        h.try_into().expect("4 = 2 + 2")
     }
 
-    pub unsafe fn swizzle(p: *mut C, half: usize, sp: Spans, k: &Coef<4>) {
-        unsafe {
-            if half == 1 {
-                // bikotekidea erregistro beraren beste erdian: ext #8-k 64 biteko erdiak trukatzen ditu
-                neon_swizzle!(
-                    "ext v8.16b, v0.16b, v0.16b, #8\next v9.16b, v1.16b, v1.16b, #8\next v10.16b, v2.16b, v2.16b, #8\next v11.16b, v3.16b, v3.16b, #8",
-                    "v8",
-                    "v9",
-                    "v10",
-                    "v11",
-                    p,
-                    sp,
-                    k
-                );
-            } else {
-                neon_swizzle!("", "v2", "v3", "v0", "v1", p, sp, k);
+    // a x + b y, koefizienteak [a.re, a.im, b.re, b.im]: (re, im)
+    #[inline]
+    #[target_feature(enable = "neon")]
+    fn mul2(
+        (xr, xi): (float64x2_t, float64x2_t),
+        (yr, yi): (float64x2_t, float64x2_t),
+        c: &[float64x2_t],
+    ) -> (float64x2_t, float64x2_t) {
+        let re = vmulq_f64(xr, c[0]);
+        let re = vfmsq_f64(re, xi, c[1]);
+        let re = vfmaq_f64(re, yr, c[2]);
+        let re = vfmsq_f64(re, yi, c[3]);
+        let im = vmulq_f64(xi, c[0]);
+        let im = vfmaq_f64(im, xr, c[1]);
+        let im = vfmaq_f64(im, yi, c[2]);
+        let im = vfmaq_f64(im, yr, c[3]);
+        (re, im)
+    }
+
+    #[target_feature(enable = "neon")]
+    pub fn mat2(p: impl Pairs, sp: Spans, k: &Coef<8>) {
+        let c: [[float64x2_t; 8]; 2] =
+            std::array::from_fn(|h| std::array::from_fn(|i| pair(&k.0[h][i])));
+        p.each(sp, |x4, y4| {
+            let (xh, yh) = (halves(x4), halves(y4));
+            for (h, c) in c.iter().enumerate() {
+                let (x, y) = (ld2(&xh[h]), ld2(&yh[h]));
+                st2(&mut xh[h], mul2(x, y, &c[..4]));
+                st2(&mut yh[h], mul2(x, y, &c[4..]));
             }
-        }
+        });
     }
 
-    pub unsafe fn scale(p: *mut C, sp: Spans, k: &Coef<2>) {
-        unsafe {
-            asm!(
-                "ld1 {{v16.2d, v17.2d}}, [{k}], #32",
-                "ld1 {{v18.2d, v19.2d}}, [{k}]",
-                "3:",
-                "mov {a}, {pa}",
-                "mov {n}, {len}",
-                "2:",
-                "ld2 {{v0.2d, v1.2d}}, [{a}]",
-                "fmul v4.2d, v0.2d, v16.2d",
-                "fmls v4.2d, v1.2d, v17.2d",
-                "fmul v5.2d, v1.2d, v16.2d",
-                "fmla v5.2d, v0.2d, v17.2d",
-                "st2 {{v4.2d, v5.2d}}, [{a}], #32",
-                "ld2 {{v0.2d, v1.2d}}, [{a}]",
-                "fmul v4.2d, v0.2d, v18.2d",
-                "fmls v4.2d, v1.2d, v19.2d",
-                "fmul v5.2d, v1.2d, v18.2d",
-                "fmla v5.2d, v0.2d, v19.2d",
-                "st2 {{v4.2d, v5.2d}}, [{a}], #32",
-                "subs {n}, {n}, #4",
-                "b.ne 2b",
-                "add {pa}, {pa}, {stride}",
-                "subs {cnt}, {cnt}, #1",
-                "b.ne 3b",
-                k = inout(reg) k.0.as_ptr() => _,
-                pa = inout(reg) p.add(sp.start) => _,
-                len = in(reg) sp.len,
-                stride = in(reg) sp.stride * 16,
-                cnt = inout(reg) sp.count => _,
-                a = out(reg) _,
-                n = out(reg) _,
-                out("v0") _, out("v1") _, out("v4") _, out("v5") _,
-                out("v16") _, out("v17") _, out("v18") _, out("v19") _,
-                options(nostack),
-            );
-        }
+    // bikotekidea: half 1 -> erregistro beraren beste erdia (ext #8), half 2 -> beste erreika-bikotea
+    #[target_feature(enable = "neon")]
+    pub fn swizzle(v: &mut [C], half: usize, sp: Spans, k: &Coef<4>) {
+        let c: [[float64x2_t; 4]; 2] =
+            std::array::from_fn(|h| std::array::from_fn(|i| pair(&k.0[h][i])));
+        groups(v, sp, |x4| {
+            let xh = halves(x4);
+            let (a, b) = (ld2(&xh[0]), ld2(&xh[1]));
+            let swap =
+                |(r, i): (float64x2_t, float64x2_t)| (vextq_f64::<1>(r, r), vextq_f64::<1>(i, i));
+            let (pa, pb) = if half == 1 {
+                (swap(a), swap(b))
+            } else {
+                (b, a)
+            };
+            st2(&mut xh[0], mul2(a, pa, &c[0]));
+            st2(&mut xh[1], mul2(b, pb, &c[1]));
+        });
+    }
+
+    #[target_feature(enable = "neon")]
+    pub fn scale(v: &mut [C], sp: Spans, k: &Coef<2>) {
+        let c: [[float64x2_t; 2]; 2] =
+            std::array::from_fn(|h| std::array::from_fn(|i| pair(&k.0[h][i])));
+        groups(v, sp, |x4| {
+            let xh = halves(x4);
+            for (h, c) in c.iter().enumerate() {
+                let (xr, xi) = ld2(&xh[h]);
+                let re = vfmsq_f64(vmulq_f64(xr, c[0]), xi, c[1]);
+                let im = vfmaq_f64(vmulq_f64(xi, c[0]), xr, c[1]);
+                st2(&mut xh[h], (re, im));
+            }
+        });
     }
 }
 
