@@ -17,7 +17,7 @@ qoa compile --assembler tools/asm.qoa program.qoa        # same result as: qoa c
 ```
 
 The assembler's source is `tools/asm.qoa` in the repository, and from QOA 0.4.4 every release package
-includes it too (for 0.4.3, take it from the repository).
+includes it too.
 
 `--assembler` takes any QOA program, as source or as a compiled `.qx`. QOA runs it with the source file on
 its input and the file name as its argument, and writes what it prints as the `.qx`. Its error messages go

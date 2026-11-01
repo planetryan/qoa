@@ -109,4 +109,6 @@ Already done: prebuilt binaries and public CI (0.4.0, extended in 0.4.1), and no
 devices' calibrations (0.4.1). In 0.4.2: the glyph syntax's open points settled; MPI across processes and
 nodes, one state split over many processes, and OpenCL GPUs including AMD Instinct
 ([hpc.md](hpc.md)); and 128-bit precision ([precision.md](precision.md)). In 0.4.3: `qoa --benchmark`, and
-QOA's assembler written in QOA, which rebuilds itself identically ([self-hosting.md](self-hosting.md)).
+QOA's assembler written in QOA, which rebuilds itself identically ([self-hosting.md](self-hosting.md)). In
+0.4.4: the glyph syntax made stable, numbers and named constants in plain QOA, MPI with nothing to build, and
+QOA made safe with any input ([safety.md](safety.md)).

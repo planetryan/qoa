@@ -1,4 +1,4 @@
-; QOA-ren mihiztatzailea, QOAn idatzia (QOA 0.4.3). QOA-k QOA eraikitzen du: programa honek .qoa iturburu
+; QOA-ren mihiztatzailea, QOAn idatzia (QOA 0.4.4). QOA-k QOA eraikitzen du: programa honek .qoa iturburu
 ; bat .qx bitar bihurtzen du, `qoa compile`-k bezala, byte berberak idatziz, eta akatsak daudenean errore
 ; berberak inprimatzen ditu, testu berberarekin, bi hizkuntzetan.
 ;

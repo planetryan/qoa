@@ -17,7 +17,7 @@ qoa compile --assembler tools/asm.qoa programa.qoa       # emaitza bera: qoa com
 ```
 
 Mihiztatzailearen iturburua biltegiko `tools/asm.qoa` da, eta QOA 0.4.4-tik aurrera argitalpen-pakete
-guztiek ere badakarte (0.4.3-rako, hartu biltegitik).
+guztiek ere badakarte.
 
 `--assembler`-ek edozein QOA programa hartzen du, iturburu gisa edo `.qx` konpilatu gisa. QOA-k exekutatzen
 du iturburu-fitxategia sarreran eta fitxategi-izena argumentu gisa emanda, eta inprimatzen duena `.qx`

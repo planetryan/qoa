@@ -1,6 +1,10 @@
 # QOA v0.4.4 Release Notes
 
-**Status:** in progress, not released yet (euskaraz behean)
+**Status:** released 2026-11-01 (euskaraz behean)
+
+Builds on [0.4.3](<QOA v0.4.3.md>): numbers and named constants anywhere a value goes, the glyph syntax made
+stable, MPI with nothing to build, and QOA made safe with any input: damaged files, hostile programs and
+runs far bigger than the machine all end in a clear message, never a crash ([safety.md](../docs/safety.md)).
 
 ## Added
 
@@ -108,7 +112,12 @@ deep, and requires a clear error (or a normal run) every time, never a crash. Th
 
 # QOA v0.4.4 bertsio-oharrak
 
-**Egoera:** lanean, oraindik argitaratu gabe
+**Egoera:** 2026-11-01ean argitaratua
+
+[0.4.3](<QOA v0.4.3.md>)-ren gainean: zenbakiak eta konstante izendunak balio bat doan leku guztietan,
+glifo-sintaxia egonkortuta, MPI ezer eraiki gabe, eta QOA edozein sarrerarekin seguru: fitxategi hondatuak,
+programa gaiztoak eta makina baino askoz handiagoak diren exekuzioak mezu argi batekin amaitzen dira, inoiz ez
+huts eginda ([safety.eu.md](../docs/safety.eu.md)).
 
 ## Gehitua
 

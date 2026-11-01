@@ -11,7 +11,7 @@ not a quantum computer.
 
 [![ci](https://github.com/planetryan/qoa/actions/workflows/ci.yml/badge.svg)](https://github.com/planetryan/qoa/actions/workflows/ci.yml)
 
-[Euskaraz: README.eu.md](README.eu.md) · [Instruction reference](docs/ISA.md) · [Release notes](<changelog/QOA v0.4.3.md>)
+[Euskaraz: README.eu.md](README.eu.md) · [Instruction reference](docs/ISA.md) · [Release notes](<changelog/QOA v0.4.4.md>)
 
 ---
 
@@ -301,8 +301,8 @@ but has not been timed on a real GPU yet; what it should gain, and how to measur
 QOA 0.4 is a rewrite of the core. Version 0.3.5 is preserved on the
 [`archive/v0.3.5-experimental`](https://github.com/planetryan/qoa/tree/archive/v0.3.5-experimental) branch.
 See the [0.4.0 release notes](<changelog/QOA v0.4.0.md>) for what changed and why, and the notes for
-[0.4.1](<changelog/QOA v0.4.1.md>), [0.4.2](<changelog/QOA v0.4.2.md>) and [0.4.3](<changelog/QOA v0.4.3.md>)
-for what came after.
+[0.4.1](<changelog/QOA v0.4.1.md>), [0.4.2](<changelog/QOA v0.4.2.md>), [0.4.3](<changelog/QOA v0.4.3.md>) and
+[0.4.4](<changelog/QOA v0.4.4.md>) for what came after.
 
 ## Contributing
 
