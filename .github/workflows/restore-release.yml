@@ -4,25 +4,22 @@
 # gabe, zaharrenetik hasita: bertsio berrienak jarraitzen du "Latest" izaten. fitxategiak argitalpenak lehendik
 # dituenak dira; ez da ezer konpilatzen.
 #
-# github-ek ez dio uzten ekintza honi etiketa bat sortzen workflow fitxategiak main-ekoak ez dituen commit
-# batean ("workflows" baimenik gabe, ez git bidez ez argitalpenaren bidez). orduan etiketa behin eskuz bidali
-# behar da, eta gero hau exekutatu:
+# github-ek ez dio uzten ekintza honen token arruntari etiketa bat sortzen workflow fitxategiak main-ekoak ez
+# dituen commit batean. horretarako QOA_RELEASE_TOKEN sekretua erabiltzen da badago: biltegi honetarako
+# bakarrik den token fin bat, "Contents" eta "Workflows" idazteko baimenekin (telefonotik ere sor daiteke, eta
+# erabili ondoren ezeztatu). bestela, etiketa eskuz bidali behar da:
 #
 #   git push origin <commit>:refs/tags/<etiketa>
 #
-# eskuz: Actions fitxa, "restore release". etiketarik gabe, etiketa duten zirriborro guztiak berreskuratzen
-# ditu; etiketa eta commit-arekin, hori bakarrik (eta etiketa sortzen saiatzen da).
+# eskuz: Actions fitxa, "restore release". `tags` hutsik: etiketa duten zirriborro guztiak; bestela
+# "v0.4.0=e56b00f v0.4.1=3dbed9e" bezalako zerrenda: etiketa bakoitza bere commit-ean sortu eta argitaratu.
 name: restore release
 
 on:
   workflow_dispatch:
     inputs:
-      tag:
-        description: "version tag of one draft release, e.g. v0.4.1 (empty = every draft whose tag exists)"
-        required: false
-        default: ""
-      commit:
-        description: "commit that release was built from (only with a tag)"
+      tags:
+        description: "tag=commit pairs to recreate and publish, e.g. \"v0.4.0=e56b00f v0.4.1=3dbed9e\" (empty = every draft whose tag exists)"
         required: false
         default: ""
 
@@ -33,33 +30,43 @@ jobs:
   restore:
     runs-on: ubuntu-latest
     env:
-      TAG: ${{ github.event.inputs.tag }}
-      COMMIT: ${{ github.event.inputs.commit }}
+      TAGS: ${{ github.event.inputs.tags }}
       GH_TOKEN: ${{ github.token }}
+      HAS_RELEASE_TOKEN: ${{ secrets.QOA_RELEASE_TOKEN != '' }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          # etiketak bidaltzeko: sekretua badago hura (workflow baimenarekin), bestela token arrunta
+          token: ${{ secrets.QOA_RELEASE_TOKEN || github.token }}
       - name: the releases to restore
         run: |
-          # bertsio bakoitzaren commit-a: etiketarena, Cargo.toml-en bertsioarekin bat etorri behar duena
+          # bertsio bakoitzaren commit-a: Cargo.toml-en bertsioarekin bat etorri behar da
           version_of() { echo "v$(git show "$1:Cargo.toml" | grep -m1 '^version' | cut -d'"' -f2)"; }
-          if [ -n "$TAG" ]; then
-            if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then echo "'$TAG' is not a version tag like v0.4.1"; exit 1; fi
-            if [ -z "$COMMIT" ]; then COMMIT="$TAG"; fi
-            sha=$(git rev-parse --verify "$COMMIT^{commit}")
-            if [ "$(version_of "$sha")" != "$TAG" ]; then echo "$COMMIT is $(version_of "$sha"), not $TAG"; exit 1; fi
-            if git ls-remote --exit-code --tags origin "refs/tags/$TAG" > /dev/null; then
-              test "$(git rev-parse "$TAG^{commit}")" = "$sha" || { echo "tag $TAG points elsewhere"; exit 1; }
-            elif ! { git tag "$TAG" "$sha" && git push origin "refs/tags/$TAG"; }; then
-              echo "GitHub does not let this workflow create tag $TAG at an older commit."
-              echo "Push it once with your own account, then run this workflow again:"
-              echo "  git push origin $sha:refs/tags/$TAG"
-              exit 1
-            fi
-            echo "$TAG" > restore.txt
+          : > restore.txt
+          if [ -n "$TAGS" ]; then
+            for pair in $TAGS; do
+              tag=${pair%%=*}; commit=${pair#*=}
+              if ! [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || [ "$tag" = "$pair" ]; then
+                echo "'$pair' is not a pair like v0.4.1=3dbed9e"; exit 1
+              fi
+              sha=$(git rev-parse --verify "$commit^{commit}")
+              if [ "$(version_of "$sha")" != "$tag" ]; then echo "$commit is $(version_of "$sha"), not $tag"; exit 1; fi
+              if git ls-remote --exit-code --tags origin "refs/tags/$tag" > /dev/null; then
+                git fetch -q origin "refs/tags/$tag:refs/tags/$tag"
+                test "$(git rev-parse "$tag^{commit}")" = "$sha" || { echo "tag $tag points elsewhere"; exit 1; }
+              elif ! { git tag "$tag" "$sha" && git push origin "refs/tags/$tag"; }; then
+                echo "GitHub does not let this workflow's token create tag $tag at an older commit."
+                if [ "$HAS_RELEASE_TOKEN" != "true" ]; then
+                  echo "Add a QOA_RELEASE_TOKEN secret (a fine-grained token for this repository with Contents and"
+                  echo "Workflows write), or push the tag once with your own account:"
+                fi
+                echo "  git push origin $sha:refs/tags/$tag"
+                exit 1
+              fi
+              echo "$tag" >> restore.txt
+            done
           else
-            : > restore.txt
             missing=0
             for t in $(gh release list --limit 200 --json tagName,isDraft --jq '.[] | select(.isDraft) | .tagName' \
                 | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V); do
@@ -67,13 +74,13 @@ jobs:
                 if [ "$(version_of "$t")" != "$t" ]; then echo "tag $t is at $(version_of "$t"); skipped"; continue; fi
                 echo "$t" >> restore.txt
               else
-                echo "draft $t has no tag; push it once with your own account, then run this again:"
-                echo "  git push origin <commit of $t>:refs/tags/$t"
+                echo "draft $t has no tag; give it as tags: \"$t=<commit>\""
                 missing=1
               fi
             done
             if [ ! -s restore.txt ]; then echo "nothing to restore"; exit "$missing"; fi
           fi
+          sort -V -o restore.txt restore.txt
           echo "restoring: $(tr '\n' ' ' < restore.txt)"
       - name: publish them as older releases, and keep the newest version as latest
         run: |
