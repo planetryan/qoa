@@ -29,7 +29,7 @@ pub mod kernel; // qubit-ateak: lasterketak, fusioa, cache-blokeak
 pub mod lang; // irteeraren hizkuntza (euskara/ingelesa)
 pub mod light; // audioa argi gisa zirkuitu optiko kuantiko batetik (`qoa visual`): mdct, kanalak, detekzioa
 #[cfg(feature = "mpi")]
-pub mod mpi; // MPI taldea (`qoa run --mpi`), src/mpi_shim.c bidez
+pub mod mpi; // MPI taldea (`qoa run --mpi`): MPI liburutegia exekuzioan kargatuta (open mpi edo mpich familia)
 pub mod noise; // gailuen zarata-ereduak (kalibrazioak): ate-erroreak, T1/T2, irakurketa
 #[cfg(feature = "opencl")]
 pub mod opencl; // OpenCL gailua (AMD Instinct, NVIDIA, Intel, POCL), libOpenCL exekuzioan kargatuta

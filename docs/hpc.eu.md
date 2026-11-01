@@ -11,14 +11,13 @@ Shot askoko exekuzio bat MPI prozesuetan bana daiteke, nodo batean edo askotan. 
 simulatzen du, bere shot-zatia hartzen du, eta 0. prozesuak zenbaketak biltzen ditu eta emaitza inprimatzen du.
 
 ```sh
-cargo build --release --features mpi          # MPI liburutegi bat eta bere konpiladore-bilgarria (mpicc) behar ditu
-mpirun -n 64 ./target/release/qoa run zirkuitua.qoa --mpi --shots 1000000
-srun -n 64 ./target/release/qoa run zirkuitua.qoa --mpi --shots 1000000      # slurm-en azpian
+mpirun -n 64 qoa run zirkuitua.qoa --mpi --shots 1000000
+srun -n 64 qoa run zirkuitua.qoa --mpi --shots 1000000      # slurm-en azpian
 ```
 
 - **Erantzun bera edozein prozesu-kopururekin.** Shot bakoitzak bere hazia du, beraz 1, 3 edo 64 prozesuk
   exekuzio arrunt batek bezalako zenbaketak ematen dituzte, zehazki. CI-k hiru programarekin egiaztatzen du
-  3 OpenMPI prozesurekin, eta probek 1, 2, 3 eta 5 rank egiaztatzen dituzte exekuzio laginduetan, shot
+  3 prozesurekin, open mpi-rekin eta mpich-ekin, eta probek 1, 2, 3 eta 5 rank egiaztatzen dituzte exekuzio laginduetan, shot
   bakoitza simulatzen dutenetan eta zaratatsuetan.
 - **Erroreek ez dute lana blokeatzen.** Shot batek prozesu batean huts egiten badu, prozesu guztiek ematen
   dute beren berri, eta 0. prozesuak errorea inprimatzen du eta huts-kode batekin amaitzen du.
@@ -34,7 +33,7 @@ neurketak dituztenak, edo milioika lagin. Nodo baterako handiegia den egoera bat
 ## Egoera bakar bat prozesu askotan
 
 ```sh
-mpirun -n 64 ./target/release/qoa run handia.qoa --mpi --distribute
+mpirun -n 64 qoa run handia.qoa --mpi --distribute
 ```
 
 `--distribute`-rekin prozesuek egoera bakar bat partekatzen dute, bakoitzak kopia bat izan ordez. 2^g
@@ -57,22 +56,36 @@ prozesuk bakoitzari egoeraren 1/64 ematen diote. Prozesu-kopurua bi-ren berretur
 
 Prozesu batek bezalako emaitzak ematen ditu: probek 1, 2, 4 eta 8 prozesu egiaztatzen dituzte amaierako
 egoerarako (1e-12-ren barruan), zenbaketetarako eta inprimatutako itxarondako balioetarako, eta CI-k 2 eta 4
-OpenMPI prozesu egiaztatzen ditu. qubit-programak bakarrik; modu optikoek, `--precision quad`-ek, `--gpu`-k
+prozesu egiaztatzen ditu, open mpi-rekin eta mpich-ekin. qubit-programak bakarrik; modu optikoek, `--precision quad`-ek, `--gpu`-k
 eta gailuen zarata-ereduek hala esaten dute exekutatu ordez. Shot bakoitza prozesu guztietan batera doa, beraz
 hemen prozesu gehiagok memoria ematen dute, ez shot gehiago aldi berean.
 
-### Zure sistemaren MPI-aren aurka konpilatzea
+### Zein MPI
 
-MPI zatia C lerro gutxi batzuk dira ([src/mpi_shim.c](../src/mpi_shim.c)), zure MPI-aren
-konpiladore-bilgarriarekin konpilatuak, beraz QOA makinak duen MPI-arekin dabil (Open MPI, MPICH, Cray MPICH,
-Intel MPI).
+MPIrako ez da ezer konpilatu behar. QOA-ren argitalpen-bitar guztiek, eta `cargo build` orok, `--mpi` dakarte:
+QOA-k makinaren MPI liburutegia kargatzen du exekuzioa hastean, GPU kontrolatzaileak kargatzen dituen bezala,
+beraz klusterrak duen MPI-a erabiltzen du eta ez du C konpiladorerik edo `mpicc`-rik behar
+([src/mpi.rs](../src/mpi.rs), rust osoa).
+
+MPI inplementazioek ez dute interfaze bitar bakarra partekatzen, beraz QOA-k bi familiak ezagutzen ditu
+esplizituki:
+
+- **Open MPI** (3.x-tik 5.x-ra, `libmpi.so.40`),
+- **MPICH familia**, MPICH-en interfazea partekatzen dutenak: MPICH, Intel MPI, MVAPICH, Cray MPICH,
+  ParaStation MPI eta Microsoft MPI (`libmpi.so.12`, `libmpich.so.12`, `libmpi_cray.so.12`, `msmpi.dll`).
+
+Abiarazlearen liburutegia aukeratzen du (open mpi-ren `mpirun`-ek bere prozesuak markatzen ditu) eta
+liburutegiari galdetzen dio zein inplementazio den. Familia horietatik kanpoko liburutegi bat mezu batekin
+baztertzen da, inoiz ez asmatuta.
 
 | aldagaia | zer egiten duen |
 |---|---|
-| `QOA_MPICC` (edo `MPICC`) | konpiladore-bilgarria, lehenetsia `mpicc`; Cray sistemetan `QOA_MPICC=cc` |
-| `QOA_MPI_LIBS` | estekatze-aukerak, bilgarriak ezin baditu eman, adib. `"-L/opt/mpi/lib -lmpi"` |
+| `QOA_MPI_LIB` | kargatu beharreko MPI liburutegia, izenez edo bide osoz, adib. `QOA_MPI_LIB=/opt/cray/pe/lib64/libmpi_cray.so.12` |
 
-`--features mpi` gabe, `qoa run --mpi`-k nola konpilatu esaten du, prozesu bakarrean exekutatu ordez.
+Liburutegiak abiarazlearena izan behar du: open mpi-ren `mpirun`-ek abiarazitako mpich programa bat PMIx
+bidez bakarrik dabil, eta alderantziz ez. MPI liburutegirik aurkitzen ez bada, `qoa run --mpi`-k hala esaten
+du eta gelditu egiten da. Eraikitze estatiko batek (`*-musl`) ezin du liburutegirik kargatu, beraz ez du
+`--mpi`-rik.
 
 ## Egoera bat zein handia izan daitekeen
 

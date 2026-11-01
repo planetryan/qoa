@@ -897,8 +897,8 @@ fn join_team(mpi: bool) -> Result<Option<std::sync::Arc<dyn qoa::team::Team>>, S
 fn join_team(mpi: bool) -> Result<Option<std::sync::Arc<dyn qoa::team::Team>>, String> {
     if mpi {
         return Err(ts!(
-            "--mpi: this QOA was built without MPI. Build it with `cargo build --release --features mpi` (needs an MPI library and its mpicc), then start it with mpirun or srun",
-            "--mpi: QOA hau MPI gabe konpilatu da. konpilatu `cargo build --release --features mpi`-rekin (MPI liburutegi bat eta bere mpicc behar ditu), eta abiarazi mpirun edo srun-ekin"
+            "--mpi: this QOA was built without MPI (`--no-default-features`). Build it with the default features or `--features mpi` (nothing else is needed: the MPI library is loaded at run time), then start it with mpirun or srun",
+            "--mpi: QOA hau MPI gabe konpilatu da (`--no-default-features`). konpilatu ezaugarri lehenetsiekin edo `--features mpi`-rekin (ez da beste ezer behar: MPI liburutegia exekuzioan kargatzen da), eta abiarazi mpirun edo srun-ekin"
         )
         .into());
     }

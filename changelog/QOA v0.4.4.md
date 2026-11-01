@@ -61,6 +61,12 @@ deep, and requires a clear error (or a normal run) every time, never a crash. Th
 
 ## Changed
 
+* **MPI needs nothing at build time.** `qoa run --mpi` no longer uses a C shim compiled with `mpicc`: QOA
+  loads the machine's MPI library when the run starts, in pure Rust, and knows both MPI families explicitly,
+  Open MPI and the MPICH family (MPICH, Intel MPI, MVAPICH, Cray MPICH, ParaStation, Microsoft MPI). So every
+  release binary and every plain `cargo build` has `--mpi`; `QOA_MPI_LIB` picks the library. CI checks the
+  same counts and the same distributed states with both Open MPI and MPICH. `QOA_MPICC` and `QOA_MPI_LIBS`
+  are gone.
 * A program that uses a number in parentheses is written as `.qx` format version 3. Programs without them
   stay version 1 or 2, so QOA 0.4.2 and 0.4.3 still run them; a version-3 file given to QOA 0.4.3 is reported
   as needing a newer QOA instead of as a damaged file.
@@ -150,6 +156,12 @@ beti, inoiz ez huts egite bat. Bilaketa horrek hauek aurkitu eta konpondu zituen
 
 ## Aldatua
 
+* **MPIk ez du ezer behar konpilatzean.** `qoa run --mpi`-k ez du gehiago `mpicc`-rekin konpilatutako C
+  geruzarik erabiltzen: QOA-k makinaren MPI liburutegia kargatzen du exekuzioa hastean, rust hutsean, eta bi
+  MPI familiak ezagutzen ditu esplizituki, open mpi eta mpich familia (MPICH, Intel MPI, MVAPICH, Cray MPICH,
+  ParaStation, Microsoft MPI). Beraz argitalpen-bitar guztiek eta `cargo build` arrunt orok dute `--mpi`;
+  `QOA_MPI_LIB`-ek liburutegia aukeratzen du. CI-k zenbaketa berak eta egoera banatu berak egiaztatzen ditu
+  open mpi-rekin eta mpich-ekin. `QOA_MPICC` eta `QOA_MPI_LIBS` desagertu dira.
 * Parentesi arteko zenbaki bat erabiltzen duen programa `.qx` formatuaren 3. bertsioan idazten da. Halakorik
   ez dutenak 1. edo 2. bertsioan geratzen dira, eta QOA 0.4.2-k eta 0.4.3-k exekutatzen dituzte oraindik;
   3. bertsioko fitxategi bat QOA 0.4.3-ri emanez gero, QOA berriago bat behar duela esaten du, fitxategi

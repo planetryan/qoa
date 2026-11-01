@@ -197,8 +197,8 @@ in [docs/precision.md](docs/precision.md).
 
 ### Clusters and supercomputers
 
-`qoa run --mpi` spreads the shots over MPI processes (build with `--features mpi`, start with `mpirun` or
-`srun`), with the same counts as one process, and `--mpi --distribute` splits one state too large for a single
+`qoa run --mpi` spreads the shots over MPI processes (start it with `mpirun` or `srun`; QOA loads the
+machine's Open MPI or MPICH-family library itself, nothing to build), with the same counts as one process, and `--mpi --distribute` splits one state too large for a single
 node over them. QOA checks that a state fits in the memory it may use before
 it starts (`QOA_MAX_MEMORY` to change it). See [docs/hpc.md](docs/hpc.md).
 

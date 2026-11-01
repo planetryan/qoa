@@ -3,7 +3,7 @@
 // jaso, trukatu, hesia), eta haien gainean bilketa eta zabalkundea.
 //
 // bi inplementazio: `LocalTeam` (hari batzuk prozesu bakarrean, kanalekin: probetarako, MPI gabe) eta
-// `crate::mpi::World` (benetako MPI, `mpi` ezaugarriarekin konpilatuta, src/mpi_shim.c bidez).
+// `crate::mpi::World` (benetako MPI, liburutegia exekuzioan kargatuta, src/mpi.rs).
 
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, Barrier, Mutex};

@@ -6,8 +6,6 @@ rust-version = "1.89"
 authors = ["GitHub: @planetryan"]
 description = "QOA (Quantum Optical Assembly): an assembly language and simulator for qubits and optical modes"
 license-file = "LICENSE"
-# build.rs-k MPI-ren geruza konpilatzen du `mpi` ezaugarriarekin bakarrik (src/mpi_shim.c, mpicc-ekin)
-build = "build.rs"
 
 [dependencies]
 # nukleoa: mihiztatzailea, simulagailua, cli
@@ -31,15 +29,13 @@ realfft = "2.0"
 rustfft = "6.4"
 
 [features]
-default = ["vulkan", "opencl"]
+default = ["vulkan", "opencl", "mpi"]
 vulkan = ["dep:ash"]
 # `qoa run --gpu` OpenCL bidez (AMD Instinct, NVIDIA, Intel, POCL): libOpenCL exekuzioan kargatzen da
 opencl = ["dep:libloading"]
-# `qoa run --mpi`: shot-ak MPI prozesuen artean (mpicc eta MPI liburutegi bat behar ditu)
-mpi = ["dep:cc"]
-
-[build-dependencies]
-cc = { version = "1", optional = true }
+# `qoa run --mpi`: shot-ak eta egoera MPI prozesuen artean. MPI liburutegia exekuzioan kargatzen da (open mpi
+# edo mpich familia), beraz konpilatzeko ez da ezer behar
+mpi = ["dep:libloading"]
 
 [dev-dependencies]
 criterion = "0.5"

@@ -11,14 +11,14 @@ A run with many shots can be spread over MPI processes, on one node or many. Eve
 program, takes its share of the shots, and process 0 collects the counts and prints the result.
 
 ```sh
-cargo build --release --features mpi          # needs an MPI library and its compiler wrapper (mpicc)
-mpirun -n 64 ./target/release/qoa run circuit.qoa --mpi --shots 1000000
-srun -n 64 ./target/release/qoa run circuit.qoa --mpi --shots 1000000      # under Slurm
+mpirun -n 64 qoa run circuit.qoa --mpi --shots 1000000
+srun -n 64 qoa run circuit.qoa --mpi --shots 1000000      # under Slurm
 ```
 
 - **Same answer for any number of processes.** Each shot has its own seed, so 1, 3 or 64 processes give
-  exactly the same counts as a plain run. CI checks this with 3 OpenMPI processes on three programs, and the
-  tests check 1, 2, 3 and 5 ranks on sampled runs, runs that simulate every shot, and noisy runs.
+  exactly the same counts as a plain run. CI checks this with 3 processes on three programs, with Open MPI
+  and with MPICH, and the tests check 1, 2, 3 and 5 ranks on sampled runs, runs that simulate every shot,
+  and noisy runs.
 - **Errors do not hang the job.** If a shot fails on one process, every process still reports in, and
   process 0 prints the error and exits with a failure code.
 - **Input and output.** Only process 0 prints. If the program reads input (`INPUT`), process 0 reads it
@@ -33,7 +33,7 @@ section.
 ## One state over many processes
 
 ```sh
-mpirun -n 64 ./target/release/qoa run big.qoa --mpi --distribute
+mpirun -n 64 qoa run big.qoa --mpi --distribute
 ```
 
 With `--distribute` the processes share one state instead of each holding a copy. With 2^g processes, the
@@ -53,22 +53,34 @@ the state. The number of processes must be a power of two.
   gather it to process 0 when it is up to 2^24 amplitudes; a larger state is reported as too large to show.
 
 It gives the same results as one process: the tests check 1, 2, 4 and 8 processes for the final state
-(within 1e-12), the counts, and the printed expectation values, and CI checks 2 and 4 OpenMPI processes.
+(within 1e-12), the counts, and the printed expectation values, and CI checks 2 and 4 processes with Open
+MPI and with MPICH.
 Qubit programs only; optical modes, `--precision quad`, `--gpu` and device noise models say so instead of
 running. Every shot runs on all processes together, so here more processes buy memory, not more shots at
 once.
 
-### Building against your system's MPI
+### Which MPI
 
-The MPI part is a few lines of C ([src/mpi_shim.c](../src/mpi_shim.c)) compiled with your MPI's compiler
-wrapper, so QOA works with whatever MPI the machine has (Open MPI, MPICH, Cray MPICH, Intel MPI).
+Nothing has to be built for MPI. Every QOA release binary, and every `cargo build`, includes `--mpi`: QOA
+loads the machine's MPI library when the run starts, the way it loads GPU drivers, so it uses whatever MPI
+the cluster has and needs no C compiler or `mpicc` ([src/mpi.rs](../src/mpi.rs), all Rust).
+
+MPI implementations do not share one binary interface, so QOA knows the two families explicitly:
+
+- **Open MPI** (3.x to 5.x, `libmpi.so.40`),
+- **the MPICH family**, which shares MPICH's interface: MPICH, Intel MPI, MVAPICH, Cray MPICH, ParaStation
+  MPI and Microsoft MPI (`libmpi.so.12`, `libmpich.so.12`, `libmpi_cray.so.12`, `msmpi.dll`).
+
+It picks the library the launcher belongs to (Open MPI's `mpirun` marks its processes) and asks the library
+which implementation it is. A library outside these families is refused with a message, never guessed at.
 
 | variable | what it does |
 |---|---|
-| `QOA_MPICC` (or `MPICC`) | the compiler wrapper, default `mpicc`; on Cray systems `QOA_MPICC=cc` |
-| `QOA_MPI_LIBS` | link flags, if the wrapper cannot report them, e.g. `"-L/opt/mpi/lib -lmpi"` |
+| `QOA_MPI_LIB` | the MPI library to load, by name or full path, e.g. `QOA_MPI_LIB=/opt/cray/pe/lib64/libmpi_cray.so.12` |
 
-Without `--features mpi`, `qoa run --mpi` says how to build it instead of running on one process.
+The library has to be the one the launcher belongs to: an MPICH program started by Open MPI's `mpirun`
+works only through PMIx, and the reverse not at all. If no MPI library is found, `qoa run --mpi` says so
+and stops. A static build (`*-musl`) cannot load libraries, so it has no `--mpi`.
 
 ## How big a state can be
 
