@@ -9,6 +9,7 @@
 #     bezalako zenbaketak ematen dituztela; egoera banatua (2 eta 4 prozesu, eta OpenCL gailuekin POCL-en)
 #   - OpenCL gailua (POCL) CPUaren aurka, QOA_REQUIRE_OPENCL=1
 #   - abiarazleak (run.sh, run.ps1, run.cmd)
+#   - proba guztiak gainezkatze-egiaztapenekin, eta menpekotasunak RustSec-en aholkuen aurka
 name: ci
 
 on:
@@ -32,11 +33,12 @@ jobs:
     name: fmt and clippy
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
+          toolchain: stable
           components: rustfmt, clippy
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
       - run: cargo fmt --check
       - run: cargo clippy --release --locked --all-targets -- -D warnings
       - run: cargo clippy --release --locked --no-default-features --all-targets -- -D warnings
@@ -45,22 +47,23 @@ jobs:
     name: rust 1.89
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@master
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
           toolchain: "1.89"
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
       - run: cargo build --release --locked
 
   mpi:
     name: mpi (open mpi and mpich, 2-4 processes)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
+          toolchain: stable
           components: clippy
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           key: mpi
       # QOA-k ez du MPI-rik behar konpilatzeko; hemen exekutatzeko bakarrik, bi familiekin
@@ -122,6 +125,37 @@ jobs:
           ! QOA_MPI_LIB=libnothing.so ./target/release/qoa run examples/bell.qoa --mpi 2> err.txt
           grep -q "no MPI library found" err.txt
 
+  # menpekotasunak RustSec-en aholkuen aurka (ahultasun ezagunak, mantendu gabeko crate-ak): Cargo.lock-eko
+  # bertsio zehatzak
+  audit:
+    name: dependency advisories
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: taiki-e/install-action@68a389c788b2cd04016ce8c80ee23b80d2ab3d68 # v2
+        with:
+          tool: cargo-audit
+      # ahultasunek huts eginarazten dute; mantendu gabeko crate-ak abisu gisa erakusten dira
+      - run: cargo audit
+
+  # proba-multzo osoa zenbaki osoen gainezkatze-egiaztapenekin eta debug_assert-ekin: argitalpenean (azkarrago
+  # izateko) isilik bilduko litzatekeen gainezkatze oro hemen huts egite bat da, eraso-proba barne
+  overflow:
+    name: tests with overflow checks
+    runs-on: ubuntu-latest
+    env:
+      CARGO_PROFILE_RELEASE_OVERFLOW_CHECKS: "true"
+      CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS: "true"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          key: overflow
+      - run: cargo test --release --locked
+
   test:
     name: test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -130,9 +164,11 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
       - name: lavapipe (software vulkan), pocl (cpu opencl) and ffmpeg
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y mesa-vulkan-drivers pocl-opencl-icd ocl-icd-libopencl1 ffmpeg
@@ -181,11 +217,12 @@ jobs:
             target: s390x-unknown-linux-gnu
             packages: qemu-user gcc-s390x-linux-gnu libc6-dev-s390x-cross
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
+          toolchain: stable
           targets: ${{ matrix.target }}
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           key: ${{ matrix.target }}
       - run: sudo apt-get update && sudo apt-get install -y ${{ matrix.packages }}

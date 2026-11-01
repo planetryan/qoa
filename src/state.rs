@@ -116,6 +116,37 @@ pub fn parse_bytes(text: &str) -> Option<u128> {
 }
 
 // `bytes` sartzen den egiaztatu, bestela errore argi bat (zenbat behar den, muga eta nola aldatu)
+// fitxategi bat osorik irakurri, muga batekin: programa bat osorik irakurtzen da memorian, eta fitxategi
+// erraldoi batek (edo amaierarik gabeko batek, /dev/zero bezala) ez du memoria betetzen. muga: QOA-k erabil
+// dezakeen memoriaren 1/16a (mihiztatzeak iturburua baino askoz memoria gehiago behar du), gutxienez 1 MiB
+pub fn read_file(path: &std::path::Path) -> std::io::Result<Vec<u8>> {
+    use std::io::Read;
+    let (limit, _) = memory_limit();
+    let cap = (limit / 16).clamp(1 << 20, u64::MAX as u128 - 1) as u64;
+    let mut out = Vec::new();
+    std::fs::File::open(path)?
+        .take(cap + 1)
+        .read_to_end(&mut out)?;
+    if out.len() as u64 > cap {
+        return Err(std::io::Error::other(t!(
+            "it is larger than {}, more than QOA reads as one program here",
+            "{} baino handiagoa da, QOA-k hemen programa bakar gisa irakurtzen duena baino gehiago",
+            format_bytes(cap as u128)
+        )));
+    }
+    Ok(out)
+}
+
+// read_file testu gisa: utf-8 baliogabea std::fs::read_to_string-en mezu berarekin
+pub fn read_text(path: &std::path::Path) -> std::io::Result<String> {
+    String::from_utf8(read_file(path)?).map_err(|_| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "stream did not contain valid UTF-8",
+        )
+    })
+}
+
 pub fn check_memory(what: &str, bytes: u128) -> Result<(), String> {
     let (limit, source) = memory_limit();
     if bytes <= limit {
@@ -826,6 +857,30 @@ fn par_slab_pairs(
     }
 }
 
+// probetarako: debug_assert-ekin konpilatzean, zati bakoitza behin bakarrik ukitzen dela egiaztatzen du
+// (hari bat bestearen zatian sartuko balitz, huts egiten du). argitalpenean ez du ezer egiten
+pub(crate) struct Touched(#[cfg(debug_assertions)] Vec<std::sync::atomic::AtomicBool>);
+
+impl Touched {
+    pub(crate) fn new(_tiles: usize) -> Touched {
+        Touched(
+            #[cfg(debug_assertions)]
+            (0.._tiles)
+                .map(|_| std::sync::atomic::AtomicBool::new(false))
+                .collect(),
+        )
+    }
+
+    #[inline(always)]
+    pub(crate) fn mark(&self, _tile: usize) {
+        #[cfg(debug_assertions)]
+        assert!(
+            !self.0[_tile].swap(true, std::sync::atomic::Ordering::Relaxed),
+            "bi harik zati bera ukitu dute"
+        );
+    }
+}
+
 // egoeraren erakusle partekatua harien artean, talde disjuntuetarako (ikus `par_groups`)
 struct Shared(*mut C);
 // segurtasuna: talde bakoitzaren indizeak hari bakar batek ukitzen ditu
@@ -861,6 +916,8 @@ fn par_groups(
             }
         })
         .collect();
+    // probetan (debug_assert-ekin): zati bakoitza hari bakar batek ukitzen duela egiaztatu
+    let touched = Touched::new(n / tile);
     let work = |(buf, tmp): &mut (Vec<C>, Vec<C>), k: usize| {
         let r0 = (k % r_tiles) * tile;
         let rest = k / r_tiles;
@@ -872,8 +929,11 @@ fn par_groups(
         };
         let ptr = &shared;
         for (row, off) in offsets.iter().enumerate() {
-            debug_assert!(base + off + tile <= n);
-            // segurtasuna: talde hau zati honena da bakarrik, eta egoeraren barruan dago
+            // argitalpenean ere egiaztatua: akats batek programa gelditzen du, memoria ukitu beharrean
+            assert!(base + off + tile <= n, "par_groups: taldea egoeraz kanpo");
+            touched.mark((base + off) / tile);
+            // segurtasuna: zatia egoeraren barruan dago (goian egiaztatua), eta talde hau zati honena da
+            // bakarrik: talde desberdinek oinarri desberdinak dituzte modu-digituetatik kanpo
             let src = unsafe { std::slice::from_raw_parts(ptr.0.add(base + off), tile) };
             buf[row * tile..(row + 1) * tile].copy_from_slice(src);
         }

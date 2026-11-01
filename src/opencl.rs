@@ -247,10 +247,10 @@ impl Api {
             "OpenCL.dll",
             "/System/Library/Frameworks/OpenCL.framework/OpenCL",
         ];
-        // segurtasuna: sistemaren OpenCL liburutegia kargatzea (bere hasieratzea besterik ez du egiten)
+        // sistemaren lekuetatik bakarrik, inoiz ez uneko karpetatik (src/syslib.rs)
         let lib = names
             .iter()
-            .find_map(|n| unsafe { Library::new(n) }.ok())
+            .find_map(|n| crate::syslib::open(n, false).ok())
             .ok_or_else(|| {
                 ts!(
                     "no OpenCL library found; install your GPU's OpenCL driver (AMD ROCm, NVIDIA, Intel), or POCL for the CPU",

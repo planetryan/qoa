@@ -463,6 +463,13 @@ fn check_plain(p: &Program, text: &str) -> Result<(), String> {
 // inoiz ikusten mihiztatzaileak onartuko ez lukeen ezer: erregistro, qubit, modu, bit edo jauzi-helburu
 // baliogaberik, begizta okerrik edo neurri erraldoirik, fitxategia nahita aldatuta egonda ere
 pub fn check_loaded(p: &Program) -> Result<(), String> {
+    // izena mezuetan eta txostenean erakusten da: kontrol-karaktererik gabe (terminal-sekuentziak)
+    if p.name.chars().any(|c| c.is_control()) || p.name.len() > 4096 {
+        return Err(t!(
+            "its program name contains control characters or is too long",
+            "bere programa-izenak kontrol-karaktereak ditu edo luzeegia da"
+        ));
+    }
     let ins = instrs(p)?;
     let labels = targets(p);
     let mut out = header(p);

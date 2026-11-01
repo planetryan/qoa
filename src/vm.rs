@@ -234,6 +234,8 @@ struct Machine<'a> {
     // GPUak huts egin badu: exekuzioa hurrengo urratsean errore honekin gelditzen da
     // geroago jakinarazteko errorea (GPUa, irteera idaztea): eragiketa bakoitzaren ondoren begiratzen da
     gpu_error: Option<String>,
+    // errore-irteera (STREAM 2), terminala bada kontrol-sekuentziak ikusgai
+    err_screen: crate::term::Screen<std::io::Stderr>,
     // memoria-gelaxkak (LOAD/STORE); idatzi gabeak 0
     memory: Vec<f64>,
     // STREAM 2: irteera errore-irteerara
@@ -937,6 +939,10 @@ impl<'a> Machine<'a> {
             capture_at: None,
             captured: None,
             gpu_error: None,
+            err_screen: crate::term::Screen::new(
+                std::io::stderr(),
+                std::io::IsTerminal::is_terminal(&std::io::stderr()),
+            ),
             memory: Vec::new(),
             to_err: false,
             show: false,
@@ -1377,7 +1383,8 @@ impl<'a> Machine<'a> {
     fn write_bytes(&mut self, b: &[u8]) {
         if self.to_err {
             if self.show {
-                let _ = std::io::stderr().write_all(b);
+                // terminalera: kontrol-sekuentziak ikusgai (programa batek ezin du terminala gidatu)
+                let _ = self.err_screen.write_all(b);
             }
         } else if let Err(e) = self.out.write_all(b) {
             self.gpu_error.get_or_insert(t!(
@@ -1411,6 +1418,18 @@ impl<'a> Machine<'a> {
                 } else {
                     self.read_number(pc)?
                 };
+                // shot guztiek errepikatzeko gordetzen da: memoria-mugaren barruan, 2^20 balioka egiaztatuta
+                let recorded = match &self.inputs {
+                    Inputs::Record(list) => list.len(),
+                    Inputs::Replay(..) => 0,
+                };
+                if recorded > 0 && recorded.is_multiple_of(1 << 20) {
+                    crate::state::check_memory(
+                        &t!("{} input values", "{} sarrera-balio", recorded),
+                        recorded as u128 * 16,
+                    )
+                    .map_err(|m| self.err(pc, m))?;
+                }
                 if let Inputs::Record(list) = &mut self.inputs {
                     list.push(v);
                 }
@@ -1462,7 +1481,18 @@ impl<'a> Machine<'a> {
             line = String::from_utf8_lossy(&rest[..n]).into_owned();
             self.input_pos += n;
         } else {
-            std::io::stdin().lock().read_line(&mut line).ok();
+            // lerro bat 1 MiB arte: amaierarik gabeko sarrera batek ez du memoria betetzen
+            let mut limited = std::io::Read::take(std::io::stdin().lock(), 1 << 20);
+            limited.read_line(&mut line).ok();
+            if line.len() >= 1 << 20 && !line.ends_with('\n') {
+                return Err(self.err(
+                    pc,
+                    t!(
+                        "INPUT read a line longer than 1 MiB",
+                        "INPUT-ek 1 MiB baino luzeagoa den lerro bat irakurri du"
+                    ),
+                ));
+            }
         }
         line.trim().parse::<f64>().map_err(|_| RuntimeError {
             line: self.prog.line_of(pc),

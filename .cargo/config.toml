@@ -1,0 +1,8 @@
+# windows-eko bitarrak Control Flow Guard-ekin: zeharkako dei batek ezin du baliozko helburu ez den leku batera
+# salto egin (memoria-akats baten ustiapena zailtzen du). linux-ekoak PIE, RELRO osoa eta pila ez-exekutagarria
+# dira jada lehenetsiz (argitalpenak egiaztatzen du)
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "control-flow-guard"]
+
+[target.aarch64-pc-windows-msvc]
+rustflags = ["-C", "control-flow-guard"]

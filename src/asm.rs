@@ -1375,7 +1375,7 @@ impl Asm {
                                 "QINIT (line {}) takes the number of qubits; this program needs at least {}. Later uses of missing qubits are not reported again",
                                 "QINIT-ek ({}. lerroa) qubit-kopurua hartzen du; programa honek gutxienez {} behar ditu. Falta diren qubiten hurrengo erabilerak ez dira berriz jakinarazten",
                                 line,
-                                n + 1
+                                n as u128 + 1
                             )));
                         }
                         return None;

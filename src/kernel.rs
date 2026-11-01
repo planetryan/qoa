@@ -625,12 +625,20 @@ fn run_gathered(amps: &mut [C], n_qubits: usize, stage: &[QGate], low: usize, hi
     let offsets: Vec<usize> = (0..1usize << h).map(|r| deposit(r, high)).collect();
     let shared = Shared(amps.as_mut_ptr());
     let len = amps.len();
+    // probetan (debug_assert-ekin): lasterketa bakoitza bloke bakar batek ukitzen duela egiaztatu
+    let touched = crate::state::Touched::new(len / run);
     let work = |buf: &mut Vec<C>, k: usize| {
         let base = deposit(k & ((1 << outer_bits) - 1), outer) + ((k >> outer_bits) << n_qubits);
         let ptr = &shared;
         for (r, off) in offsets.iter().enumerate() {
-            debug_assert!(base + off + run <= len);
-            // segurtasuna: [base + off, + run) bloke honena da bakarrik (goiko iruzkina) eta egoeraren barruan
+            // argitalpenean ere egiaztatua: akats batek programa gelditzen du, memoria ukitu beharrean
+            assert!(
+                base + off + run <= len,
+                "run_gathered: blokea egoeraz kanpo"
+            );
+            touched.mark((base + off) / run);
+            // segurtasuna: [base + off, + run) egoeraren barruan dago (goian egiaztatua) eta bloke honena
+            // da bakarrik (goiko iruzkina)
             let src = unsafe { std::slice::from_raw_parts(ptr.0.add(base + off), run) };
             buf[r * run..(r + 1) * run].copy_from_slice(src);
         }

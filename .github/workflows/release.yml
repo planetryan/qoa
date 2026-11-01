@@ -68,9 +68,10 @@ jobs:
           - { target: x86_64-apple-darwin, os: macos-latest }
           - { target: aarch64-apple-darwin, os: macos-latest, run: "" }
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
+          toolchain: stable
           targets: ${{ matrix.target }}
       - name: cross toolchain
         if: matrix.packages
@@ -118,7 +119,17 @@ jobs:
           $q compile tools/asm.qoa -o stage1.qx
           $q compile --assembler stage1.qx tools/asm.qoa -o stage2.qx
           cmp stage1.qx stage2.qx
-      - uses: actions/upload-artifact@v4
+      # linux bitarren babesak: PIE (helbide ausazkoak), RELRO osoa (BIND_NOW) eta pila ez-exekutagarria
+      - name: check the binary's hardening
+        if: contains(matrix.target, 'linux-gnu')
+        run: |
+          b="bin/${{ matrix.target }}/${{ steps.package.outputs.exe }}"
+          readelf -h "$b" | grep -q "DYN (Position-Independent Executable"
+          readelf -d "$b" | grep -q "BIND_NOW"
+          readelf -lW "$b" | grep "GNU_RELRO" > /dev/null
+          readelf -lW "$b" | grep "GNU_STACK" | grep -qv "RWE"
+          echo "PIE, full RELRO, non-executable stack"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: build-${{ matrix.target }}
           path: |
@@ -130,8 +141,8 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           pattern: build-*
           merge-multiple: true
@@ -148,7 +159,7 @@ jobs:
           zip -qr "dist/$name.zip" "$name"
           (cd dist && sha256sum * > SHA256SUMS)
           cat dist/SHA256SUMS
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: release
           path: dist/
@@ -163,7 +174,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: release
       - name: unpack
@@ -192,12 +203,23 @@ jobs:
       startsWith(github.ref, 'refs/tags/v') ||
       (github.event_name == 'workflow_dispatch' && github.event.inputs.release != '' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
+    # id-token eta attestations: jatorri-ziurtagiri sinatuetarako (sigstore), beste ezertarako ez
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: release
           path: dist
+      # fitxategi bakoitzak jatorri-ziurtagiri sinatu bat du: biltegi honetako workflow honek eraiki zuela,
+      # commit honetatik. edonork egiazta dezake: gh attestation verify FITXATEGIA --repo planetryan/qoa
+      - name: signed build provenance for every file
+        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
+        with:
+          subject-path: dist/*
       - name: the tag must match Cargo.toml
         run: |
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then tag="$GITHUB_REF_NAME"; else tag="$RELEASE_TAG"; fi

@@ -54,6 +54,24 @@ deep, and requires a clear error (or a normal run) every time, never a crash. Th
 * An OpenQASM gate definition with a `)` before its `(` or a `}` before its `{` is an error instead of a crash.
 * `qoa ... | head` ends quietly like any command-line tool (status 141), and an output that cannot be written,
   such as a full disk, stops the program with a clear message instead of losing the output silently.
+* **A program cannot reach the machine.** A QOA program can only compute and use its standard input,
+  arguments and output; QOA's own doors are now closed too. Control sequences from programs and files
+  (window title, clipboard, cursor moves, terminal status requests) are shown as text on a terminal instead
+  of acting, while pipes still get the exact bytes. GPU drivers and MPI are loaded only from system
+  locations, never from the current folder (where Windows and macOS would look). `qoa visual` passes file
+  names to ffmpeg as plain files, never as options or protocols, and makes private temporary files that
+  cannot be redirected through a link. Program files, `INPUT` lines and recorded input have size limits, so
+  `qoa run /dev/zero` stops at once. `qoa visual` to a `.wav`, `.flac` or `.mp3` writes audio instead of
+  failing.
+* **Verifiable, hardened releases.** Every release file gets signed build provenance
+  (`gh attestation verify FILE --repo planetryan/qoa`) next to its SHA-256 checksum; Linux binaries are
+  checked for PIE, full RELRO and a non-executable stack, and Windows binaries use Control Flow Guard. Every
+  GitHub Action is pinned to an exact commit, CI checks dependencies against the RustSec advisories, and a
+  nightly job runs the hostile-input test with 64 more seeds.
+* An overflow in an error message's help (a qubit index of 2^64 - 1 suggested "at least 0") is fixed; the
+  whole test suite now also runs with integer-overflow checks.
+* The MPI byte views no longer use `unsafe` (bytemuck), and the two remaining shared-pointer copies in the
+  state code check their bounds in release builds too, with a test-build check that threads never overlap.
 * **The x86 and ARM vector kernels are safe Rust.** AVX-512, AVX2 and NEON no longer use hand-written
   assembly with raw pointers: they are vector intrinsics on bounds-checked slices. They run the same
   instructions in the same order, so results are bit-for-bit the same (checked against the old assembly on
@@ -152,6 +170,28 @@ beti, inoiz ez huts egite bat. Bilaketa horrek hauek aurkitu eta konpondu zituen
 * `qoa ... | head` isilik amaitzen da edozein komando-lerroko tresna bezala (141 egoera), eta idatzi ezin
   den irteera batek (disko betea, adibidez) programa gelditzen du mezu argi batekin, irteera isilik galdu
   beharrean.
+* **Programa batek ezin du makinara iritsi.** QOA programa batek kalkulatu eta bere sarrera estandarra,
+  argumentuak eta irteera erabil ditzake bakarrik; QOA-ren beraren ateak ere itxita daude orain.
+  Programetatik eta fitxategietatik datozen kontrol-sekuentziak (leihoaren izenburua, arbela, kurtsorearen
+  mugimenduak, terminalaren egoera-galderak) testu gisa erakusten dira terminal batean, eragin beharrean,
+  eta hodiek byte zehatzak jasotzen dituzte oraindik. GPU kontrolatzaileak eta MPI sistemaren lekuetatik
+  bakarrik kargatzen dira, inoiz ez uneko karpetatik (Windows-ek eta macOS-ek han begiratuko lukete).
+  `qoa visual`-ek fitxategi-izenak fitxategi arrunt gisa pasatzen dizkio ffmpeg-i, inoiz ez aukera edo
+  protokolo gisa, eta esteka baten bidez desbideratu ezin diren aldi baterako fitxategi pribatuak sortzen
+  ditu. Programa-fitxategiek, `INPUT` lerroek eta grabatutako sarrerak tamaina-mugak dituzte, beraz
+  `qoa run /dev/zero` berehala gelditzen da. `qoa visual` `.wav`, `.flac` edo `.mp3` batera audioa idazten
+  du, huts egin beharrean.
+* **Argitalpen egiaztagarriak eta babestuak.** Argitalpeneko fitxategi bakoitzak eraikitze-jatorri sinatu
+  bat du (`gh attestation verify FITXATEGIA --repo planetryan/qoa`) bere SHA-256 laburpenaren ondoan; linux
+  bitarretan PIE, RELRO osoa eta pila ez-exekutagarria egiaztatzen dira, eta Windows bitarrek Control Flow
+  Guard erabiltzen dute. GitHub Action guztiak commit zehatz bati lotuta daude, CI-k menpekotasunak
+  RustSec-en aholkuen aurka egiaztatzen ditu, eta gaueko lan batek eraso-proba beste 64 hazirekin
+  exekutatzen du.
+* Errore-mezu baten laguntzako gainezkatze bat (2^64 - 1 qubit-indize batek "gutxienez 0" iradokitzen zuen)
+  konponduta dago; proba-multzo osoa zenbaki osoen gainezkatze-egiaztapenekin ere exekutatzen da orain.
+* MPI-rako byte-ikuspegiek ez dute gehiago `unsafe` erabiltzen (bytemuck), eta egoera-kodean geratzen diren
+  erakusle partekatuko bi kopiek beren mugak argitalpenean ere egiaztatzen dituzte, hariak inoiz gainjartzen
+  ez direla egiaztatzen duen proba-eraikitzeko egiaztapen batekin.
 * **x86 eta ARM bektore-kernelak rust seguruak dira.** AVX-512, AVX2 eta NEON-ek ez dute gehiago erakusle
   gordinekin eskuz idatzitako mihiztadurarik erabiltzen: bektore-funtzio intrintsekoak dira, mugak
   egiaztatutako slice-en gainean. Agindu berberak exekutatzen dituzte ordena berean, beraz emaitzak bitez bit

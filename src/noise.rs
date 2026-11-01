@@ -115,7 +115,7 @@ pub enum Native {
 impl NoiseModel {
     pub fn load(path: &Path) -> Result<NoiseModel, String> {
         let text =
-            std::fs::read_to_string(path).map_err(|e| format!("{}: {}", path.display(), e))?;
+            crate::state::read_text(path).map_err(|e| format!("{}: {}", path.display(), e))?;
         NoiseModel::parse(&text).map_err(|e| format!("{}: {}", path.display(), e))
     }
 

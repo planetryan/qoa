@@ -164,6 +164,8 @@ fn mangle(rng: &mut StdRng, text: &str) -> String {
 }
 
 // QOA_HOSTILE_LOG=fitxategia: uneko kasuaren izena han, proba bat gelditzen bada zein den jakiteko
+static WHERE: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
+
 fn check(what: &str, f: impl FnOnce()) -> Option<String> {
     if let Ok(log) = std::env::var("QOA_HOSTILE_LOG") {
         let _ = std::fs::write(log, what);
@@ -176,7 +178,8 @@ fn check(what: &str, f: impl FnOnce()) -> Option<String> {
                 .cloned()
                 .or_else(|| e.downcast_ref::<&str>().map(|s| s.to_string()))
                 .unwrap_or_default();
-            Some(format!("{}: {}", what, msg))
+            let at = WHERE.lock().unwrap_or_else(|e| e.into_inner()).clone();
+            Some(format!("{}: {} (at {})", what, msg, at))
         }
     }
 }
@@ -187,7 +190,12 @@ fn hostile_inputs_give_errors_not_crashes() {
     // segurtasuna: proba-fitxategi honek proba bakarra du, beraz beste harik ez du ingurunea irakurtzen
     unsafe { std::env::set_var("QOA_MAX_MEMORY", "16M") };
     qoa::lang::set(qoa::lang::Lang::En);
-    std::panic::set_hook(Box::new(|_| {}));
+    // panic-aren lekua gorde (fitxategia:lerroa), mezuan erakusteko
+    std::panic::set_hook(Box::new(|info| {
+        if let Some(l) = info.location() {
+            *WHERE.lock().unwrap_or_else(|e| e.into_inner()) = format!("{}:{}", l.file(), l.line());
+        }
+    }));
     // QOA_HOSTILE_SEED=n: beste hazi batekin (beste kasu batzuk), eskuz bilatzeko
     let seed = std::env::var("QOA_HOSTILE_SEED")
         .ok()

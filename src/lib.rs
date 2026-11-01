@@ -3,8 +3,8 @@
 //
 // `unsafe` debekatuta dago crate osoan, behar duten modulu gutxietan izan ezik, eta horiek beren buruan
 // adierazten dute (`#![allow(unsafe_code)]`) zergatik: simd (prozesadorearen ezaugarriak eta bektore-
-// kargak), kernel eta state (hari bakoitzak bere bloke disjuntuak), dd eta quad (fma-ren dispatch-a),
-// dist (MPI-ra bidaltzeko byteak), eta mpi, opencl eta vulkan (kanpoko liburutegiak)
+// kargak), kernel eta state (hari bakoitzak bere bloke disjuntuak), dd eta quad (fma-ren dispatch-a), eta
+// mpi, opencl, vulkan eta syslib (kanpoko liburutegiak)
 #![deny(unsafe_code)]
 
 // QOA 64 bitekoa da bakarrik: fisika 64 biteko koma higikorrean kalkulatzen du eta egoera handiek 64 biteko
@@ -39,7 +39,10 @@ pub mod quad; // 128 biteko qubit-motorra (double-double): `qoa run --precision 
 pub mod report; // emaitzen txostena (testua eta json)
 pub mod simd; // kernel beroak mihiztaduran: avx-512, avx2, neon, rvv
 pub mod state; // egoera-bektorea: qubitak eta modu optikoak
+#[cfg(any(feature = "opencl", feature = "mpi"))]
+pub(crate) mod syslib; // sistemaren liburutegiak kargatzea, uneko karpetatik inoiz ez
 pub mod team; // prozesu-taldeak: shot-ak rank-en artean (MPI edo hariak)
+pub mod term; // terminalerako testua: programen kontrol-sekuentziak ikusgai (ez exekutatuta)
 pub mod vm; // makina birtuala eta shot-ak
 #[cfg(feature = "vulkan")]
 pub mod vulkan; // vulkan gailua (src/shaders/tile.comp)

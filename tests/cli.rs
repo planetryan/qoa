@@ -1053,3 +1053,19 @@ fn too_many_different_results_is_an_error_not_a_full_memory() {
         .unwrap();
     assert!(o.status.success(), "{}", stderr(&o));
 }
+
+#[test]
+fn program_output_stays_raw_through_a_pipe_and_hostile_names_are_refused() {
+    // terminal-sekuentziak terminalera bakarrik bihurtzen dira ikusgai; hodi batean byteak bere horretan
+    let src = scratch("escape.qoa");
+    std::fs::write(&src, "CHAROUT (27)\nPRINT \"]0;title\"\nPUTC (7)\n").unwrap();
+    let o = qoa("en", &["run", "-q", src.to_str().unwrap()]);
+    assert!(o.status.success(), "{}", stderr(&o));
+    assert_eq!(o.stdout, b"\x1b]0;title\x07");
+    // .qx baten programa-izenak (txostenean erakusten dena) ezin du kontrol-karaktererik izan
+    let mut p = qoa::asm::assemble("H q0\n", "x.qoa").unwrap();
+    p.name = "evil\x1b]0;pwned\x07.qoa".into();
+    let bytes = p.to_bytes();
+    let e = qoa::program::Program::from_bytes(&bytes).unwrap_err();
+    assert!(e.contains("control characters"), "{}", e);
+}

@@ -15,8 +15,6 @@
 //     zenbaki bera dute (programa bera, hazi bera), beraz emaitza bera ateratzen dute
 //
 // prozesu-kopurua 2-ren berretura izan behar da.
-// unsafe hemen: anplitudeak byte gisa ikustea MPI-ra bidaltzeko (Complex64 #[repr(C)] da, bi f64)
-#![allow(unsafe_code)]
 
 use crate::dd::{self, Dd};
 use crate::kernel::{self, QGate};
@@ -45,14 +43,13 @@ pub struct DistState {
     error: Option<String>,
 }
 
+// anplitudeak byte gisa, MPI-ra bidaltzeko: bytemuck-ek egiaztatzen du Complex64-k betegarririk ez duela
 fn as_bytes(xs: &[C]) -> &[u8] {
-    // SAFETY: Complex64 #[repr(C)] da, bi f64 (16 byte, betegarririk gabe)
-    unsafe { std::slice::from_raw_parts(xs.as_ptr() as *const u8, std::mem::size_of_val(xs)) }
+    bytemuck::cast_slice(xs)
 }
 
 fn as_bytes_mut(xs: &mut [C]) -> &mut [u8] {
-    // SAFETY: ikus as_bytes; edozein byte-eredu f64 baliozkoa da
-    unsafe { std::slice::from_raw_parts_mut(xs.as_mut_ptr() as *mut u8, std::mem::size_of_val(xs)) }
+    bytemuck::cast_slice_mut(xs)
 }
 
 impl DistState {

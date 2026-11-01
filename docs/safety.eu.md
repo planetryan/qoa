@@ -26,6 +26,39 @@ egiten, ez da mugarik gabe geratzen, eta ez du memoria betetzen sistemak hil art
   galdu beharrean; irakurlea joaten bada (`qoa ... | head`), QOA isilik amaitzen da edozein komando-lerroko
   tresna bezala.
 
+## Programa batek zer irits dezakeen
+
+QOA programa bat isolatuta exekutatzen da. Kalkulatu dezake, bere sarrera estandarra eta `--` ondoren
+emandako argumentuak irakurri, ordularia irakurri (`TIME`), eta irteera estandarrean eta errore-irteeran
+idatzi. Ezin du fitxategirik ireki, sarea erabili, beste programarik abiarazi, ingurune-aldagairik irakurri,
+edo koderik kargatu. Beraz programa edo fitxategi gaizto batek makinara iristeko dituen bideak QOA-k berak
+irekitzen dituenak dira, eta bakoitza itxita dago:
+
+- **Terminala.** Terminalek kontrol-sekuentziei erantzuten diete: programa batek leihoaren izenburua alda
+  lezake, arbelean idatzi (OSC 52), kurtsorea mugitu irteera faltsutzeko, edo terminalari egoera-galdera
+  bati erantzunarazi zuk idatzi bazenu bezala. QOA-ren irteera terminal batera doanean, programa edo
+  fitxategi batetik datorren kontrol-sekuentzia oro (programaren irteera, errore-mezuetako iturburu-lerroak,
+  izenak) testu gisa erakusten da (`^[]0;...`) eragin beharrean; lerro-jauziak, tabulazioak eta koloreak
+  bakarrik pasatzen dira. Hodi edo fitxategi baterako irteera programak idatzi bezala uzten da, bytez byte,
+  QOA programek tresna gisa lanean jarrai dezaten. Programa-izenean kontrol-karaktereak dituen `.qx` bat
+  hondatu gisa baztertzen da.
+- **Fitxategi konpilatuak.** `.qx` bat eragiketaz eragiketa egiaztatzen da makinak ikusi aurretik (ikus
+  goian).
+- **Liburutegiak.** QOA-k GPU kontrolatzaileak (`--gpu`) eta MPI (`--mpi`) eskatzen zaionean bakarrik
+  kargatzen ditu, eta sistemaren lekuetatik bakarrik: inoiz ez uneko karpetatik, Windows-ek eta macOS-ek
+  bestela begiratuko luketen eta deskargatutako liburutegi bat ezkuta daitekeen lekutik. `QOA_MPI_LIB`-ek
+  izendatzen duen liburutegia kargatzen du zehazki; ez utzi beste inori ezartzen.
+- **ffmpeg** (`qoa visual`). Fitxategi-izenak fitxategi arrunt gisa pasatzen zaizkio ffmpeg-i (`file:`),
+  inoiz ez aukera edo protokolo gisa, izena edozein dela ere (`-y.wav`, `concat:...`). Aldi baterako
+  fitxategiak berriak sortzen dira, zuk bakarrik irakur ditzakezu, eta inoiz ez lehendik dagoen fitxategi
+  edo esteka baten bidez.
+- **Sarrera handiak edo amaigabeak.** Programa-fitxategiak QOA-k erabil dezakeen memoriari lotutako tamaina
+  bateraino irakurtzen dira (beraz `qoa run /dev/zero` berehala gelditzen da), `INPUT` lerro bat 1 MiB-ekoa
+  da gehienez, eta grabatutako sarrera memoria-mugan zenbatzen da.
+
+QOA-tik kanpo geratzen dena: ffmpeg-ek ematen dizkiozun multimedia-fitxategiak nola tratatzen dituen, GPU
+kontrolatzaileak, eta MPI liburutegia.
+
 ## Mugak
 
 | zer | muga | gainditzean |
@@ -70,13 +103,29 @@ hasieran esaten du zergatik; eta `qoa` komando-lerroko tresnan erabat debekatuta
 | modulua | zergatik |
 |---|---|
 | `simd` | prozesadorearen ezaugarri baterako (AVX-512, AVX2, NEON) eraikitako bektore-kernel bati deitzea, prozesadoreak ezaugarri hori duela egiaztatu ondoren, eta bektore bat kargatzea edo gordetzea haren memoria zehazki hartzen duen erreferentzia baten bidez; RISC-V-ren bektore-kernelak mihiztaduran daude, rust egonkorrak oraindik ez baitu RVV-rik onartzen |
-| `kernel`, `state` | lan-hari bakoitzak egoeraren bere bloke disjuntuak kopiatzen ditu barrura eta kanpora erakusle partekatu baten bidez |
+| `kernel`, `state` | lan-hari bakoitzak egoeraren bere bloke disjuntuak kopiatzen ditu barrura eta kanpora erakusle partekatu baten bidez; bloke bakoitzaren mugak argitalpenean ere egiaztatzen dira, eta proba-eraikitzeek egiaztatzen dute bi harik ez dutela inoiz bloke bera ukitzen |
 | `dd`, `quad` | FMA-rekin eraikitako baturei eta kernelei deitzea, prozesadoreak FMA duela egiaztatu ondoren |
-| `dist` | anplitudeak byte gisa ikustea beste MPI prozesu batzuei bidaltzeko |
-| `mpi`, `opencl`, `vulkan` | MPI liburutegiari eta GPU kontrolatzaileei deitzea, exekuzioan kargatutako C liburutegiak baitira |
+| `mpi`, `opencl`, `vulkan`, `syslib` | MPI liburutegia eta GPU kontrolatzaileak kargatzea eta haiei deitzea, exekuzioan kargatutako C liburutegiak baitira |
 
 x86 eta ARM bektore-kernelak eskuz idatzitako mihiztadura ziren 0.4.4 arte; orain mugak egiaztatutako
 slice-en gaineko rust arrunta dira, emaitza berberekin bitez bit eta abiadura berean.
+
+## Argitalpenak eta menpekotasunak
+
+- **Deskarga egiaztagarriak.** Argitalpeneko fitxategi bakoitzak SHA-256 laburpen bat (`SHA256SUMS`) eta
+  eraikitze-jatorri sinatu bat ditu: edonork egiazta dezake fitxategi bat biltegi honen argitalpen-workflow-ak
+  eraiki zuela commit jakin batetik, `gh attestation verify FITXATEGIA --repo planetryan/qoa`-rekin.
+- **Bitar babestuak.** Linux bitarrak posizioarekiko independenteak dira, RELRO osoarekin eta pila
+  ez-exekutagarriarekin, eta argitalpen-workflow-ak egiaztatzen du linux eraikitze bakoitzean; Windows
+  bitarrak Control Flow Guard-ekin eraikitzen dira.
+- **Eraikitze-urrats finkatuak.** CI-ko eta argitalpen-workflow-ko GitHub Action guztiak commit zehatz bati
+  lotuta daude, beraz mugitutako edo bahitutako etiketa batek ezin du aldatu QOA zerk eraikitzen duen. Cargo
+  eraikitzeek `--locked` erabiltzen dute.
+- **Menpekotasunak.** CI-k menpekotasun bakoitzaren bertsio zehatza RustSec-en aholku-datu-basearen aurka
+  egiaztatzen du.
+- **Etengabeko egiaztapenak.** Eraikitze bakoitzeko eraso-probaz gain, gaueko lan batek beste 64 hazirekin
+  exekutatzen du, eta CI-k proba-multzo osoa zenbaki osoen gainezkatze-egiaztapenekin eta debug
+  baieztapenekin exekutatzen du.
 
 ## Agintzen ez duena
 

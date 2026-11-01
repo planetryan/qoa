@@ -120,16 +120,59 @@ fn ffmpeg_missing(tool: &str, e: std::io::Error) -> String {
     }
 }
 
-// aldi baterako fitxategi bat, erabili ondoren ezabatzen dena
-struct TempFile(std::path::PathBuf);
+// aldi baterako fitxategi bat, erabili ondoren ezabatzen dena. berria sortzen da beti (create_new: lehendik
+// dagoen fitxategi edo esteka sinboliko bat ez da inoiz ireki edo gainidazten, beste erabiltzaile batek
+// /tmp-n prestatutakoa izan arren), eta unix-en jabeak bakarrik irakur eta idatz dezake (0600)
+struct TempFile(std::path::PathBuf, Option<std::fs::File>);
 
 impl TempFile {
-    fn new(tag: &str) -> TempFile {
-        let nanos = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0);
-        TempFile(std::env::temp_dir().join(format!("qoa-{}-{}-{}", std::process::id(), nanos, tag)))
+    fn new(tag: &str) -> Result<TempFile, String> {
+        let mut last = None;
+        for attempt in 0..16u32 {
+            let nanos = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0);
+            let path = std::env::temp_dir().join(format!(
+                "qoa-{}-{}-{}-{}",
+                std::process::id(),
+                nanos,
+                attempt,
+                tag
+            ));
+            let mut open = std::fs::OpenOptions::new();
+            open.write(true).create_new(true);
+            #[cfg(unix)]
+            std::os::unix::fs::OpenOptionsExt::mode(&mut open, 0o600);
+            match open.open(&path) {
+                Ok(f) => return Ok(TempFile(path, Some(f))),
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => last = Some(e),
+                Err(e) => {
+                    last = Some(e);
+                    break;
+                }
+            }
+        }
+        Err(t!(
+            "cannot create a temporary file: {}",
+            "ezin da aldi baterako fitxategi bat sortu: {}",
+            last.map_or(String::new(), |e| e.to_string())
+        ))
+    }
+
+    // sortutako fitxategia, idazteko
+    fn file(&mut self) -> &mut std::fs::File {
+        self.1.as_mut().expect("aldi baterako fitxategia irekita")
+    }
+}
+
+// fitxategi-izen bat ffmpeg-entzat: `file:` aurrizkiarekin, izena ez dadin aukera (`-y`) edo protokolo
+// (`concat:`, `http:`) gisa irakurri, edozein izen duela ere. `-` (stdin/stdout) bere horretan
+fn ff_path(p: &Path) -> String {
+    if p.as_os_str() == "-" {
+        "-".into()
+    } else {
+        format!("file:{}", p.to_string_lossy())
     }
 }
 
@@ -152,7 +195,7 @@ fn probe(path: &Path) -> Result<(u32, u32), String> {
             "-of",
             "csv=p=0",
         ])
-        .arg(path)
+        .arg(ff_path(path))
         .output()
         .map_err(|e| ffmpeg_missing("ffprobe", e))?;
     let text = String::from_utf8_lossy(&out.stdout);
@@ -184,10 +227,8 @@ pub fn decode_audio(input: &Path, raw: Option<&Raw>) -> Result<Audio, String> {
     // edukiontzi bat stdin-etik: lehenik fitxategi batera, ffprobe-k aztertu ahal izateko
     let mut kept: Option<TempFile> = None;
     let source: std::path::PathBuf = if stdin && raw.is_none() {
-        let tmp = TempFile::new("input");
-        let mut f = std::fs::File::create(&tmp.0)
-            .map_err(|e| t!("cannot buffer stdin: {}", "ezin da stdin gorde: {}", e))?;
-        std::io::copy(&mut std::io::stdin().lock(), &mut f)
+        let mut tmp = TempFile::new("input")?;
+        std::io::copy(&mut std::io::stdin().lock(), tmp.file())
             .map_err(|e| t!("cannot read stdin: {}", "ezin da stdin irakurri: {}", e))?;
         let p = tmp.0.clone();
         kept = Some(tmp);
@@ -224,7 +265,7 @@ pub fn decode_audio(input: &Path, raw: Option<&Raw>) -> Result<Audio, String> {
             r.channels.to_string(),
         ]);
     }
-    args.extend(["-i".into(), source.to_string_lossy().into_owned()]);
+    args.extend(["-i".into(), ff_path(&source)]);
     args.extend(
         ["-map", "0:a:0", "-f", "f64le", "-c:a", "pcm_f64le", "-"]
             .iter()
@@ -1287,7 +1328,7 @@ pub fn run(o: &Options) -> Result<(), String> {
         ]);
     };
     // bideoarekin, audioa aldi baterako fitxategi batetik (stdin irudientzat da)
-    let audio_file = TempFile::new("audio.f64");
+    let mut audio_file = TempFile::new("audio.f64")?;
     if video {
         args.extend([
             "-f".into(),
@@ -1304,14 +1345,17 @@ pub fn run(o: &Options) -> Result<(), String> {
             "-".into(),
         ]);
         if o.mode != Mode::VideoOnly {
-            std::fs::write(&audio_file.0, interleaved_bytes(audio_out)).map_err(|e| {
-                t!(
-                    "cannot write a temporary file: {}",
-                    "ezin da aldi baterako fitxategi bat idatzi: {}",
-                    e
-                )
-            })?;
-            pcm_input(&mut args, &audio_file.0.to_string_lossy());
+            audio_file
+                .file()
+                .write_all(&interleaved_bytes(audio_out))
+                .map_err(|e| {
+                    t!(
+                        "cannot write a temporary file: {}",
+                        "ezin da aldi baterako fitxategi bat idatzi: {}",
+                        e
+                    )
+                })?;
+            pcm_input(&mut args, &ff_path(&audio_file.0));
             args.extend(
                 ["-map", "0:v:0", "-map", "1:a:0"]
                     .iter()
@@ -1335,7 +1379,7 @@ pub fn run(o: &Options) -> Result<(), String> {
     // erabiltzailearen aukerak azkenean, lehenetsiak gainidazteko
     args.extend(o.ffmpeg_flags.iter().cloned());
     args.extend(o.ffmpeg_args.iter().cloned());
-    args.push(o.output.to_string_lossy().into_owned());
+    args.push(ff_path(o.output));
 
     let mut child = Command::new("ffmpeg")
         .args(&args)

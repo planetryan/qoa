@@ -117,19 +117,10 @@ fn candidates() -> Vec<String> {
     out
 }
 
-// open mpi-ren osagaiek libmpi-ren ikurrak behar dituzte: liburutegia RTLD_GLOBAL-ekin kargatu
-fn open(name: &str) -> Result<Library, libloading::Error> {
-    #[cfg(unix)]
-    {
-        use libloading::os::unix::{Library as Unix, RTLD_GLOBAL, RTLD_NOW};
-        // segurtasuna: MPI liburutegi baten hasieratzaileak ez du baldintzarik QOA-ren aldetik
-        unsafe { Unix::open(Some(name), RTLD_NOW | RTLD_GLOBAL) }.map(Library::from)
-    }
-    #[cfg(not(unix))]
-    {
-        // segurtasuna: goian bezala
-        unsafe { Library::new(name) }
-    }
+// open mpi-ren osagaiek libmpi-ren ikurrak behar dituzte: liburutegia RTLD_GLOBAL-ekin kargatu (eta inoiz ez
+// uneko karpetatik, ikus src/syslib.rs)
+fn open(name: &str) -> Result<Library, String> {
+    crate::syslib::open(name, true)
 }
 
 fn symbol<T: Copy>(lib: &Library, name: &str) -> Result<T, String> {

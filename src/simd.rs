@@ -62,6 +62,8 @@ impl Isa {
 }
 
 // makina honetan erabil daitezkeenak, onenetik txarrenera; eskalarra beti azkena
+// (push-ak arkitekturaren araberakoak dira, beraz bektorea ezin da literal bakar batean eraiki)
+#[allow(clippy::vec_init_then_push)]
 pub fn available() -> &'static [Isa] {
     static AVAILABLE: OnceLock<Vec<Isa>> = OnceLock::new();
     AVAILABLE.get_or_init(|| {

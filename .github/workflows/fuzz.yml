@@ -1,0 +1,49 @@
+# fitxategi honek QOA-ri sarrera gaiztoak ematen dizkio gauero, tests/hostile.rs-ek eraikitze bakoitzean
+# erabiltzen duen hazi bakarraz gain beste askorekin: .qx hondatuak, iturburu nahasiak eta habiaraketa
+# sakonak, gainezkatze-egiaztapenekin. huts egiten duen hazi bakoitzak bere kasua erakusten du;
+# QOA_HOSTILE_SEED=n eta QOA_HOSTILE_DUMP="kasua fitxategia"-k berriz sortzen dute.
+name: fuzz
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+    inputs:
+      seeds:
+        description: "how many seeds to try"
+        required: false
+        default: "64"
+
+permissions:
+  contents: read
+
+jobs:
+  hostile:
+    runs-on: ubuntu-latest
+    env:
+      CARGO_PROFILE_RELEASE_OVERFLOW_CHECKS: "true"
+      CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS: "true"
+      SEEDS: ${{ github.event.inputs.seeds || '64' }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          key: fuzz
+      - run: cargo test --release --locked --test hostile --no-run
+      - name: many seeds, one after another (each with its own time limit)
+        run: |
+          bin=$(ls -t target/release/deps/hostile-* | grep -v '\.d$' | head -1)
+          base=$(date +%s)
+          failed=0
+          for i in $(seq 1 "$SEEDS"); do
+            seed=$((base + i))
+            if ! QOA_HOSTILE_SEED=$seed QOA_HOSTILE_LOG=last.txt timeout 600 "$bin" < /dev/null > out.txt 2>&1; then
+              echo "::error::seed $seed failed (last case: $(cat last.txt 2>/dev/null))"
+              grep -a "aldaketa\|nahasketa\|panicked" out.txt | head -20
+              failed=1
+            fi
+          done
+          exit $failed

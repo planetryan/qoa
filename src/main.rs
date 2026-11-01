@@ -617,7 +617,27 @@ fn main() -> ExitCode {
             ffmpeg_flags,
             ffmpeg_args,
         } => {
-            let mode = if audio_only {
+            // audio-fitxategi batek (wav, flac, mp3...) ezin du bideorik izan: orduan audioa bakarrik,
+            // ffmpeg-ek huts egin beharrean
+            let audio_file = output
+                .extension()
+                .and_then(|e| e.to_str())
+                .map(|e| e.to_ascii_lowercase())
+                .is_some_and(|e| {
+                    [
+                        "wav", "flac", "mp3", "ogg", "oga", "opus", "m4a", "aac", "aiff", "aif",
+                        "wma", "alac", "caf", "au",
+                    ]
+                    .contains(&e.as_str())
+                });
+            let conflict = (audio_file && (video_only || keep_audio)).then(|| {
+                t!(
+                    "{} is an audio file and cannot hold video; write the video to .mp4, .mkv or .webm",
+                    "{} audio-fitxategi bat da eta ezin du bideorik izan; idatzi bideoa .mp4, .mkv edo .webm-ra",
+                    output.display()
+                )
+            });
+            let mode = if audio_only || audio_file {
                 visualizer::Mode::AudioOnly
             } else if video_only {
                 visualizer::Mode::VideoOnly
@@ -643,26 +663,30 @@ fn main() -> ExitCode {
                 rate,
                 channels,
             });
-            cmd_visual(
-                &input,
-                &output,
-                raw,
-                mode,
-                light,
-                block,
-                &resolution,
-                fps,
-                match phase_space {
-                    PhaseSpaceArg::Row => visualizer::PhaseSpace::Row,
-                    PhaseSpaceArg::Full => visualizer::PhaseSpace::Full,
-                    PhaseSpaceArg::Off => visualizer::PhaseSpace::Off,
-                },
-                ltr,
-                rtl,
-                seed,
-                &ffmpeg_flags,
-                &ffmpeg_args,
-            )
+            if let Some(why) = conflict {
+                Err(why)
+            } else {
+                cmd_visual(
+                    &input,
+                    &output,
+                    raw,
+                    mode,
+                    light,
+                    block,
+                    &resolution,
+                    fps,
+                    match phase_space {
+                        PhaseSpaceArg::Row => visualizer::PhaseSpace::Row,
+                        PhaseSpaceArg::Full => visualizer::PhaseSpace::Full,
+                        PhaseSpaceArg::Off => visualizer::PhaseSpace::Off,
+                    },
+                    ltr,
+                    rtl,
+                    seed,
+                    &ffmpeg_flags,
+                    &ffmpeg_args,
+                )
+            }
         }
     };
     match result {
@@ -672,9 +696,13 @@ fn main() -> ExitCode {
             // (`--assembler`) bere erroreak jada inprimatu ditu, eta haren EXIT egoera itzultzen da
             if message.is_empty() {
             } else if message.starts_with(ts!("error:", "errorea:")) {
-                eprint!("{}", message);
+                eprint!("{}", qoa::term::for_stderr(&message));
             } else {
-                eprintln!("{} {}", ts!("error:", "errorea:"), message);
+                eprintln!(
+                    "{} {}",
+                    ts!("error:", "errorea:"),
+                    qoa::term::for_stderr(&message)
+                );
             }
             match EXIT_STATUS.load(std::sync::atomic::Ordering::Relaxed) {
                 0 => ExitCode::FAILURE,
@@ -695,11 +723,11 @@ fn load(path: &Path) -> Result<Program, String> {
         .to_ascii_lowercase();
     match ext.as_str() {
         "qx" | "qexe" | "oexe" => {
-            let data = std::fs::read(path).map_err(read_err)?;
+            let data = qoa::state::read_file(path).map_err(read_err)?;
             Program::from_bytes(&data).map_err(|e| format!("{}: {}", name, e))
         }
         "qg" => {
-            let src = std::fs::read_to_string(path).map_err(read_err)?;
+            let src = qoa::state::read_text(path).map_err(read_err)?;
             qoa::glyph::assemble(&src, &name).map_err(|d| {
                 format!(
                     "{}{}\n",
@@ -714,7 +742,7 @@ fn load(path: &Path) -> Result<Program, String> {
             })
         }
         "qasm" => {
-            let src = std::fs::read_to_string(path).map_err(read_err)?;
+            let src = qoa::state::read_text(path).map_err(read_err)?;
             let qoa_src = qoa::qasm::to_qoa(&src, &name).map_err(|e| format!("{}: {}", name, e))?;
             asm::assemble(&qoa_src, &name).map_err(|d| {
                 t!(
@@ -726,7 +754,7 @@ fn load(path: &Path) -> Result<Program, String> {
             })
         }
         _ => {
-            let src = std::fs::read_to_string(path).map_err(read_err)?;
+            let src = qoa::state::read_text(path).map_err(read_err)?;
             asm::assemble(&src, &name).map_err(|d| {
                 format!(
                     "{}{}\n",
@@ -796,7 +824,9 @@ fn cmd_run(
     };
     if quiet {
         // programaren irteera bakarrik, bufferrean (byte bakoitza idazketa bat ez izateko)
-        let mut out = std::io::BufWriter::new(Out(std::io::stdout().lock()));
+        let stdout = std::io::stdout();
+        let terminal = std::io::IsTerminal::is_terminal(&stdout);
+        let mut out = std::io::BufWriter::new(Out(qoa::term::Screen::new(stdout.lock(), terminal)));
         let output = vm::run(&program, &config, &mut out);
         std::io::Write::flush(&mut out).map_err(|e| {
             t!(
@@ -819,7 +849,10 @@ fn cmd_run(
     // json moduan programaren irteera bildu egiten da; testu moduan zuzenean ateratzen da
     let mut captured: Vec<u8> = Vec::new();
     let mut printed = Counting {
-        inner: Out(std::io::stdout()),
+        inner: Out(qoa::term::Screen::new(
+            std::io::stdout(),
+            std::io::IsTerminal::is_terminal(&std::io::stdout()),
+        )),
         bytes: 0,
     };
     let output = if json {
@@ -856,7 +889,10 @@ fn cmd_run(
         if printed.bytes > 0 {
             println!();
         }
-        print!("{}", report::render(&rep, &Style::detect()));
+        print!(
+            "{}",
+            qoa::term::for_stdout(&report::render(&rep, &Style::detect()))
+        );
     }
     EXIT_STATUS.store(
         output.exit_status.unwrap_or(0),
@@ -1088,7 +1124,7 @@ fn cmd_compile(
 fn assemble_with(assembler: &Path, file: &Path) -> Result<(Program, Vec<u8>), String> {
     let tool = load(assembler)?;
     let name = file.display().to_string();
-    let source = std::fs::read(file)
+    let source = qoa::state::read_file(file)
         .map_err(|e| t!("cannot read {}: {}", "ezin da {} irakurri: {}", name, e))?;
     let config = RunConfig {
         shots: 1,
@@ -1134,7 +1170,7 @@ fn write_or_print(output: Option<PathBuf>, text: &str) -> Result<(), String> {
             })?;
             eprintln!("{}", t!("wrote {}", "{} idatzita", path.display()));
         }
-        None => print!("{}", text),
+        None => print!("{}", qoa::term::for_stdout(text)),
     }
     Ok(())
 }
@@ -1216,7 +1252,7 @@ fn cmd_export(
 
 fn cmd_import(file: &Path, output: Option<PathBuf>) -> Result<(), String> {
     let name = file.display().to_string();
-    let src = std::fs::read_to_string(file)
+    let src = qoa::state::read_text(file)
         .map_err(|e| t!("cannot read {}: {}", "ezin da {} irakurri: {}", name, e))?;
     let is_glyph = file
         .extension()

@@ -23,6 +23,34 @@ memory until the system kills it. This covers:
 - **Output**: if the output cannot be written (a full disk), QOA stops and says so instead of losing it
   silently; if the reader goes away (`qoa ... | head`), QOA ends quietly like any command-line tool.
 
+## What a program can reach
+
+A QOA program runs in a sandbox. It can compute, read its standard input and the arguments given after `--`,
+read the clock (`TIME`), and write to standard output and standard error. It cannot open files, use the
+network, start other programs, read environment variables, or load code. So the ways a hostile program or
+file could reach the machine are the ones QOA itself opens, and each is closed:
+
+- **The terminal.** Terminals act on control sequences: a program could set the window title, write to the
+  clipboard (OSC 52), move the cursor to fake output, or make the terminal answer a status request as if
+  you had typed it. When QOA's output goes to a terminal, every control sequence that comes from a program
+  or a file (program output, source lines in error messages, names) is shown as text (`^[]0;...`) instead of
+  acting; only line breaks, tabs and colours pass. Output to a pipe or a file is left byte for byte as the
+  program wrote it, so QOA programs still work as tools. A `.qx` whose program name contains control
+  characters is refused as corrupt.
+- **Compiled files.** A `.qx` is checked operation by operation before the machine sees it (see above).
+- **Libraries.** QOA loads GPU drivers (`--gpu`) and MPI (`--mpi`) only when asked, and only from system
+  locations: never from the current folder, where Windows and macOS would otherwise look and where a
+  downloaded library could hide. `QOA_MPI_LIB` loads exactly the library it names; do not let others set it.
+- **ffmpeg** (`qoa visual`). File names are passed to ffmpeg as plain files (`file:`), never as options or
+  protocols, whatever their names (`-y.wav`, `concat:...`). Temporary files are created fresh, readable only
+  by you, and never through an existing file or link.
+- **Big or endless inputs.** Program files are read up to a size tied to the memory QOA may use (so
+  `qoa run /dev/zero` stops at once), an `INPUT` line is at most 1 MiB, and recorded input counts toward the
+  memory limit.
+
+What stays outside QOA: ffmpeg's own handling of the media files you give it, GPU drivers, and the MPI
+library.
+
 ## Limits
 
 | what | limit | past it |
@@ -65,13 +93,26 @@ it is forbidden outright in the `qoa` command-line tool.
 | module | why |
 |---|---|
 | `simd` | calling a vector kernel built for a processor feature (AVX-512, AVX2, NEON) after checking that the processor has it, and loading or storing one vector through a reference that covers exactly its memory; RISC-V vector kernels are in assembly, because stable Rust has no RVV support yet |
-| `kernel`, `state` | worker threads each copy their own disjoint blocks of the state in and out through a shared pointer |
+| `kernel`, `state` | worker threads each copy their own disjoint blocks of the state in and out through a shared pointer; every block's bounds are checked in release builds too, and test builds also check that no two threads ever touch the same block |
 | `dd`, `quad` | calling sums and kernels built with FMA after checking that the processor has it |
-| `dist` | viewing amplitudes as bytes to send them to other MPI processes |
-| `mpi`, `opencl`, `vulkan` | calling the MPI library and the GPU drivers, which are C libraries loaded at run time |
+| `mpi`, `opencl`, `vulkan`, `syslib` | loading and calling the MPI library and the GPU drivers, which are C libraries loaded at run time |
 
 The x86 and ARM vector kernels were hand-written assembly until 0.4.4; they are now ordinary Rust on
 bounds-checked slices, with bit-for-bit the same results and the same speed.
+
+## Releases and dependencies
+
+- **Verifiable downloads.** Every release file has a SHA-256 checksum (`SHA256SUMS`) and a signed build
+  provenance: anyone can check that a file was built by this repository's release workflow from a given
+  commit, with `gh attestation verify FILE --repo planetryan/qoa`.
+- **Hardened binaries.** Linux binaries are position-independent with full RELRO and a non-executable stack,
+  and the release workflow checks this for every Linux build; Windows binaries are built with Control Flow
+  Guard.
+- **Pinned build steps.** Every GitHub Action in CI and in the release workflow is pinned to an exact
+  commit, so a moved or hijacked tag cannot change what builds QOA. Cargo builds use `--locked`.
+- **Dependencies.** CI checks every dependency's exact version against the RustSec advisory database.
+- **Continuous checks.** Besides the hostile-input test on every build, a nightly job runs it with 64 more
+  seeds, and CI runs the whole suite with integer-overflow checks and debug assertions.
 
 ## What it does not promise
 

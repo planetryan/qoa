@@ -191,11 +191,49 @@ fn examine(instance: &ash::Instance, pd: vk::PhysicalDevice) -> Result<Candidate
     })
 }
 
+// vulkan kargatzailea sistemaren lekutik, inoiz ez uneko karpetatik: izen huts batekin windows-ek eta macos-ek
+// uneko karpetan ere bilatzen dute, eta han jarritako liburutegi gaizto bat exekutatuko litzateke (ikus
+// src/syslib.rs). linux-en kargatzailearen bide arruntak (uneko karpeta ez)
+fn load_entry() -> Result<ash::Entry, String> {
+    #[cfg(windows)]
+    {
+        let root = std::env::var_os("SystemRoot").unwrap_or_else(|| "C:\\Windows".into());
+        let path = std::path::Path::new(&root)
+            .join("System32")
+            .join("vulkan-1.dll");
+        // segurtasuna: sistemaren vulkan-1.dll bide osoarekin
+        unsafe { ash::Entry::load_from(&path) }.map_err(|e| e.to_string())
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let mut dirs: Vec<std::path::PathBuf> = Vec::new();
+        if let Some(sdk) = std::env::var_os("VULKAN_SDK") {
+            dirs.push(std::path::Path::new(&sdk).join("lib"));
+        }
+        dirs.extend(["/opt/homebrew/lib", "/usr/local/lib", "/opt/local/lib"].map(Into::into));
+        let mut last = String::from("libvulkan.1.dylib");
+        for dir in &dirs {
+            for name in ["libvulkan.1.dylib", "libvulkan.dylib", "libMoltenVK.dylib"] {
+                // segurtasuna: bide osoa, sistemaren edo SDK-aren karpeta batean
+                match unsafe { ash::Entry::load_from(dir.join(name)) } {
+                    Ok(e) => return Ok(e),
+                    Err(e) => last = e.to_string(),
+                }
+            }
+        }
+        Err(last)
+    }
+    #[cfg(not(any(windows, target_os = "macos")))]
+    {
+        // segurtasuna: sistemaren libvulkan kargatu; huts eginez gero errore bat
+        unsafe { ash::Entry::load() }.map_err(|e| e.to_string())
+    }
+}
+
 impl Device {
     // `index`: zenbatgarren gailua mota onenekoen artean (MPI prozesu bakoitzak berea)
     pub fn open(index: usize) -> Result<Device, String> {
-        // segurtasuna: sistemaren libvulkan kargatu; huts eginez gero errore bat
-        let entry = unsafe { ash::Entry::load() }.map_err(|e| {
+        let entry = load_entry().map_err(|e| {
             t!(
                 "no Vulkan loader found ({}); install your GPU's Vulkan driver (on Linux, Mesa or the vendor's package; mesa-vulkan-drivers includes lavapipe, a software one)",
                 "ez da vulkan kargatzailerik aurkitu ({}); instalatu zure GPUaren vulkan driverra (linux-en, mesa edo fabrikatzailearen paketea; mesa-vulkan-drivers-ek lavapipe dakar, software bidezkoa)",
