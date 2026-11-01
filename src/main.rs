@@ -438,7 +438,53 @@ const CLAP_EU: &[(&str, &str)] = &[
 // programaren EXIT egoera (`qoa run`), qoa bera amaitzean itzultzeko
 static EXIT_STATUS: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
 
+// irteera estandarraren irakurlea joan bada (`qoa ... | head`), isilik amaitu, unix tresna batek bezala
+// (128 + SIGPIPE), panic edo errore-mezurik gabe
+fn closed_pipe(e: std::io::Error) -> std::io::Error {
+    if e.kind() == std::io::ErrorKind::BrokenPipe {
+        std::process::exit(141);
+    }
+    e
+}
+
+struct Out<W>(W);
+
+impl<W: std::io::Write> std::io::Write for Out<W> {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.0.write(buf).map_err(closed_pipe)
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.0.flush().map_err(closed_pipe)
+    }
+}
+
 fn main() -> ExitCode {
+    // println!-ek panic egiten du irteera ezin bada idatzi: irteera itxita badago, isilik amaitu; beste
+    // edozein arrazoirengatik (disko betea), errore-mezu argi batekin, panic-ik gabe
+    let default = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let msg = info
+            .payload()
+            .downcast_ref::<String>()
+            .map(String::as_str)
+            .or_else(|| info.payload().downcast_ref::<&str>().copied())
+            .unwrap_or("");
+        if let Some(why) = msg.strip_prefix("failed printing to stdout: ") {
+            if why.contains("Broken pipe") || why.contains("pipe is being closed") {
+                std::process::exit(141);
+            }
+            eprintln!(
+                "{}",
+                t!(
+                    "error: cannot write the output: {}",
+                    "errorea: ezin da irteera idatzi: {}",
+                    why
+                )
+            );
+            std::process::exit(1);
+        }
+        default(info)
+    }));
     let cli = match Cli::try_parse() {
         Ok(cli) => cli,
         // ingelesez clap-en irteera bere horretan (koloreekin); euskaraz testu finkoak itzulita
@@ -748,9 +794,15 @@ fn cmd_run(
     };
     if quiet {
         // programaren irteera bakarrik, bufferrean (byte bakoitza idazketa bat ez izateko)
-        let mut out = std::io::BufWriter::new(std::io::stdout().lock());
+        let mut out = std::io::BufWriter::new(Out(std::io::stdout().lock()));
         let output = vm::run(&program, &config, &mut out);
-        std::io::Write::flush(&mut out).map_err(|e| e.to_string())?;
+        std::io::Write::flush(&mut out).map_err(|e| {
+            t!(
+                "cannot write the program's output: {}",
+                "ezin da programaren irteera idatzi: {}",
+                e
+            )
+        })?;
         if rank != 0 {
             return Ok(());
         }
@@ -765,7 +817,7 @@ fn cmd_run(
     // json moduan programaren irteera bildu egiten da; testu moduan zuzenean ateratzen da
     let mut captured: Vec<u8> = Vec::new();
     let mut printed = Counting {
-        inner: std::io::stdout(),
+        inner: Out(std::io::stdout()),
         bytes: 0,
     };
     let output = if json {

@@ -22,6 +22,35 @@
 * The assembler written in QOA (`tools/asm.qoa`) understands all of this and still produces exactly the bytes
   and messages of `qoa compile`. The test suite checks thousands of generated lines with the new forms.
 
+## Safer
+
+QOA now treats every input as possibly hostile, and the test suite proves it: on every build it feeds QOA
+20,000 damaged `.qx` files and 10,000 garbled `.qoa`, `.qg` and `.qasm` programs, plus nesting 200,000 levels
+deep, and requires a clear error (or a normal run) every time, never a crash. That search found and fixed:
+
+* **Damaged `.qx` files are rejected.** A loaded program must be exactly what the assembler builds from its
+  own text, checked operation by operation, so the machine never sees a register, qubit, mode, bit or jump
+  target that does not exist, a broken loop, or an absurd size. Before, changing one byte of a `.qx` could
+  make QOA try to allocate gigabytes and abort.
+* **Optical operators check their memory before they are built.** A beam splitter on two modes with a cutoff
+  of 200 needs about 80 GiB; QOA now says so instead of crashing. The cache of operator matrices is bounded,
+  so a loop that displaces by a changing register value no longer fills memory.
+* **Light that leaves the cutoff completely is an error.** Displacing a mode far beyond its photon cutoff
+  (or adding a photon to a mode at its top level) used to leave an empty state and a result full of NaN; now
+  QOA stops and says to raise the cutoff. Displacement and squeezing amounts from registers must be finite.
+* **Large cutoffs are fast.** Building the displacement operator took time proportional to the cube of the
+  cutoff instead of the square, and so did photon loss; reading a mode's photon distribution took the square
+  of the cutoff with a single mode. A cutoff of 3,030 went from 159 s to 2 s, and a single-mode cutoff of
+  half a million from more than a minute to under a second. The results are bit for bit the same.
+* **Deep nesting is an error, not a stack overflow.** An expression may nest up to 100 levels (parentheses,
+  functions, signs, `^` chains); deeper ones get a clear message in both assemblers, where 200,000 levels
+  used to crash QOA.
+* Glyph registers are limited to 4,096 elements like `QREG` (a 34-billion-bit `#C{...}` used to abort), and
+  the messages for register sizes say the allowed range (1 to 4096, first index 0 to 4095).
+* An OpenQASM gate definition with a `)` before its `(` or a `}` before its `{` is an error instead of a crash.
+* `qoa ... | head` ends quietly like any command-line tool (status 141), and an output that cannot be written,
+  such as a full disk, stops the program with a clear message instead of losing the output silently.
+
 ## Changed
 
 * A program that uses a number in parentheses is written as `.qx` format version 3. Programs without them
@@ -63,6 +92,43 @@
 * QOAn idatzitako mihiztatzaileak (`tools/asm.qoa`) hau guztia ulertzen du, eta `qoa compile`-ren byte eta
   mezu berberak sortzen ditu oraindik. Proba-multzoak forma berriak dituzten milaka lerro sortu egiaztatzen
   ditu.
+
+## Seguruagoa
+
+QOA-k sarrera guztiak gaiztoak izan daitezkeela kontuan hartzen du orain, eta proba-multzoak frogatzen du:
+eraikitze bakoitzean 20.000 `.qx` fitxategi hondatu eta 10.000 `.qoa`, `.qg` eta `.qasm` programa nahasi
+ematen dizkio, gehi 200.000 mailako habiaraketak, eta errore argi bat (edo exekuzio arrunt bat) eskatzen du
+beti, inoiz ez huts egite bat. Bilaketa horrek hauek aurkitu eta konpondu zituen:
+
+* **`.qx` fitxategi hondatuak baztertzen dira.** Kargatutako programa batek mihiztatzaileak bere testutik
+  eraikitzen duena izan behar du zehazki, eragiketaz eragiketa egiaztatuta, eta beraz makinak ez du inoiz
+  ikusten existitzen ez den erregistro, qubit, modu, bit edo jauzi-helbururik, begizta hautsirik edo neurri
+  zentzugaberik. Lehen, `.qx` baten byte bakar bat aldatzeak QOA-k gigabyteak erreserbatzen saiatzea eta
+  bertan behera uztea ekar zezakeen.
+* **Eragile optikoek beren memoria egiaztatzen dute eraiki aurretik.** 200eko mugako bi modutako
+  izpi-zatitzaile batek 80 GiB inguru behar ditu; QOA-k hala esaten du orain, huts egin beharrean.
+  Eragile-matrizeen cache-a mugatuta dago, eta beraz erregistro aldakor batekin desplazatzen duen begizta
+  batek ez du memoria betetzen.
+* **Mugatik guztiz ateratzen den argia errorea da.** Modu bat bere fotoi-mugatik oso urrun desplazatzeak (edo
+  goiko mailan dagoen modu bati fotoi bat gehitzeak) egoera huts bat eta NaN-ez betetako emaitza bat uzten
+  zituen; orain QOA gelditu egiten da eta muga handitzeko esaten du. Erregistroetatik datozen desplazamendu
+  eta estutze kopuruek finituak izan behar dute.
+* **Muga handiak azkarrak dira.** Desplazamendu-eragilea eraikitzeak mugaren kuboaren araberako denbora
+  behar zuen karratuarena beharrean, eta fotoi-galerak ere bai; modu baten fotoi-banaketa irakurtzeak
+  mugaren karratua behar zuen modu bakarrarekin. 3.030eko muga bat 159 s-tik 2 s-ra pasatu zen, eta modu
+  bakarreko milioi erdiko muga bat minutu bat baino gehiagotik segundo bat baino gutxiagora. Emaitzak bitez
+  bit berdinak dira.
+* **Habiaraketa sakona errorea da, ez pila-gainezkatze bat.** Adierazpen batek 100 maila izan ditzake
+  (parentesiak, funtzioak, zeinuak, `^` kateak); sakonagoek mezu argi bat dute bi mihiztatzaileetan, eta
+  200.000 mailak QOA erorarazten zuen lehen.
+* Glifo-erregistroak 4.096 elementura mugatuta daude, `QREG` bezala (34.000 milioi biteko `#C{...}` batek
+  bertan behera uzten zuen), eta erregistro-tamainen mezuek onartutako tartea esaten dute (1etik 4096ra,
+  lehen indizea 0tik 4095era).
+* `(` baino lehen `)` bat edo `{` baino lehen `}` bat duen OpenQASM ate-definizio bat errorea da, huts egite
+  bat izan beharrean.
+* `qoa ... | head` isilik amaitzen da edozein komando-lerroko tresna bezala (141 egoera), eta idatzi ezin
+  den irteera batek (disko betea, adibidez) programa gelditzen du mezu argi batekin, irteera isilik galdu
+  beharrean.
 
 ## Aldatua
 

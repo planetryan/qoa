@@ -897,6 +897,9 @@ impl Program {
         }
         let p: Program = bincode::deserialize(&data[6..])
             .map_err(|e| t!("corrupt QOA binary: {}", "QOA bitar hondatua: {}", e))?;
+        // edukia ere bai: mihiztatzaileak sor dezakeen programa bat, bestela makinak ez du ikusten
+        crate::disasm::check_loaded(&p)
+            .map_err(|e| t!("corrupt QOA binary: {}", "QOA bitar hondatua: {}", e))?;
         let needed = p.format_version();
         if version < needed {
             let release = if needed == 2 { "0.4.3" } else { "0.4.4" };

@@ -389,7 +389,8 @@ impl Importer {
                 ),
             )
         })?;
-        let close = s.rfind('}').ok_or_else(|| {
+        // gorputza { eta azken } artean; } {-ren aurretik badago, ez dago gorputzik
+        let close = s.rfind('}').filter(|&c| c > open).ok_or_else(|| {
             qerr(
                 line,
                 t!(
@@ -401,7 +402,8 @@ impl Importer {
         let header = s[4..open].trim();
         let (name, params, qargs) = match header.find('(') {
             Some(p) => {
-                let pc = header.find(')').ok_or_else(|| {
+                // ( -ren ondoko lehen ), ez aurretik dagoen bat
+                let pc = header[p..].find(')').map(|k| p + k).ok_or_else(|| {
                     qerr(
                         line,
                         t!("missing ) in gate definition", ") falta da ate-definizioan"),

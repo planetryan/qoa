@@ -611,8 +611,8 @@ impl Asm {
             self.error(Diagnostic::at(
                 size_tok,
                 t!(
-                    "expected a size of at least 1, found '{}'",
-                    "gutxienez 1eko tamaina espero zen, baina '{}' dago",
+                    "expected a size from 1 to 4096, found '{}'",
+                    "1 eta 4096 arteko tamaina bat espero zen, baina '{}' dago",
                     size_tok.text
                 ),
             ));
@@ -627,8 +627,8 @@ impl Asm {
                     self.error(Diagnostic::at(
                         f,
                         t!(
-                            "expected a first index, found '{}'",
-                            "lehen indize bat espero zen, baina '{}' dago",
+                            "expected a first index from 0 to 4095, found '{}'",
+                            "0 eta 4095 arteko lehen indize bat espero zen, baina '{}' dago",
                             f.text
                         ),
                     ));

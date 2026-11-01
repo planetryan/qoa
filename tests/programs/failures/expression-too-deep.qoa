@@ -1,0 +1,4 @@
+; nahita huts egiten duen proba: adierazpen batek 100 maila baino gehiago habiaraturik
+; expect-error: the expression nests more than 100 levels deep
+QINIT 1
+RX q0 ((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((pi))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))

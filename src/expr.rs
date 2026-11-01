@@ -21,6 +21,7 @@ pub fn eval_with(src: &str, vars: &HashMap<String, f64>) -> Result<f64, String> 
         chars: src.chars().collect(),
         pos: 0,
         vars,
+        depth: 0,
     };
     let v = p.expr()?;
     p.skip_ws();
@@ -42,10 +43,17 @@ pub fn eval_with(src: &str, vars: &HashMap<String, f64>) -> Result<f64, String> 
     Ok(v)
 }
 
+// adierazpen batek izan dezakeen habiaraketa (parentesiak, funtzioak, zeinuak eta ^ kateak): honetatik
+// gora errorea, pila ez gainezkatzeko (benetako adierazpen batek ez du inoiz hainbeste behar).
+// tools/asm.qoa-k muga bera du
+const MAX_DEPTH: u32 = 100;
+
 struct Parser<'v> {
     chars: Vec<char>,
     pos: usize,
     vars: &'v HashMap<String, f64>,
+    // unary-ren dei aktiboak
+    depth: u32,
 }
 
 impl Parser<'_> {
@@ -104,6 +112,20 @@ impl Parser<'_> {
     }
 
     fn unary(&mut self) -> Result<f64, String> {
+        self.depth += 1;
+        if self.depth > MAX_DEPTH {
+            return Err(t!(
+                "the expression nests more than {} levels deep",
+                "adierazpenak {} maila baino gehiago ditu bata bestearen barruan",
+                MAX_DEPTH
+            ));
+        }
+        let v = self.signed();
+        self.depth -= 1;
+        v
+    }
+
+    fn signed(&mut self) -> Result<f64, String> {
         match self.peek() {
             Some('-') => {
                 self.pos += 1;

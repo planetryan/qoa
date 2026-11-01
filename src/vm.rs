@@ -150,21 +150,39 @@ const X_MATRIX: [C; 4] = [
 // gakoa: (mota, lehen parametroaren bitak, bigarrenarenak, muga)
 type MatrixKey = (u8, u64, u64, usize);
 
+// cache-ak gorde dezakeen matrize-memoria: honetatik gora, matrize berri bat sartu aurretik hustu egiten
+// da. horrela parametro aldakorreko begizta batek (DISPLACE R1 bat, R1 aldatuz) ez du memoria betetzen
+const MATRIX_CACHE_BYTES: usize = 256 << 20;
+
 #[derive(Default)]
 pub struct MatrixCache {
-    map: Mutex<HashMap<MatrixKey, Arc<Mat>>>,
+    map: Mutex<(HashMap<MatrixKey, Arc<Mat>>, usize)>,
 }
 
 impl MatrixCache {
     fn get(&self, kind: u8, a: f64, b: f64, d: usize, make: impl FnOnce() -> Mat) -> Arc<Mat> {
         let key = (kind, a.to_bits(), b.to_bits(), d);
-        if let Some(m) = self.map.lock().unwrap().get(&key) {
+        if let Some(m) = self.lock().0.get(&key) {
             return m.clone();
         }
         // blokeoa askatuta kalkulatu, beste hariak ez gelditzeko
         let m = Arc::new(make());
-        self.map.lock().unwrap().insert(key, m.clone());
+        let bytes = m.a.len() * std::mem::size_of::<C>();
+        let mut guard = self.lock();
+        let (map, used) = &mut *guard;
+        if *used + bytes > MATRIX_CACHE_BYTES {
+            map.clear();
+            *used = 0;
+        }
+        if map.insert(key, m.clone()).is_none() {
+            *used += bytes;
+        }
         m
+    }
+
+    // beste hari batek panic egin badu ere, cache-a erabilgarria da (matrizeak osorik sartzen dira beti)
+    fn lock(&self) -> std::sync::MutexGuard<'_, (HashMap<MatrixKey, Arc<Mat>>, usize)> {
+        self.map.lock().unwrap_or_else(|e| e.into_inner())
     }
 }
 
@@ -213,6 +231,7 @@ struct Machine<'a> {
     capture_at: Option<usize>,
     captured: Option<Vec<f64>>,
     // GPUak huts egin badu: exekuzioa hurrengo urratsean errore honekin gelditzen da
+    // geroago jakinarazteko errorea (GPUa, irteera idaztea): eragiketa bakoitzaren ondoren begiratzen da
     gpu_error: Option<String>,
     // memoria-gelaxkak (LOAD/STORE); idatzi gabeak 0
     memory: Vec<f64>,
@@ -1168,27 +1187,103 @@ impl<'a> Machine<'a> {
 
     // ------------------------------------------------------------------ moduak
 
-    fn mode_matrix(&mut self, o: u32, kind: u8, a: f64, b: f64) {
+    // eragile optiko baten matrizeek behar duten memoria, eraiki aurretik: d x d matrize trinkoa eta haren
+    // forma bakana (desplazamendua, estutzea; estutzeak, zehaztasuna galtzen denean, d + 512 arteko espazio
+    // batean ere kalkula dezake), edo d² x d² eta haren kopia irauli bat (izpi-zatitzailea)
+    fn operator_memory(&self, pc: usize, kind: u8, d: usize) -> Result<(), RuntimeError> {
+        let n = d as u128;
+        let bytes = match kind {
+            1 => 40 * n * n,
+            2 => 40 * n * n + 128 * (n + 512) * (n + 512),
+            _ => 56 * n * n * n * n,
+        };
+        crate::state::check_memory(
+            &t!(
+                "the matrices of this optical operation (cutoff {})",
+                "eragiketa optiko honen matrizeek ({} muga)",
+                d
+            ),
+            bytes,
+        )
+        .map_err(|m| self.err(pc, m))
+    }
+
+    // eragiketa optiko baten ondoren: probabilitaterik geratzen ez bada fotoi-mugaren azpian, errorea
+    fn still_in_cutoff(&mut self, pc: usize) -> Result<(), RuntimeError> {
+        if !self.state.vanished {
+            return Ok(());
+        }
         let d = self.state.cutoff();
+        Err(self.err(
+            pc,
+            t!(
+                "no probability is left below the photon cutoff: this operation moved the light past the {} photon levels (0..{}) that QMODE keeps. Raise the cutoff, the second number of QMODE",
+                "ez da probabilitaterik geratzen fotoi-mugaren azpian: eragiketa honek argia QMODE-k gordetzen dituen {} fotoi-mailetatik (0..{}) haratago eraman du. Handitu muga, QMODE-ren bigarren zenbakia",
+                d,
+                d - 1
+            ),
+        ))
+    }
+
+    // desplazamendu edo estutze baten parametroa: zenbaki finitua (erregistro batetik datorrenean ere)
+    fn finite(&self, pc: usize, x: f64, what: &str) -> Result<f64, RuntimeError> {
+        if x.is_finite() {
+            Ok(x)
+        } else {
+            Err(self.err(
+                pc,
+                t!(
+                    "the {} is {}, which is not a finite number",
+                    "{} {} da, eta hori ez da zenbaki finitu bat",
+                    what,
+                    fmt_value(x)
+                ),
+            ))
+        }
+    }
+
+    fn mode_matrix(
+        &mut self,
+        pc: usize,
+        o: u32,
+        kind: u8,
+        a: f64,
+        b: f64,
+    ) -> Result<(), RuntimeError> {
+        let what = if kind == 1 {
+            ts!("displacement", "desplazamendua")
+        } else {
+            ts!("squeezing", "estutzea")
+        };
+        let (a, b) = (self.finite(pc, a, what)?, self.finite(pc, b, what)?);
+        let d = self.state.cutoff();
+        self.operator_memory(pc, kind, d)?;
         let m = self.cache.get(kind, a, b, d, || match kind {
             1 => fock::displacement(C::new(a, b), d),
             _ => fock::squeezing(a, b, d),
         });
         self.st().apply_mode_matrix(o as usize, &m);
+        self.still_in_cutoff(pc)
     }
 
     fn print(&mut self, s: &str) {
         self.write_bytes(s.as_bytes());
     }
 
-    // irteera uneko korrontera (STREAM): irteera estandarra, edo errore-irteera shot hau erakusten bada
+    // irteera uneko korrontera (STREAM): irteera estandarra, edo errore-irteera shot hau erakusten bada.
+    // irteera ezin bada idatzi (disko betea, adibidez), programa gelditu egiten da errore batekin, irteera
+    // isilik galdu beharrean
     fn write_bytes(&mut self, b: &[u8]) {
         if self.to_err {
             if self.show {
                 let _ = std::io::stderr().write_all(b);
             }
-        } else {
-            let _ = self.out.write_all(b);
+        } else if let Err(e) = self.out.write_all(b) {
+            self.gpu_error.get_or_insert(t!(
+                "cannot write the program's output: {}",
+                "ezin da programaren irteera idatzi: {}",
+                e
+            ));
         }
     }
 
@@ -1661,21 +1756,21 @@ impl<'a> Machine<'a> {
                 self.write_bit(*dest, None, None, all);
             }
             Op::Displace { o, re, im } => {
-                self.mode_matrix(*o, 1, *re, *im);
+                self.mode_matrix(pc, *o, 1, *re, *im)?;
                 self.lose_photons(&[*o]);
             }
             Op::DisplaceReg { o, r } => {
                 let alpha = self.regs[*r as usize];
-                self.mode_matrix(*o, 1, alpha, 0.0);
+                self.mode_matrix(pc, *o, 1, alpha, 0.0)?;
                 self.lose_photons(&[*o]);
             }
             Op::Squeeze { o, r, phi } => {
-                self.mode_matrix(*o, 2, *r, *phi);
+                self.mode_matrix(pc, *o, 2, *r, *phi)?;
                 self.lose_photons(&[*o]);
             }
             Op::SqueezeReg { o, reg } => {
                 let r = self.regs[*reg as usize];
-                self.mode_matrix(*o, 2, r, 0.0);
+                self.mode_matrix(pc, *o, 2, r, 0.0)?;
                 self.lose_photons(&[*o]);
             }
             Op::ModePhase { o, theta } => {
@@ -1703,8 +1798,10 @@ impl<'a> Machine<'a> {
             Op::BeamSplitter { a, b, theta, phi } => {
                 let d = self.state.cutoff();
                 let (t, p) = (*theta, *phi);
+                self.operator_memory(pc, 3, d)?;
                 let m = self.cache.get(3, t, p, d, || fock::beamsplitter(t, p, d));
                 self.st().apply_two_mode_matrix(*a as usize, *b as usize, &m);
+                self.still_in_cutoff(pc)?;
                 self.lose_photons(&[*a, *b]);
             }
             Op::ModeSwap { a, b } => {
@@ -1719,6 +1816,7 @@ impl<'a> Machine<'a> {
                 let dropped = d as f64 * dist[d - 1];
                 self.st().ladder(o, true);
                 self.st().normalize();
+                self.still_in_cutoff(pc)?;
                 let leak = dropped / expected;
                 if leak > 1e-13 {
                     self.st().leakage += leak;
@@ -1735,6 +1833,7 @@ impl<'a> Machine<'a> {
                 }
                 self.st().ladder(*o as usize, false);
                 self.st().normalize();
+                self.still_in_cutoff(pc)?;
                 self.lose_photons(&[*o]);
             }
             Op::Loss { o, gamma } => {

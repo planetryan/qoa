@@ -153,6 +153,7 @@ pub fn displacement(alpha: C, d: usize) -> Mat {
         return Mat::identity(d);
     }
     let ln_abs = alpha.norm().ln();
+    let ln_fact = ln_factorials(d);
     // L_j^(k)(x), j = 0..d, k bakoitzeko, aurreranzko errekurtsioarekin
     for k in 0..d {
         let mut lag = vec![0.0; d];
@@ -170,10 +171,7 @@ pub fn displacement(alpha: C, d: usize) -> Mat {
             }
             let (lo, hi) = (j, j + k);
             // √(lo!/hi!) |α|^k e^(-x/2), log-ean gainezkatzerik ez izateko
-            let mag = (0.5 * (ln_factorial(lo as u32) - ln_factorial(hi as u32))
-                + k as f64 * ln_abs
-                - x / 2.0)
-                .exp();
+            let mag = (0.5 * (ln_fact[lo] - ln_fact[hi]) + k as f64 * ln_abs - x / 2.0).exp();
             // m >= n: α^k (m = hi, n = lo); m < n: (-α*)^k (m = lo, n = hi)
             let phase_down = C::from_polar(1.0, k as f64 * alpha.arg());
             let phase_up = C::from_polar(1.0, k as f64 * (-alpha.conj()).arg());
@@ -205,7 +203,7 @@ pub fn squeezing(r: f64, phi: f64, d: usize) -> Mat {
     };
     let (th, ch) = (r.tanh(), r.cosh());
     let ln_half_t = (th / 2.0).ln();
-    let ln_fact: Vec<f64> = (0..d).map(|n| ln_factorial(n as u32)).collect();
+    let ln_fact = ln_factorials(d);
     // ⟨m|e^(c a†²)|k⟩ = c^j / j! √(m!/k!), m = k + 2j; hemen |c| = tanh r / 2 eta fasea bereiz
     let ln_raise = |m: usize, k: usize| -> f64 {
         let j = (m - k) / 2;
@@ -307,6 +305,21 @@ pub fn ln_choose(n: u32, k: u32) -> f64 {
 
 pub fn ln_factorial(n: u32) -> f64 {
     (2..=n).map(|i| (i as f64).ln()).sum()
+}
+
+// ln(k!) k = 0..n guztietarako, O(n)-n: ln_factorial-ek ematen dituen bit berberak (batura bera, ordena
+// berean), baina bakoitza ez da hutsetik kalkulatzen. muga handiko moduetan eragileak O(d³) izan
+// beharrean O(d²) eraikitzen dira
+pub fn ln_factorials(n: usize) -> Vec<f64> {
+    let mut acc = 0.0f64;
+    (0..n)
+        .map(|k| {
+            if k >= 2 {
+                acc += (k as f64).ln();
+            }
+            acc
+        })
+        .collect()
 }
 
 #[cfg(test)]

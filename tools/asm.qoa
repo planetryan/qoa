@@ -34,6 +34,7 @@
 ;   65 P10 10^0..10^22   66 BIGR 67 BIGD 68 BIGT bigint-ak   69 P2_32 70 N2_32 71 P2_64 72 N2_64
 ;   73 VALP balioak (eragigai bakoitzeko 4 gelaxka) 74 GRPP taldeak 75 TP 76 NT 77 ABP geziak
 ;   78 LISTP 79 NLIST   84 CONSTHT konstanteak 85 NEXTR 86 CONSTV haien ordena 87 "value" 88 erabili gabea
+;   89 EDEPTH adierazpenaren habiaraketa (ex.unary aktiboak)
 ;   1000-tik aurrera: memoria dinamikoa
 
 ; ---------------------------------------------------------------- nagusia
@@ -5868,10 +5869,12 @@ RETSUB
 ; egoera: EPOS (53) uneko helbidea, EEND (54), EERR (55) errore-kodea (0 ondo), ESRC/ESRCN (56-57) adierazpen
 ; osoa, EP1 (58) karakterea, EP2-EP3 (59-60) testua. kodeak: 1 ustekabeko karakterea amaieran, 2 ez finitua,
 ; 3 zeroz zatitzea, 4 goizegi amaitu da, 5 ')' falta, 6 funtzioak parentesiak behar ditu (EP1 = funtzioa),
-; 7 izen ezezaguna, 8 ustekabeko karakterea, 9 ez da zenbaki bat
+; 7 izen ezezaguna, 8 ustekabeko karakterea, 9 ez da zenbaki bat, 10 100 maila baino gehiago habiaratuta
 
 ; evalexpr: R0, R1 = testua -> R0 = 1 eta R1 = balioa, edo R0 = 0 (EERR eta parametroak)
 evalexpr:
+REGSET R2 89
+STORE R30 R2
 REGSET R2 53
 STORE R0 R2
 ADD R3 R0 R1
@@ -6028,7 +6031,25 @@ REGCOPY R0 R8
 POP R8
 RETSUB
 
+; ex.unary: habiaraketa zenbatu (expr.rs-eko MAX_DEPTH bera) eta ex.signed exekutatu
 ex.unary:
+REGSET R1 89
+LOAD R2 R1
+ADD R2 R2 R31
+STORE R2 R1
+IFGT R2 (100) ex.unary.deep
+CALL ex.signed
+REGSET R1 89
+LOAD R2 R1
+SUB R2 R2 R31
+STORE R2 R1
+RETSUB
+ex.unary.deep:
+REGSET R0 10
+CALL ex.err
+RETSUB
+
+ex.signed:
 CALL ex.peek
 REGSET R1 45
 IFEQ R0 R1 ex.unary.neg
@@ -9738,26 +9759,26 @@ PRINT "' erregistroa bi aldiz adierazita dago"
 RETSUB
 message.18:
 IFEQ R28 R31 message.18.eu
-PRINT "expected a size of at least 1, found '"
+PRINT "expected a size from 1 to 4096, found '"
 REGSET R0 4
 CALL mtext
 PRINT "'"
 RETSUB
 message.18.eu:
-PRINT "gutxienez 1eko tamaina espero zen, baina '"
+PRINT "1 eta 4096 arteko tamaina bat espero zen, baina '"
 REGSET R0 4
 CALL mtext
 PRINT "' dago"
 RETSUB
 message.19:
 IFEQ R28 R31 message.19.eu
-PRINT "expected a first index, found '"
+PRINT "expected a first index from 0 to 4095, found '"
 REGSET R0 4
 CALL mtext
 PRINT "'"
 RETSUB
 message.19.eu:
-PRINT "lehen indize bat espero zen, baina '"
+PRINT "0 eta 4095 arteko lehen indize bat espero zen, baina '"
 REGSET R0 4
 CALL mtext
 PRINT "' dago"
@@ -10843,6 +10864,7 @@ REGSET R1 7
 IFEQ R5 R1 mexpr.7
 REGSET R1 8
 IFEQ R5 R1 mexpr.8
+IFEQ R5 (10) mexpr.10
 PRINT "'"
 REGSET R0 7
 CALL mtext
@@ -10890,6 +10912,9 @@ REGSET R0 7
 CALL mchar
 PRINT "' in expression"
 RETSUB
+mexpr.10:
+PRINT "the expression nests more than 100 levels deep"
+RETSUB
 mexpr.eu:
 REGSET R1 1
 IFEQ R5 R1 mexpr.eu1
@@ -10907,6 +10932,7 @@ REGSET R1 7
 IFEQ R5 R1 mexpr.eu7
 REGSET R1 8
 IFEQ R5 R1 mexpr.eu8
+IFEQ R5 (10) mexpr.eu10
 PRINT "'"
 REGSET R0 7
 CALL mtext
@@ -10953,6 +10979,9 @@ PRINT "ustekabeko '"
 REGSET R0 7
 CALL mchar
 PRINT "' adierazpenean"
+RETSUB
+mexpr.eu10:
+PRINT "adierazpenak 100 maila baino gehiago ditu bata bestearen barruan"
 RETSUB
 
 ; mfunc: funtzioaren izena (7. gelaxka: 4 sqrt .. 9 ln). aldatzen ditu R0, R1

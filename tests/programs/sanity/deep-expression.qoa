@@ -1,0 +1,5 @@
+; adierazpen sakon bat (60 parentesi-maila eta zeinu-kate bat) muga barruan dago
+; expect-prob: |1> 1
+QINIT 1
+RX q0 ((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((pi))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
+RZ q0 ------------------------------pi

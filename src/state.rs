@@ -129,6 +129,10 @@ pub fn check_memory(what: &str, bytes: u128) -> Result<(), String> {
     ))
 }
 
+// honen azpiko araua² duen egoera ez da berriz normalizatzen: anplitudeak 1e-12 baino txikiagoak dira eta
+// zehaztasuna galduta dago
+const VANISHED: f64 = 1e-24;
+
 #[derive(Clone, Debug)]
 pub struct State {
     n_qubits: usize,
@@ -137,6 +141,9 @@ pub struct State {
     amps: Vec<C>,
     // fotoi-mugaz kanpo erori den probabilitate osoa (eta normalizazioz kendua)
     pub leakage: f64,
+    // egia, eragiketa batek probabilitate guztia (1e-24 izan ezik) fotoi-mugaz kanpo eraman badu: egoera
+    // ezin da berriz normalizatu, eta makinak errore bat ematen du emaitza hutsalak eman beharrean
+    pub vanished: bool,
 }
 
 impl State {
@@ -151,6 +158,7 @@ impl State {
             cutoff,
             amps,
             leakage: 0.0,
+            vanished: false,
         })
     }
 
@@ -217,6 +225,7 @@ impl State {
             cutoff,
             amps,
             leakage: 0.0,
+            vanished: false,
         })
     }
 
@@ -357,11 +366,8 @@ impl State {
     // o moduaren fotoi-kopuruaren banaketa
     pub fn photon_distribution(&self, o: usize) -> Vec<f64> {
         let (stride, d) = (self.mode_stride(o), self.cutoff);
-        let slab = |(k, x): (usize, &[C])| {
-            let mut dist = vec![Dd::ZERO; d];
-            dist[k % d] = dd::norm_sum(x);
-            dist
-        };
+        // xafla bakoitzaren batura bere fotoi-kopuruaren lekuan metatu. xafla bakoitzeko d luzerako bektore
+        // bat sortzea O(d²) litzateke modu bakarrean (stride 1): muga handietan minutuak
         let add = |mut a: Vec<Dd>, b: Vec<Dd>| {
             a.iter_mut().zip(b).for_each(|(x, y)| *x = x.plus(y));
             a
@@ -373,14 +379,21 @@ impl State {
             self.amps
                 .par_chunks(piece)
                 .enumerate()
-                .map(|(k, x)| slab((k / per_slab, x)))
+                .fold(
+                    || vec![Dd::ZERO; d],
+                    |mut acc, (k, x)| {
+                        let n = (k / per_slab) % d;
+                        acc[n] = acc[n].plus(dd::norm_sum(x));
+                        acc
+                    },
+                )
                 .reduce(|| vec![Dd::ZERO; d], add)
         } else {
-            self.amps
-                .chunks(stride)
-                .enumerate()
-                .map(slab)
-                .fold(vec![Dd::ZERO; d], add)
+            let mut acc = vec![Dd::ZERO; d];
+            for (k, x) in self.amps.chunks(stride).enumerate() {
+                acc[k % d] = acc[k % d].plus(dd::norm_sum(x));
+            }
+            acc
         };
         dist.into_iter().map(Dd::value).collect()
     }
@@ -594,6 +607,7 @@ impl State {
     // eragiketa ez-unitario edo moztu baten ondoren normalizatu; galdutako probabilitatea itzuli eta gorde
     pub fn renormalize_after_truncation(&mut self) -> f64 {
         let norm = self.norm_sqr();
+        self.vanished |= norm.is_nan() || norm <= VANISHED;
         let lost = (1.0 - norm).max(0.0);
         if lost > 0.0 && norm > 0.0 {
             self.scale_all(1.0 / norm.sqrt());
@@ -614,6 +628,7 @@ impl State {
     // anplitude guztiak eskalatu araua 1 izan dadin. eskalatu aurreko araua² itzultzen du.
     pub fn normalize(&mut self) -> f64 {
         let norm = self.norm_sqr();
+        self.vanished |= norm.is_nan() || norm <= VANISHED;
         if norm > 0.0 {
             self.scale_all(1.0 / norm.sqrt());
         }
@@ -650,12 +665,13 @@ impl State {
             return 0;
         }
         let dist = self.photon_distribution(o);
+        let ln_fact = crate::fock::ln_factorials(d);
         // n fotoietatik k galtzeko probabilitate binomiala
         let weight = |n: usize, k: usize| -> f64 {
             if gamma >= 1.0 {
                 return if k == n { 1.0 } else { 0.0 };
             }
-            (crate::fock::ln_choose(n as u32, k as u32)
+            (ln_fact[n] - ln_fact[k] - ln_fact[n - k]
                 + k as f64 * gamma.ln()
                 + (n - k) as f64 * (1.0 - gamma).ln())
             .exp()

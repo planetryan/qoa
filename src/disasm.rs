@@ -458,6 +458,68 @@ fn check_plain(p: &Program, text: &str) -> Result<(), String> {
     same_program(p, &back)
 }
 
+// .qx fitxategi batetik kargatutako programa bat onartu aurretik: QOA-k bere testu-formatik sortzen duen
+// programa bera izan behar du (eragiketak, qubitak, moduak, fotoi-muga eta bitak). horrela makinak ez du
+// inoiz ikusten mihiztatzaileak onartuko ez lukeen ezer: erregistro, qubit, modu, bit edo jauzi-helburu
+// baliogaberik, begizta okerrik edo neurri erraldoirik, fitxategia nahita aldatuta egonda ere
+pub fn check_loaded(p: &Program) -> Result<(), String> {
+    let ins = instrs(p)?;
+    let labels = targets(p);
+    let mut out = header(p);
+    // testuaren lerro bakoitza zein eragiketatik datorren, mezuetarako
+    let mut op_of_line: Vec<Option<usize>> = vec![None; out.len()];
+    for (a, i) in ins.iter().enumerate() {
+        if labels.contains(&a) {
+            out.push(format!("{}:", label(a)));
+            op_of_line.push(None);
+        }
+        out.push(plain(i));
+        op_of_line.push(Some(a));
+    }
+    if labels.contains(&ins.len()) {
+        out.push(format!("{}:", label(ins.len())));
+    }
+    let text = out.join("\n") + "\n";
+    let back = crate::asm::assemble(&text, &p.name).map_err(|d| {
+        let d = &d[0];
+        let line = (d.line as usize).checked_sub(1);
+        match line.and_then(|l| op_of_line.get(l).copied().flatten()) {
+            Some(a) => t!(
+                "operation 0x{:x} (`{}`) is not valid: {}",
+                "0x{:x} eragiketa (`{}`) ez da baliozkoa: {}",
+                a,
+                out[line.unwrap_or(0)],
+                d.message
+            ),
+            None => d.message.clone(),
+        }
+    })?;
+    let system = (p.n_qubits, p.n_modes, p.n_bits) == (back.n_qubits, back.n_modes, back.n_bits)
+        && (p.n_modes == 0 || p.cutoff == back.cutoff);
+    if !system {
+        return Err(t!(
+            "it declares {} qubit(s), {} mode(s) and {} bit(s), but its operations make {}, {} and {}",
+            "{} qubit, {} modu eta {} bit adierazten ditu, baina bere eragiketek {}, {} eta {} egiten dituzte",
+            p.n_qubits,
+            p.n_modes,
+            p.n_bits,
+            back.n_qubits,
+            back.n_modes,
+            back.n_bits
+        ));
+    }
+    if let Some(k) = (0..p.ops.len().max(back.ops.len())).find(|&k| p.ops.get(k) != back.ops.get(k))
+    {
+        return Err(t!(
+            "operation 0x{:x} is not what QOA builds from its own text (`{}`)",
+            "0x{:x} eragiketa ez da QOA-k bere testutik eraikitzen duena (`{}`)",
+            k,
+            ins.get(k).map(plain).unwrap_or_default()
+        ));
+    }
+    Ok(())
+}
+
 // QOA arrunt kanonikoa
 pub fn to_qoa(p: &Program) -> Result<String, String> {
     let ins = instrs(p)?;
