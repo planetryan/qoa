@@ -1323,8 +1323,9 @@ fn op_lines(
     } else {
         (name, texts)
     };
-    // erregistro edo zenbaki baten lekuan (x) zenbakiak eta parentesi arteko balioak `(..)` QOA arruntean:
-    // `ADD/#1,#1,1` -> `ADD R1 R1 (1)`. izen hutsak erregistro-izenak dira (QOA arruntean bezala)
+    // erregistro edo zenbaki baten lekuan (x) zenbakiak, konstanteak eta parentesi arteko balioak `(..)` QOA
+    // arruntean: `ADD/#1,#1,1` -> `ADD R1 R1 (1)`, `ADD/#1,#1,newline` -> `ADD R1 R1 (newline)` (CONST
+    // newline 10 ondoren). QOA arrunteko erregistroak (`R2`) bere horretan
     let specs = crate::isa::lookup(mnemonic(name)).map(|s| s.operand_specs());
     let kind_at = |k: usize| {
         specs.as_ref().map_or(' ', |sp| {
@@ -1344,11 +1345,10 @@ fn op_lines(
                 ('x', Operand::Raw(_)) => els
                     .into_iter()
                     .map(|e| {
-                        if e.starts_with(|c: char| c.is_ascii_digit() || "-+.".contains(c)) {
-                            value(e)
-                        } else {
-                            e
-                        }
+                        let register = e.len() > 1
+                            && e.starts_with(['R', 'r'])
+                            && e[1..].bytes().all(|b| b.is_ascii_digit());
+                        if register { e } else { value(e) }
                     })
                     .collect(),
                 _ => els,

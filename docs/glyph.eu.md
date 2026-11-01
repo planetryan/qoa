@@ -2,8 +2,9 @@
 
 [In English: glyph.md](glyph.md)
 
-**Egoera: esperimentala.** Sintaxia inplementatuta eta probatuta dago, baina geroko bertsio batean alda
-daiteke; aldaketa oro bertsio-oharretan agertuko da. Oraindik finkatu gabeko puntuak amaieran daude.
+**Egoera: egonkorra, QOA-ren parte 0.4.4-tik.** Glifo-programak QOA programak dira, QOA arruntaren agindu
+berarekin (ikus [Egonkortasuna](#egonkortasuna)), eta orri hau, bere [gramatikarekin](#gramatika),
+espezifikazioa da.
 
 ## Zergatik
 
@@ -97,8 +98,13 @@ egiten dira: `A{2}` eta `B{2}`-rekin, `CX/A,B` `CNOT q0 q2` eta `CNOT q1 q3` da.
 **Zenbaki huts bat ez da inoiz helbide bat.** Glifo-programa batean zenbaki bat zenbaki bat da:
 `ADD/#1,#1,1`-ek bat gehitzen du, `IFEQ/#1,10,done`-k R1 hamarrekin konparatzen du, eta `STORE/7,#3`-k
 zazpi gordetzen du R3-ko helbidean (QOA arruntean `ADD R1 R1 (1)`, `IFEQ R1 (10) done` eta `STORE (7) R3`).
-Qubit bat, modu bat, bit bat edo idazteko erregistro bat bakarrik egokitzen den lekuan, zenbaki huts bat
-errorea da, QOA arruntak `3` q3 edo R3 gisa irakurriko lukeelako hor. Idatzi `#1`, `Q[1]` edo `q1`.
+Konstante baten izena ere zenbaki bat da: `CONST/newline,10;` ondoren, `CHAROUT/newline`-k lerro-jauzi bat
+inprimatzen du eta `ADD/#1,#1,newline`-k hamar gehitzen ditu. Qubit bat, modu bat, bit bat edo idazteko
+erregistro bat bakarrik egokitzen den lekuan, zenbaki huts bat errorea da, QOA arruntak `3` q3 edo R3 gisa
+irakurriko lukeelako hor. Idatzi `#1`, `Q[1]` edo `q1`.
+
+Erregistroak `#n` idazten dira glifoetan; erregistro klasikoei izena ematea (`RREG`) QOA arruntaren
+erraztasun bat da, eta hemen ez da behar.
 
 ### Aginduak
 
@@ -155,6 +161,57 @@ M/Q$>#C; CC[0x10]%#C[0]%#C[1]%#C[2]$>#5; PF"deskodetua: {}\n"%#5; END;
 0x10:; POP/#1; POP/#2; POP/#3; ADD/#4,#1,#2; ADD/#4,#4,#3; REGSET/#6,(1); SHR/#4,#4,#6; PUSH/#4; ^;
 ```
 
+## Gramatika
+
+Hutsuneak eta lerro-jauziak edozein bi tokenen artean ager daitezke, izen, zenbaki, testu edo `$>` baten
+barruan izan ezik. Gramatika honetan `{ x }`-k zero `x` edo gehiago esan nahi du, `[ x ]`-k aukerako `x` bat,
+eta komatxo arteko testua bere horretan idazten da.
+
+```
+programa     = { adierazpena ";" } ;
+adierazpena  = adierazpen-erregistroa
+             | agindua
+             | etiketa ":"
+             | ">" etiketa                            (* jauzia *)
+             | ( "?" | "!" ) balioa ">" etiketa       (* jauzi 1 bada / 0 bada *)
+             | "*" kopurua "{" { adierazpena ";" } "}" (* bloke bat errepikatu *)
+             | "&" etiketa                            (* deia *)
+             | "^"                                    (* itzuli *)
+             | "<<>>" | "<<#>>"                       (* egoera / erregistroak erakutsi *)
+             | "CC" helburua { "%" balioa } [ "$>" helmuga ]
+             | "`" qoa-arrunta "`" ;                  (* QOA arrunta, bere horretan *)
+adierazpen-erregistroa = [ "#" | "~" ] izena "{" zenbakia "}" [ "[" zenbakia "]" ] [ "%" zenbakia ] ;
+agindua      = izena [ "(" adierazpen-zenb { "," adierazpen-zenb } ")" ] { testua }
+               [ "/" eragigaia { "," eragigaia } ] { "%" balioa } [ "$>" helmuga ] ;
+eragigaia    = erregistroa | "(" adierazpen-zenb ")" | zenbakia | hitza ;
+erregistroa  = [ "#" | "~" ] izena [ "{" zenbakia "}" [ "[" zenbakia "]" ] ]
+               [ "[" zenbakia [ ".." zenbakia ] "]" ]
+             | "#" digituak ;                         (* #3 R3 erregistro klasikoa da *)
+balioa       = eragigaia ;
+helmuga      = erregistroa ;
+helburua     = "[" zenbakia "]" | testua ;
+kopurua      = digituak | "#" digituak ;
+etiketa      = izena | zenbakia ;                     (* 0x10: helbide-etiketa bat da *)
+zenbakia     = digituak | "0x" digitu-hamaseitarrak ;
+izena        = ( letra | "_" ) { letra | digitua | "_" } ;
+testua       = '"' { karakterea | ihesa } '"' ;        (* \n, \t, \", \\ QOA arruntean bezala *)
+```
+
+Iruzkin bat lehen karakterea `;` duen lerro bat da, edo `//` lerroaren amaierara arte. `hitza` QOA arrunteko
+eragigai bat da (`q3`, `o1`, `c0`, `R2`) edo, balio bat egokitzen den lekuan, konstante baten izena (`pi`,
+`tau`, `e`, edo `CONST`-ekin egindako bat). Forma bakoitzaren esanahia goiko erreferentzian dago; QOA arrunt
+nola bihurtzen den `qoa import`-ek inprimatzen duena da.
+
+## Egonkortasuna
+
+QOA 0.4.4-tik glifo-sintaxia QOA-ren parte egonkor bat da, QOA arruntaren agindu berarekin:
+
+- 0.4.4-n dabilen glifo-programa bat esanahi eta emaitza berberekin dabil ondorengo 0.4 bertsio guztietan.
+- Ondorengo bertsio batek (0.5 edo gehiago) forma bat aldatu behar badu, bertsio-oharrek hala esaten dute,
+  eta forma zaharrak errore argi bat ematen du zer idatzi behar den esanez. Forma batek ez du inoiz isilik
+  esanahia aldatzen.
+- Forma berriak gehi daitezke; beti lehen errorea ziren formak dira, beraz dabilen programarik ez da aldatzen.
+
 ## QOA arruntetik glifora
 
 `qoa export --to glyph fitxategia.qoa`-k (edo `--to-glyph`) edozein programa glifo-sintaxian idazten du:
@@ -198,7 +255,7 @@ U(-1.0, 0.3, -0.5)/Q[2]; M/Q[2]$>#C[2];         U q2 -1.0 0.3 -0.5 / MEASURE q2 
   `CREG flags 2`, `OREG arm 2`, gero `data[1]` edo `data`; `q0`, `c0` eta `o0` erabiltzen jarraitzen dute.
 - **Beste norabidea** badago: `qoa export --to glyph` (edo `--to-glyph`), goiko aukerekin.
 
-## 0.4.2-n finkatua
+## Egonkor bihurtu aurretik finkatua (0.4.2)
 
 1. **Bereizleak: `;` beharrezkoa da.** Jatorrizko zirriborroak adierazpenak hura gabe kateatzen ditu
    (`$>#2PF"Measuring:"`). Agindu-izen berri batek ezin du aurreko adierazpena bere kabuz amaitu, izenak libreak

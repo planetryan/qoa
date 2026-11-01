@@ -129,7 +129,7 @@ error: CNOT uses qubit 0 twice; the qubits must be different
    |         ^^
 ```
 
-### Glyph syntax (experimental)
+### Glyph syntax
 
 The same language can also be written densely, many statements per line, in `.qg` files:
 
@@ -139,7 +139,8 @@ Q{2}; #C{2}; H/Q[0]; CX/Q[0],Q[1]; M/Q$>#C; PF"bell: {}\n"%#C;
 
 `qoa import file.qg` shows the plain QOA it stands for, `qoa export --to glyph file.qoa` goes the other
 way, and errors point at the glyph. `CC[0x10]%a%b$>#2` calls a classical routine at an address, with its
-arguments on the stack. It is experimental and may still change: see [docs/glyph.md](docs/glyph.md).
+arguments on the stack. It is a stable part of QOA since 0.4.4, with a grammar and a stability promise:
+see [docs/glyph.md](docs/glyph.md).
 
 ### Looking inside a program
 

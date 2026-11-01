@@ -133,7 +133,7 @@ errorea: CNOT-k 0. qubita bi aldiz erabiltzen du; qubitek desberdinak izan behar
    |         ^^
 ```
 
-### Glifo-sintaxia (esperimentala)
+### Glifo-sintaxia
 
 Lengoaia bera modu trinkoan ere idatz daiteke, lerro bakoitzean adierazpen askorekin, `.qg` fitxategietan:
 
@@ -143,8 +143,8 @@ Q{2}; #C{2}; H/Q[0]; CX/Q[0],Q[1]; M/Q$>#C; PF"bell: {}\n"%#C;
 
 `qoa import fitxategia.qg`-k ordezkatzen duen QOA arrunta erakusten du, `qoa export --to glyph
 fitxategia.qoa`-k alderantziz egiten du, eta erroreek glifoa seinalatzen dute. `CC[0x10]%a%b$>#2`-k helbide
-bateko errutina klasiko bat deitzen du, argumentuak pilan dituela. Esperimentala da eta oraindik alda daiteke: ikus
-[docs/glyph.eu.md](docs/glyph.eu.md).
+bateko errutina klasiko bat deitzen du, argumentuak pilan dituela. QOA-ren parte egonkorra da 0.4.4-tik,
+gramatika eta egonkortasun-agindu batekin: ikus [docs/glyph.eu.md](docs/glyph.eu.md).
 
 ### Programa baten barrura begiratzea
 

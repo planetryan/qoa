@@ -16,9 +16,12 @@
 * **`RREG name size [first]`** names classical registers like `QREG` names qubits: after `RREG acc 2`,
   `acc[0]` and `acc[1]` are the next two unnamed registers, and `RREG i 1 8` makes `i` stand for R8. R0..R31
   keep working.
-* In the **glyph syntax** a number in a value slot is that number: `ADD/#1,#1,1` adds one, and
-  `IFEQ/#1,10,done` compares R1 with ten. Where only a qubit, a mode, a bit or a register to write to fits,
-  a bare number is still an error.
+* **The glyph syntax is stable.** It is no longer experimental: it is part of QOA with the same promise as
+  plain QOA (programs that run in 0.4.4 keep their meaning in later 0.4 versions; any later change is listed
+  and gives a clear error, never a silent change), and docs/glyph.md now has its full grammar.
+* In the **glyph syntax** a number or a constant's name in a value slot is that number: `ADD/#1,#1,1` adds
+  one, `IFEQ/#1,10,done` compares R1 with ten, and after `CONST/newline,10;`, `CHAROUT/newline` prints a line
+  break. Where only a qubit, a mode, a bit or a register to write to fits, a bare number is still an error.
 * The assembler written in QOA (`tools/asm.qoa`) understands all of this and still produces exactly the bytes
   and messages of `qoa compile`. The test suite checks thousands of generated lines with the new forms.
 
@@ -122,8 +125,13 @@ deep, and requires a clear error (or a normal run) every time, never a crash. Th
 * **`RREG izena tamaina [lehena]`**-k erregistro klasikoei izena ematen die, `QREG`-ek qubitei bezala:
   `RREG acc 2` ondoren, `acc[0]` eta `acc[1]` izenik gabeko hurrengo bi erregistroak dira, eta `RREG i 1 8`-k
   `i` R8 bihurtzen du. R0..R31-ek ere balio dute.
-* **Glifo-sintaxian** balio-leku bateko zenbaki bat zenbaki hori da: `ADD/#1,#1,1`-ek bat gehitzen du, eta
-  `IFEQ/#1,10,done`-k R1 hamarrekin konparatzen du. Qubit bat, modu bat, bit bat edo idazteko erregistro bat
+* **Glifo-sintaxia egonkorra da.** Ez da gehiago esperimentala: QOA-ren parte da QOA arruntaren agindu
+  berarekin (0.4.4-n dabiltzan programek beren esanahia gordetzen dute ondorengo 0.4 bertsioetan; geroko
+  aldaketa oro zerrendatuta dago eta errore argi bat ematen du, inoiz ez aldaketa isil bat), eta
+  docs/glyph.eu.md-k bere gramatika osoa du orain.
+* **Glifo-sintaxian** balio-leku bateko zenbaki bat edo konstante baten izena zenbaki hori da: `ADD/#1,#1,1`-ek
+  bat gehitzen du, `IFEQ/#1,10,done`-k R1 hamarrekin konparatzen du, eta `CONST/newline,10;` ondoren,
+  `CHAROUT/newline`-k lerro-jauzi bat inprimatzen du. Qubit bat, modu bat, bit bat edo idazteko erregistro bat
   bakarrik egokitzen den lekuan, zenbaki huts bat errorea da oraindik.
 * QOAn idatzitako mihiztatzaileak (`tools/asm.qoa`) hau guztia ulertzen du, eta `qoa compile`-ren byte eta
   mezu berberak sortzen ditu oraindik. Proba-multzoak forma berriak dituzten milaka lerro sortu egiaztatzen

@@ -1,0 +1,5 @@
+; glifoetan konstante baten izena zenbaki bat da balio-leku batean (QOA 0.4.4)
+; expect-output: 10 11 x
+CONST/newline,10; CONST/one,1;
+ADD/#1,#1,newline; ADD/#2,#1,one;
+PF"{} {} "%#1%#2; CHAROUT/120; CHAROUT/newline;

@@ -2,8 +2,8 @@
 
 [Euskaraz: glyph.eu.md](glyph.eu.md)
 
-**Status: experimental.** The syntax is implemented and tested, but it may still change in a later version;
-any change will be listed in the release notes. The points that are not settled yet are at the end.
+**Status: stable, part of QOA since 0.4.4.** Glyph programs are QOA programs with the same promise as plain
+QOA (see [Stability](#stability)), and this page, with its [grammar](#grammar), is the specification.
 
 ## Why
 
@@ -95,9 +95,13 @@ must have the same size and go element by element, and single elements repeat: w
 
 **A bare number is never an address.** In a glyph program a number is a number: `ADD/#1,#1,1` adds one,
 `IFEQ/#1,10,done` compares R1 with ten, and `STORE/7,#3` stores seven at the address in R3 (in plain QOA
-these are `ADD R1 R1 (1)`, `IFEQ R1 (10) done` and `STORE (7) R3`). Where only a qubit, a mode, a bit or a
-register to write to fits, a bare number is an error, because plain QOA would read `3` there as q3 or R3.
-Write `#1`, `Q[1]` or `q1`.
+these are `ADD R1 R1 (1)`, `IFEQ R1 (10) done` and `STORE (7) R3`). A constant's name is a number too:
+after `CONST/newline,10;`, `CHAROUT/newline` prints a line break and `ADD/#1,#1,newline` adds ten. Where only
+a qubit, a mode, a bit or a register to write to fits, a bare number is an error, because plain QOA would read
+`3` there as q3 or R3. Write `#1`, `Q[1]` or `q1`.
+
+Registers are written `#n` in glyphs; naming classical registers (`RREG`) is a plain-QOA convenience and is
+not needed here.
 
 ### Instructions
 
@@ -151,6 +155,55 @@ M/Q$>#C; CC[0x10]%#C[0]%#C[1]%#C[2]$>#5; PF"decoded: {}\n"%#5; END;
 0x10:; POP/#1; POP/#2; POP/#3; ADD/#4,#1,#2; ADD/#4,#4,#3; REGSET/#6,(1); SHR/#4,#4,#6; PUSH/#4; ^;
 ```
 
+## Grammar
+
+Spaces and line breaks may appear between any two tokens, except inside a name, number, string or `$>`. In
+this grammar `{ x }` means zero or more `x`, `[ x ]` means an optional `x`, and quoted text is written as is.
+
+```
+program      = { statement ";" } ;
+statement    = declaration
+             | instruction
+             | label ":"
+             | ">" label                          (* jump *)
+             | ( "?" | "!" ) value ">" label      (* jump if 1 / if 0 *)
+             | "*" count "{" { statement ";" } "}" (* repeat a block *)
+             | "&" label                          (* call *)
+             | "^"                                (* return *)
+             | "<<>>" | "<<#>>"                   (* show the state / the registers *)
+             | "CC" target { "%" value } [ "$>" destination ]
+             | "`" plain-qoa "`" ;                (* plain QOA, used as it is *)
+declaration  = [ "#" | "~" ] name "{" number "}" [ "[" number "]" ] [ "%" number ] ;
+instruction  = name [ "(" expression { "," expression } ")" ] { string }
+               [ "/" operand { "," operand } ] { "%" value } [ "$>" destination ] ;
+operand      = register | "(" expression ")" | number | word ;
+register     = [ "#" | "~" ] name [ "{" number "}" [ "[" number "]" ] ] [ "[" number [ ".." number ] "]" ]
+             | "#" digits ;                       (* #3 is classical register R3 *)
+value        = operand ;
+destination  = register ;
+target       = "[" number "]" | string ;
+count        = digits | "#" digits ;
+label        = name | number ;                    (* 0x10: is an address label *)
+number       = digits | "0x" hex-digits ;
+name         = ( letter | "_" ) { letter | digit | "_" } ;
+string       = '"' { character | escape } '"' ;    (* \n, \t, \", \\ as in plain QOA *)
+```
+
+A comment is a line whose first character is `;`, or `//` to the end of a line. `word` is a plain QOA operand
+(`q3`, `o1`, `c0`, `R2`) or, where a value fits, the name of a constant (`pi`, `tau`, `e`, or one made with
+`CONST`). The meaning of each form is in the reference above; how it turns into plain QOA is what
+`qoa import` prints.
+
+## Stability
+
+From QOA 0.4.4 the glyph syntax is a stable part of QOA, with the same promise as plain QOA:
+
+- A glyph program that runs in 0.4.4 runs, with the same meaning and the same results, in every later 0.4
+  version.
+- If a later version (0.5 or above) has to change a form, the release notes say so, and the old form gives a
+  clear error that says what to write instead. A form never silently changes meaning.
+- New forms may be added; they are always forms that were an error before, so no working program changes.
+
 ## From plain QOA to glyph
 
 `qoa export --to glyph file.qoa` (or `--to-glyph`) writes any program as glyph syntax: from `.qoa`, `.qasm`,
@@ -194,7 +247,7 @@ U(-1.0, 0.3, -0.5)/Q[2]; M/Q[2]$>#C[2];         U q2 -1.0 0.3 -0.5 / MEASURE q2 
   `data[1]` or `data`; `q0`, `c0` and `o0` keep working.
 - **The other direction** exists: `qoa export --to glyph` (or `--to-glyph`) with the options above.
 
-## Settled in 0.4.2
+## Settled before it became stable (0.4.2)
 
 1. **Separators: `;` is required.** The original sketch chains statements without it (`$>#2PF"Measuring:"`).
    A new instruction name cannot end the previous statement on its own, because names are free: `PF` or `M`
