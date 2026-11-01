@@ -198,9 +198,17 @@ in [docs/precision.md](docs/precision.md).
 ### Clusters and supercomputers
 
 `qoa run --mpi` spreads the shots over MPI processes (start it with `mpirun` or `srun`; QOA loads the
-machine's Open MPI or MPICH-family library itself, nothing to build), with the same counts as one process, and `--mpi --distribute` splits one state too large for a single
-node over them. QOA checks that a state fits in the memory it may use before
-it starts (`QOA_MAX_MEMORY` to change it). See [docs/hpc.md](docs/hpc.md).
+machine's Open MPI or MPICH-family library itself, nothing to build), with the same counts as one process,
+and `--mpi --distribute` splits one state too large for a single node over them. QOA checks that a state fits
+in the memory it may use before it starts (`QOA_MAX_MEMORY` to change it). See [docs/hpc.md](docs/hpc.md).
+
+### Safe with any input
+
+Whatever you give QOA, it runs it or stops with a clear message: no crash, no hang without a limit, no
+filling the memory. Damaged `.qx` files are refused before they run, every resource a program asks for is
+checked first, and every build feeds QOA thousands of damaged and garbled programs to prove it. `unsafe` Rust
+is confined to a few modules (vector kernels, GPU and MPI libraries), each saying why. The limits, the tests
+and the reasons: [docs/safety.md](docs/safety.md).
 
 ### Music through light
 
