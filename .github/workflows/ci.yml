@@ -63,47 +63,60 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: mpi
-      # QOA-k ez du MPI-rik behar konpilatzeko; hemen exekutatzeko bakarrik. mpich open mpi-ren mpirun-ekin
-      # abiarazten da (PMIx bidez), ubuntu-ren mpich-ek ez baitu bere abiarazlearen PMI-a ulertzen
-      - run: sudo apt-get update && sudo apt-get install -y openmpi-bin libmpich12 pocl-opencl-icd ocl-icd-libopencl1
+      # QOA-k ez du MPI-rik behar konpilatzeko; hemen exekutatzeko bakarrik, bi familiekin
+      - run: sudo apt-get update && sudo apt-get install -y openmpi-bin mpich pocl-opencl-icd ocl-icd-libopencl1
       - run: cargo clippy --release --locked --features mpi --all-targets -- -D warnings
       - run: cargo build --release --locked
+      # liburutegi bakoitzarekin dabilen abiarazlea: open mpi-rena berea; mpich-ena bere hydra edo open mpi-ren
+      # mpirun (PMIx bidez), banaketaren arabera. bi prozesuk txosten bakarra eman behar dute
+      - name: find a launcher for each MPI library
+        run: |
+          for pair in "libmpi.so.40|mpirun.openmpi --oversubscribe -x QOA_MPI_LIB" \
+                      "libmpich.so.12|mpiexec.mpich" \
+                      "libmpich.so.12|mpirun.openmpi --oversubscribe -x QOA_MPI_LIB"; do
+            lib=${pair%%|*}; launcher=${pair#*|}
+            grep -q "^$lib|" launchers.txt 2>/dev/null && continue
+            n=$(QOA_MPI_LIB=$lib timeout 60 $launcher -n 2 ./target/release/qoa run examples/bell.qoa --mpi --shots 10 --json 2>/dev/null | grep -c '"counts"' || true)
+            if [ "$n" = 1 ]; then echo "$lib|$launcher" >> launchers.txt; fi
+          done
+          cat launchers.txt
+          test "$(cut -d'|' -f1 launchers.txt | sort -u | wc -l)" = 2
       - name: shots over 3 processes give the same counts as one
         run: |
-          for lib in libmpi.so.40 libmpich.so.12; do
+          while IFS='|' read -r lib launcher; do
             export QOA_MPI_LIB=$lib
             for args in "examples/grover.qoa --shots 5000" "examples/retry.qoa --shots 3000" "examples/teleport.qoa --noise 0.02 --shots 3000"; do
               ./target/release/qoa run $args --seed 3 --json | jq -c '.counts' > one.json
-              mpirun -x QOA_MPI_LIB --oversubscribe -n 3 ./target/release/qoa run $args --mpi --seed 3 --json | jq -c '.counts' > three.json
+              $launcher -n 3 ./target/release/qoa run $args --mpi --seed 3 --json | jq -c '.counts' > three.json
               diff one.json three.json
             done
-          done
+          done < launchers.txt
       - name: one state split over 2 and 4 processes gives the same counts
         run: |
-          for lib in libmpi.so.40 libmpich.so.12; do
+          while IFS='|' read -r lib launcher; do
             export QOA_MPI_LIB=$lib
             for n in 2 4; do
               for args in "examples/grover.qoa --shots 5000" "examples/qpe.qoa --shots 2000" "examples/teleport.qoa --noise 0.02 --shots 400"; do
                 ./target/release/qoa run $args --seed 3 --json | jq -c '.counts' > one.json
-                mpirun -x QOA_MPI_LIB --oversubscribe -n $n ./target/release/qoa run $args --mpi --distribute --seed 3 --json | jq -c '.counts' > many.json
+                $launcher -n $n ./target/release/qoa run $args --mpi --distribute --seed 3 --json | jq -c '.counts' > many.json
                 diff one.json many.json
               done
             done
-          done
+          done < launchers.txt
       - name: one state over 2 processes, each on an OpenCL device
         run: |
           ./target/release/qoa run examples/qpe.qoa --seed 3 --json | jq -c '.counts' > one.json
-          mpirun --oversubscribe -n 2 ./target/release/qoa run examples/qpe.qoa --mpi --distribute --gpu-api opencl --seed 3 --json | jq -c '.counts' > two.json
+          mpirun.openmpi --oversubscribe -n 2 ./target/release/qoa run examples/qpe.qoa --mpi --distribute --gpu-api opencl --seed 3 --json | jq -c '.counts' > two.json
           diff one.json two.json
       - name: input read by process 0 reaches every process
         run: |
           printf 'QINIT 2\nINPUT R1\nREGSET R2 0.5\nH q0\nMEASURE q0 -> c0\nIFGT R1 R2 flip\nJUMP done\nflip:\nX q1\ndone:\nMEASURE q1 -> c1\n' > input.qoa
-          for lib in libmpi.so.40 libmpich.so.12; do
+          while IFS='|' read -r lib launcher; do
             export QOA_MPI_LIB=$lib
             echo 0.7 | ./target/release/qoa run input.qoa --seed 5 --shots 600 --json | jq -c '.counts' > one.json
-            echo 0.7 | mpirun -x QOA_MPI_LIB --oversubscribe -n 3 ./target/release/qoa run input.qoa --mpi --seed 5 --shots 600 --json | jq -c '.counts' > three.json
+            echo 0.7 | $launcher -n 3 ./target/release/qoa run input.qoa --mpi --seed 5 --shots 600 --json | jq -c '.counts' > three.json
             diff one.json three.json
-          done
+          done < launchers.txt
       - name: an unknown or missing MPI library is a clear error
         run: |
           ! QOA_MPI_LIB=libnothing.so ./target/release/qoa run examples/bell.qoa --mpi 2> err.txt

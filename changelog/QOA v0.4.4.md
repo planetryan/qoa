@@ -47,6 +47,10 @@ deep, and requires a clear error (or a normal run) every time, never a crash. Th
   used to crash QOA.
 * Glyph registers are limited to 4,096 elements like `QREG` (a 34-billion-bit `#C{...}` used to abort), and
   the messages for register sizes say the allowed range (1 to 4096, first index 0 to 4095).
+* **Results take memory for each different outcome, not for each shot.** Runs that simulate every shot kept
+  every shot's result until the end, so 100 million shots of a two-bit circuit needed gigabytes; now they
+  are counted as they finish (5 million shots: 10 MB). When the outcomes themselves would not fit (millions of
+  shots, each a new 48-bit result), QOA stops with a clear message instead of filling the memory.
 * An OpenQASM gate definition with a `)` before its `(` or a `}` before its `{` is an error instead of a crash.
 * `qoa ... | head` ends quietly like any command-line tool (status 141), and an output that cannot be written,
   such as a full disk, stops the program with a clear message instead of losing the output silently.
@@ -138,6 +142,11 @@ beti, inoiz ez huts egite bat. Bilaketa horrek hauek aurkitu eta konpondu zituen
 * Glifo-erregistroak 4.096 elementura mugatuta daude, `QREG` bezala (34.000 milioi biteko `#C{...}` batek
   bertan behera uzten zuen), eta erregistro-tamainen mezuek onartutako tartea esaten dute (1etik 4096ra,
   lehen indizea 0tik 4095era).
+* **Emaitzek memoria behar dute emaitza desberdin bakoitzeko, ez shot bakoitzeko.** Shot guztiak simulatzen
+  dituzten exekuzioek shot bakoitzaren emaitza gordetzen zuten amaiera arte, eta beraz bi biteko zirkuitu
+  baten 100 milioi shot-ek gigabyteak behar zituzten; orain amaitu ahala zenbatzen dira (5 milioi shot: 10 MB).
+  Emaitzak berak sartzen ez direnean (milioika shot, bakoitza 48 biteko emaitza berri bat), QOA gelditu
+  egiten da mezu argi batekin, memoria bete beharrean.
 * `(` baino lehen `)` bat edo `{` baino lehen `}` bat duen OpenQASM ate-definizio bat errorea da, huts egite
   bat izan beharrean.
 * `qoa ... | head` isilik amaitzen da edozein komando-lerroko tresna bezala (141 egoera), eta idatzi ezin

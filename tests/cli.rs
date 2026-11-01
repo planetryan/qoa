@@ -1014,3 +1014,42 @@ fn run_in_128_bits() {
         stderr(&o)
     );
 }
+
+#[test]
+fn too_many_different_results_is_an_error_not_a_full_memory() {
+    // 40 bit ausazko: shot bakoitza emaitza berri bat. 1 MiB-ekin mila emaitza ere ez dira sartzen
+    let src = scratch("random-bits.qoa");
+    let body: String = (0..40)
+        .map(|i| format!("H q0\nMEASURE q0 -> c{}\nRESET q0\n", i))
+        .collect();
+    std::fs::write(&src, format!("QINIT 1\n{}", body)).unwrap();
+    let o = Command::new(env!("CARGO_BIN_EXE_qoa"))
+        .args(["run", src.to_str().unwrap(), "--shots", "200000"])
+        .env("QOA_LANG", "en")
+        .env("QOA_MAX_MEMORY", "1M")
+        .output()
+        .unwrap();
+    assert!(!o.status.success());
+    assert!(stderr(&o).contains("different results"), "{}", stderr(&o));
+    // emaitza gutxi shot askorekin: memoria ez da shot-kopuruaren araberakoa
+    let src = scratch("bell-mid.qoa");
+    std::fs::write(
+        &src,
+        "QINIT 2\nH q0\nMEASURE q0 -> c0\nCNOT q0 q1\nMEASURE q1 -> c1\nRESET q0\n",
+    )
+    .unwrap();
+    let o = Command::new(env!("CARGO_BIN_EXE_qoa"))
+        .args([
+            "run",
+            src.to_str().unwrap(),
+            "--shots",
+            "300000",
+            "--seed",
+            "1",
+        ])
+        .env("QOA_LANG", "en")
+        .env("QOA_MAX_MEMORY", "1M")
+        .output()
+        .unwrap();
+    assert!(o.status.success(), "{}", stderr(&o));
+}

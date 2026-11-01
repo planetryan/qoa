@@ -25,6 +25,7 @@ use rand::{Rng, SeedableRng};
 use rayon::prelude::*;
 use std::collections::HashMap;
 use std::io::{BufRead, Write};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 // exekuzio-aukerak
@@ -475,6 +476,10 @@ pub fn run(
     if rank == 0 {
         *counts.entry(first_record).or_insert(0) += 1;
     }
+    // emaitza desberdinen muga, eta gainditu den (orduan shot-ak ez dira gehiago simulatzen)
+    let cap = distinct_cap(prog);
+    let distinct = AtomicUsize::new(1);
+    let full = AtomicBool::new(false);
     let mut leakage = first_leakage;
     // rank honen shot-ak: [lo, hi), 1..shots tartea zati jarraituetan banatuta. shot bakoitzak bere hazia
     // du, beraz emaitza ez dago rank-kopuruaren menpe
@@ -514,6 +519,9 @@ pub fn run(
                 let sampled: HashMap<Record, u64> = (lo..hi)
                     .into_par_iter()
                     .fold(HashMap::new, |mut m, shot| {
+                        if full.load(Ordering::Relaxed) {
+                            return m;
+                        }
                         let mut rng = shot_rng(cfg.seed, shot);
                         let r: f64 = rng.random::<f64>() * total;
                         let owner = offsets[1..].partition_point(|&o| o <= r).min(ranks - 1);
@@ -522,8 +530,10 @@ pub fn run(
                                 .partition_point(|&c| c <= r - offsets[rank])
                                 .min(cumulative.len() - 1);
                             let global = (rank << local_bits) | idx;
-                            *m.entry(record_from_index(prog, &final_state, tail, global))
-                                .or_insert(0) += 1;
+                            let rec = record_from_index(prog, &final_state, tail, global);
+                            if !tally(&mut m, rec, &distinct, cap) {
+                                full.store(true, Ordering::Relaxed);
+                            }
                         }
                         m
                     })
@@ -549,7 +559,12 @@ pub fn run(
                         Ok(m.record())
                     });
                     match r {
-                        Ok(rec) => *counts.entry(rec).or_insert(0) += 1,
+                        Ok(rec) => {
+                            if !tally(&mut counts, rec, &distinct, cap) {
+                                full.store(true, Ordering::Relaxed);
+                                break;
+                            }
+                        }
                         Err(e) => {
                             failed.get_or_insert(e);
                             break;
@@ -573,13 +588,18 @@ pub fn run(
                 let sampled: HashMap<Record, u64> = (lo..hi)
                     .into_par_iter()
                     .fold(HashMap::new, |mut m, shot| {
+                        if full.load(Ordering::Relaxed) {
+                            return m;
+                        }
                         let mut rng = shot_rng(cfg.seed, shot);
                         let r: f64 = rng.random::<f64>() * total;
                         let idx = cumulative
                             .partition_point(|&c| c <= r)
                             .min(cumulative.len() - 1);
-                        *m.entry(record_from_index(prog, &final_state, tail, idx))
-                            .or_insert(0) += 1;
+                        let rec = record_from_index(prog, &final_state, tail, idx);
+                        if !tally(&mut m, rec, &distinct, cap) {
+                            full.store(true, Ordering::Relaxed);
+                        }
                         m
                     })
                     .reduce(HashMap::new, merge_counts);
@@ -588,32 +608,51 @@ pub fn run(
             Method::EveryShot => {
                 // 0. rank-ak irakurritako sarrerak; besteek zabalkundetik jaso dituzte
                 let shared_inputs: &[f64] = if rank == 0 { &recorded_inputs } else { &replay };
-                let results: Vec<Result<(Record, f64), RuntimeError>> = (lo..hi)
+                // shot-ak zenbatzen dira simulatu ahala: memoria emaitza desberdinen araberakoa da, ez
+                // shot-kopuruaren araberakoa. hari bakoitzak bere tartea ordenan egiten du, eta bere lehen
+                // errorearen ondoren gelditzen da; guztien artean shot-en ordenako lehen errorea geratzen da
+                type Part = (HashMap<Record, u64>, f64, Option<(u64, RuntimeError)>);
+                let (sampled, leak, err): Part = (lo..hi)
                     .into_par_iter()
-                    .map(|shot| {
-                        let mut sink = std::io::sink();
-                        let mut m = Machine::new(
-                            prog,
-                            cfg,
-                            &cache,
-                            &mut sink,
-                            Inputs::Replay(shared_inputs, 0),
-                            shot_rng(cfg.seed, shot),
-                        )?;
-                        m.run()?;
-                        Ok((m.record(), m.state.leakage))
-                    })
-                    .collect();
-                for r in results {
-                    match r {
-                        Ok((rec, leak)) => {
-                            *counts.entry(rec).or_insert(0) += 1;
-                            leakage = leakage.max(leak);
-                        }
-                        Err(e) => {
-                            failed.get_or_insert(e);
-                        }
-                    }
+                    .fold(
+                        || (HashMap::new(), 0.0, None),
+                        |(mut m, mut leak, mut err): Part, shot| {
+                            if err.is_some() || full.load(Ordering::Relaxed) {
+                                return (m, leak, err);
+                            }
+                            let mut sink = std::io::sink();
+                            let r = Machine::new(
+                                prog,
+                                cfg,
+                                &cache,
+                                &mut sink,
+                                Inputs::Replay(shared_inputs, 0),
+                                shot_rng(cfg.seed, shot),
+                            )
+                            .and_then(|mut m| {
+                                m.run()?;
+                                Ok((m.record(), m.state.leakage))
+                            });
+                            match r {
+                                Ok((rec, l)) => {
+                                    if !tally(&mut m, rec, &distinct, cap) {
+                                        full.store(true, Ordering::Relaxed);
+                                    }
+                                    leak = leak.max(l);
+                                }
+                                Err(e) => err = Some((shot, e)),
+                            }
+                            (m, leak, err)
+                        },
+                    )
+                    .reduce(
+                        || (HashMap::new(), 0.0, None),
+                        |a, b| (merge_counts(a.0, b.0), a.1.max(b.1), earliest(a.2, b.2)),
+                    );
+                counts = merge_counts(counts, sampled);
+                leakage = leakage.max(leak);
+                if let Some((_, e)) = err {
+                    failed.get_or_insert(e);
                 }
             }
             Method::StateOnly => unreachable!(),
@@ -622,6 +661,10 @@ pub fn run(
 
     // taldean: rank guztiek beren zenbaketak (edo errorea) 0.ari bidaltzen dizkiote, beti, inor zain gera ez dadin
     // (egoera banatuan shot bakoitza prozesu guztiek egiten dute, eta 0.ak ditu zenbaketa guztiak, laginketan izan ezik)
+    // muga beteta: errorea, eta taldean 0.ari ere bidaltzen zaio
+    if full.load(Ordering::Relaxed) {
+        failed.get_or_insert(too_many_outcomes(cap));
+    }
     let gathered = !cfg.distribute || method == Method::Sampled;
     if let Some(t) = team
         && ranks > 1
@@ -641,6 +684,10 @@ pub fn run(
     }
     if let Some(e) = failed {
         return Err(e);
+    }
+    // rank guztien emaitzak batuta ere muga barruan (taldean, hau da 0. rank-aren memoria)
+    if counts.len() > cap {
+        return Err(too_many_outcomes(cap));
     }
     let mut counts: Vec<(Record, u64)> = counts.into_iter().collect();
     counts.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
@@ -720,6 +767,60 @@ fn decode_part(bytes: &[u8]) -> (HashMap<Record, u64>, f64, Option<RuntimeError>
         *counts.entry(Record { bits, readouts }).or_insert(0) += n;
     }
     (counts, leakage, err)
+}
+
+// shot-en emaitza desberdinak: memorian gorde daitekeen kopurua. emaitza bakoitzak bere bitak eta
+// irakurketak ditu zenbaketa-taulan, eta txostenak beste kopia batzuk egiten ditu (ordenatzea, json-a);
+// neurtuta, 1 KiB inguru emaitza bakoitzeko 48 bitekin. muga gainditzean errore bat, memoria bete beharrean
+fn distinct_cap(prog: &Program) -> usize {
+    let (limit, _) = crate::state::memory_limit();
+    let per = 1024 + 4 * (2 * prog.n_bits as u128 + 8 * prog.n_modes as u128);
+    (limit / per).min(usize::MAX as u128) as usize
+}
+
+fn too_many_outcomes(cap: usize) -> RuntimeError {
+    let (limit, source) = crate::state::memory_limit();
+    RuntimeError {
+        line: 0,
+        message: t!(
+            "the shots gave more than {} different results, more than QOA may keep in memory here ({}: {}). Run fewer shots, measure fewer bits, or on a machine with more memory set QOA_MAX_MEMORY",
+            "shot-ek {} emaitza desberdin baino gehiago eman dituzte, QOA-k hemen memorian gorde ditzakeenak baino gehiago ({}: {}). exekutatu shot gutxiago, neurtu bit gutxiago, edo memoria gehiagoko makina batean ezarri QOA_MAX_MEMORY",
+            cap,
+            source,
+            crate::state::format_bytes(limit)
+        ),
+    }
+}
+
+// emaitza bat zenbaketa-taulan; emaitza berri bat ez bada sartzen (muga beteta), false
+fn tally(m: &mut HashMap<Record, u64>, rec: Record, distinct: &AtomicUsize, cap: usize) -> bool {
+    use std::collections::hash_map::Entry;
+    match m.entry(rec) {
+        Entry::Occupied(mut e) => {
+            *e.get_mut() += 1;
+            true
+        }
+        Entry::Vacant(e) => {
+            // hari bakoitzaren taulak bereak dira, beraz bi taulatan dagoen emaitza bat bi aldiz zenbatzen
+            // da: memoria bera hartzen du
+            if distinct.fetch_add(1, Ordering::Relaxed) >= cap {
+                return false;
+            }
+            e.insert(1);
+            true
+        }
+    }
+}
+
+// lehen errorea, shot-en ordenan (hariak edozein ordenatan amaitzen direla ere, beti bera)
+fn earliest(
+    a: Option<(u64, RuntimeError)>,
+    b: Option<(u64, RuntimeError)>,
+) -> Option<(u64, RuntimeError)> {
+    match (a, b) {
+        (Some(x), Some(y)) => Some(if y.0 < x.0 { y } else { x }),
+        (x, y) => x.or(y),
+    }
 }
 
 fn merge_counts(mut a: HashMap<Record, u64>, b: HashMap<Record, u64>) -> HashMap<Record, u64> {
