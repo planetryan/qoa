@@ -116,7 +116,7 @@ fn errors_point_at_the_glyph_source() {
     // ; falta da: hurrengo karakterean
     let e = errors("Q{2};\nCX/Q[0] Q[1];\n");
     assert_eq!((e[0].0, e[0].1), (2, 9), "{:?}", e);
-    assert!(e[0].2.contains("expected ;"));
+    assert!(e[0].2.contains("is a , missing"), "{:?}", e);
     // mihiztatzailearen erroreak adierazpenera itzultzen dira (lerroa eta zutabea)
     let e = errors("Q{2};\nH/Q[0]; FROB/Q[1]; CX/Q[0],Q[0];\n");
     assert_eq!(e.len(), 2, "{:?}", e);
@@ -359,4 +359,80 @@ fn dense_forms_expand_to_plain_qoa() {
         "{:?}",
         e
     );
+}
+
+#[test]
+fn semicolons_can_be_left_out_where_the_boundary_is_clear() {
+    // 0.4.6: `;` utz daiteke, adierazpen batek letra/digitu/_ batekin amaitu eta hurrengoa batekin hasten ez
+    // bada; #C0 = #C[0], ~L0..1 = ~L[0..1]; testua eragigaien ondoren (STX#1"..")
+    let ops = |src: &str| {
+        qoa::glyph::assemble(src, "proba.qg")
+            .unwrap_or_else(|d| panic!("{}", qoa::asm::render(&d, src, "proba.qg")))
+            .ops
+    };
+    let pairs: &[(&str, &str)] = &[
+        (
+            "Q{2}#C{2}HQ[0]CXQ[0],Q[1]MQ.#C",
+            "Q{2}; #C{2}; HQ[0]; CXQ[0],Q[1]; MQ.#C;",
+        ),
+        (
+            "Q{3}#C{3}MQ[0..1].#C0..1!#C1>a;XQ[2]a:",
+            "Q{3}; #C{3}; MQ[0..1].#C[0..1]; !#C[1]>a; XQ[2]; a:;",
+        ),
+        (
+            "Q{1}#C{1}MQ.#C0??#C0{XQ}",
+            "Q{1}; #C{1}; MQ.#C[0]; ??#C[0]{ XQ; };",
+        ),
+        (
+            "~L{2}%3;D~L0,0.5;N~L0..1.#4",
+            "~L{2}%3; DL[0],0.5; NL[0..1].#4;",
+        ),
+        ("#1<=5#2<=#1+1;PF\"{}\"%#2", "#1<=5; #2<=#1+1; PF\"{}\"%#2;"),
+        ("#1<=pi/2#2<=1", "#1<=pi/2; #2<=1;"),
+        ("STX#1\"ab\"RA", "`STORETEXT R1 \"ab\"`; RA;"),
+        ("Q{1}VL/Q[0]\"x\"", "Q{1}; `VERBOSELOG q0 \"x\"`;"),
+        // ;-ak bere lekuan jarraitzen du
+        ("Q{1};HQ;XQ;", "Q{1}; HQ; XQ;"),
+    ];
+    for (dense, plain) in pairs {
+        assert_eq!(ops(dense), ops(plain), "{}", dense);
+    }
+    // bi izen jarraian: `;` behar da
+    for (src, want) in [
+        ("Q{2}HQ CXQ", "expected ;"),
+        ("Q{1}#C{1}MQ.#C XQ", "expected ;"),
+    ] {
+        let e = errors(src);
+        assert!(e.iter().any(|d| d.2.contains(want)), "{}: {:?}", src, e);
+    }
+}
+
+#[test]
+fn dense_export_reassembles_for_every_program() {
+    let o = qoa::disasm::GlyphOptions {
+        dense: true,
+        ..Default::default()
+    };
+    let mut n = 0;
+    for dir in ["examples", "tests/programs/sanity", "tests/programs/stress"] {
+        for e in std::fs::read_dir(dir).unwrap() {
+            let path = e.unwrap().path();
+            let name = path.to_string_lossy().to_string();
+            let text = std::fs::read_to_string(&path).unwrap_or_default();
+            let p = if name.ends_with(".qoa") {
+                qoa::asm::assemble(&text, &name).ok()
+            } else if name.ends_with(".qg") {
+                qoa::glyph::assemble(&text, &name).ok()
+            } else {
+                None
+            };
+            let Some(p) = p else { continue };
+            // to_glyph-ek berak mihiztatzen du berriz eta konparatzen du
+            let dense = qoa::disasm::to_glyph(&p, &o).unwrap_or_else(|e| panic!("{}: {}", name, e));
+            let normal = qoa::disasm::to_glyph(&p, &Default::default()).unwrap();
+            assert!(dense.len() <= normal.len(), "{}", name);
+            n += 1;
+        }
+    }
+    assert!(n > 50);
 }

@@ -64,6 +64,11 @@ MEASURE q1 -> c1
 ### Statements and comments
 
 - Every statement ends with `;`. Any number of statements fit on a line; newlines mean nothing.
+- From 0.4.6 the `;` can be left out wherever the boundary is clear: it is needed only when a statement ends
+  with a letter, digit or `_` and the next one starts with one (so `HQ;XQ` keeps it, `HQ[0]XQ[0]` does not
+  need it), and after an assignment when the next statement starts with an operator (`#1<=5;&f`,
+  `#1<=5;*3{...}`), because there `&` and `*` would be read as part of the arithmetic.
+  `Q{2}#C{2}HQ[0]CXQ[0],Q[1]MQ.#C` is a whole Bell program.
 - A line whose first character is `;` is a comment (as in the original sketch). `//` starts a comment anywhere.
 
 ### Registers
@@ -85,7 +90,7 @@ used without braces.
 | `Q` | every element of Q | `q0`, `q1`, ... |
 | `Q[2]`, `Q[0x2]` | one element | `q2` |
 | `Q[1..3]` | elements 1 to 3, inclusive | `q1`, `q2`, `q3` |
-| `#C`, `#C[0]` | bits | `c0`, ... |
+| `#C`, `#C[0]`, `#C0`, `#C0..2` | bits; with `#` or `~` in front, an index needs no brackets (0.4.6) | `c0`, ... |
 | `#2` | classical register 2 | `R2` |
 | `(pi/4)`, `1.5` | a number or an expression | the same |
 | `q3`, `o1`, `c0`, `R2` | plain QOA operands are accepted as they are | the same |
@@ -168,6 +173,7 @@ instructions, which `qoa import` shows:
 | `#2<=LXP@(100);`, `LXP@(#1)<=#2;` | LXP, the large expandable pointer: the memory cell at an address (a number, an expression or a register; up to 2^32 - 1) | `LOAD R2 (100)`, `STORE R2 R1` |
 | `name::{ ... };` then `::name;` | a named block of statements, written out where it is used | the statements, each time |
 | `"";` | the previous instruction again, with new operands: `HQ[0]; ""Q[1];`, `RZ(pi/4)/Q[0]; ""/Q[1];` | `H q0`, `H q1` |
+| `STX#1"abc";`, `VL/Q[0]"note";` | an instruction whose text comes after its other operands (STORETEXT, VERBOSELOG) takes the text there (0.4.6) | `STORETEXT R1 "abc"` |
 
 An assignment takes one operator or function; `#1<=#2*2+1` is an error that says to split it. Numbers in an
 assignment are read strictly, so `2+1` is two numbers and an operator, never one number. Bits used in an
@@ -275,6 +281,7 @@ it is written. Options:
 | `--long-names` | `MEASURE` and `CNOT` instead of `M` and `CX` |
 | `--no-ranges` | one statement per element |
 | `--hex` | indices in hexadecimal, like `Q[0x3]` |
+| `--dense` | as dense as possible: no `;` or spaces where the boundary is clear, bits as `#C0`, classical instructions as assignments (`#2<=#1+3`, `#2_+1`) |
 
 ## Examples
 

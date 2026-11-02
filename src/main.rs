@@ -211,6 +211,11 @@ enum Command {
             "glifoa: idatzi indizeak hamaseitarrean, Q[0x3] bezala"
         ))]
         hex: bool,
+        #[arg(long, help_heading = "glyph", help = ts!(
+            "glyph: as dense as possible: no ; or spaces where the boundary is clear, bits as #C0",
+            "glifoa: ahalik eta trinkoen: ; eta hutsunerik gabe muga argia denean, bitak #C0 gisa"
+        ))]
+        dense: bool,
     },
     #[command(about = ts!(
         "Convert an OpenQASM 2.0 file (.qasm) or a glyph-syntax file (.qg) into plain QOA source",
@@ -592,11 +597,21 @@ fn main() -> ExitCode {
             long_names,
             no_ranges,
             hex,
+            dense,
         } => {
             let to = to.unwrap_or(ExportFormat::Glyph);
             let _ = to_glyph;
             glyph_options(to, width, &names, long_names, no_ranges, hex)
-                .and_then(|g| cmd_export(&file, to, output, shots, &g))
+                .map(|g| qoa::disasm::GlyphOptions { dense, ..g })
+                .and_then(|g| {
+                    if dense && to != ExportFormat::Glyph {
+                        return Err(t!(
+                            "--dense only applies to --to glyph",
+                            "--dense --to glyph-ekin bakarrik dabil"
+                        ));
+                    }
+                    cmd_export(&file, to, output, shots, &g)
+                })
         }
         Command::Import { file, output } => cmd_import(&file, output),
         Command::Isa { name, markdown } => cmd_isa(name, markdown),
@@ -1246,6 +1261,7 @@ fn glyph_options(
         long_names,
         ranges: !no_ranges,
         hex,
+        dense: false,
     })
 }
 

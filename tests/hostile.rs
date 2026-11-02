@@ -73,6 +73,11 @@ fn exercise(p: &Program) {
     let _ = qoa::disasm::to_json(p);
     let _ = qoa::disasm::to_dot(p);
     let _ = qoa::disasm::to_glyph(p, &Default::default());
+    let dense = qoa::disasm::GlyphOptions {
+        dense: true,
+        ..Default::default()
+    };
+    let _ = qoa::disasm::to_glyph(p, &dense);
     let _ = qoa::qasm::from_program(p);
     let _ = qoa::ionq::from_program(p, 2);
     // mihiztatzaileak onartzen duen programa orok bere .qx-tik kargatu behar du (bestela `qoa compile`-k

@@ -500,6 +500,10 @@ pub fn check_loaded(p: &Program) -> Result<(), String> {
     let ins = instrs(p)?;
     let labels = targets(p);
     let mut out = header(p);
+    // adierazitako bitak erabiltzen direnak baino gehiago izan daitezke (`CREG out 33`, c0..c2 bakarrik)
+    if p.n_bits > 0 {
+        out.push(format!("CREG bits {}", p.n_bits));
+    }
     // testuaren lerro bakoitza zein eragiketatik datorren, mezuetarako
     let mut op_of_line: Vec<Option<usize>> = vec![None; out.len()];
     for (a, i) in ins.iter().enumerate() {
@@ -564,10 +568,24 @@ pub fn to_qoa_long(p: &Program) -> Result<String, String> {
     to_qoa_in(p, false)
 }
 
+// erabili gabeko bit adierazietarako lerroa (`CREG out 33`, c0..c2 bakarrik erabilita): eragiketek bakarrik
+// bit gutxiago adieraziko lukete, eta programa ez litzateke bera
+fn bits_line(p: &Program, ins: &[Instr]) -> Option<String> {
+    if p.n_bits == 0 {
+        return None;
+    }
+    let mut lines = header(p);
+    lines.extend(ins.iter().map(plain));
+    let text = lines.join("\n") + "\n";
+    let back = crate::asm::assemble(&text, &p.name).ok()?;
+    (back.n_bits != p.n_bits).then(|| format!("CREG bits {}", p.n_bits))
+}
+
 fn to_qoa_in(p: &Program, short: bool) -> Result<String, String> {
     let ins = instrs(p)?;
     let labels = targets(p);
     let mut out = header_in(p, short);
+    out.extend(bits_line(p, &ins));
     for (a, i) in ins.iter().enumerate() {
         if labels.contains(&a) {
             out.push(format!("{}:", label(a)));
@@ -611,6 +629,7 @@ fn listing_in(p: &Program, short: bool) -> Result<String, String> {
         ),
     ];
     out.extend(header_in(p, short));
+    out.extend(bits_line(p, &ins));
     let width = ins
         .iter()
         .map(|i| plain_in(i, short).len())
@@ -790,6 +809,8 @@ pub struct GlyphOptions {
     pub ranges: bool,
     // indizeak hamaseitarrean ([0x3])
     pub hex: bool,
+    // 0.4.6: ahalik eta trinkoen: `;` eta hutsunerik gabe muga argia denean, bitak kortxeterik gabe (#C0)
+    pub dense: bool,
 }
 
 impl Default for GlyphOptions {
@@ -802,6 +823,7 @@ impl Default for GlyphOptions {
             long_names: false,
             ranges: true,
             hex: false,
+            dense: false,
         }
     }
 }
@@ -826,7 +848,81 @@ fn is_register(t: &Tok) -> bool {
     matches!(t, Tok::Q(_) | Tok::O(_) | Tok::C(_) | Tok::R(_))
 }
 
+// --dense: eragiketa klasikoak esleipen gisa (`#2<=#1+3`, `#2_+1`, `#2<=LXP@(100)`), berriz berdin irakurtzen
+// direnean bakarrik: zenbaki biko eragiketa bat (`ADD R1 (2) (3)`) adierazpen konstante bat litzateke, beraz ez
+fn dense_classical(ins: &Instr, o: &GlyphOptions) -> Option<String> {
+    let v = |t: &Tok| match t {
+        Tok::R(k) => Some(format!("#{}", k)),
+        Tok::Imm(x) => Some(format!("{}", x)),
+        _ => None,
+    };
+    let reg = |t: &Tok| matches!(t, Tok::R(_));
+    match (ins.name, ins.toks.as_slice()) {
+        ("REGSET", [Tok::R(d), Tok::Word(w)]) => Some(format!("#{}<={}", d, w)),
+        ("REGCOPY", [Tok::R(d), Tok::R(s)]) => Some(format!("#{}<=#{}", d, s)),
+        ("LOAD", [Tok::R(d), a]) => Some(format!("#{}<=LXP@({})", d, v(a)?)),
+        ("STORE", [s, a]) => Some(format!("LXP@({})<={}", v(a)?, v(s)?)),
+        ("PACKBITS", [Tok::R(d), bits @ ..])
+            if !bits.is_empty()
+                && bits.iter().enumerate().all(
+                    |(k, b)| matches!((b, &bits[0]), (Tok::C(x), Tok::C(f)) if *x == f + k as u32),
+                ) =>
+        {
+            let (Tok::C(a), Tok::C(b)) = (&bits[0], &bits[bits.len() - 1]) else {
+                return None;
+            };
+            Some(if a == b {
+                format!("#{}<=#{}{}", d, o.bits, a)
+            } else {
+                format!("#{}<=#{}{}..{}", d, o.bits, a, b)
+            })
+        }
+        (name, [Tok::R(d), a, b]) if reg(a) || reg(b) => {
+            let sym = match name {
+                "ADD" => "+",
+                "SUB" => "-",
+                "MUL" => "*",
+                "DIV" => "/",
+                "POW" => "^",
+                "ANDBITS" => "&",
+                "ORBITS" => "|",
+                "SHL" => "<<",
+                "SHR" => ">>",
+                _ => return None,
+            };
+            if *a == Tok::R(*d) && name == "ADD" {
+                return Some(format!("#{}_+{}", d, v(b)?));
+            }
+            if *a == Tok::R(*d) && name == "SUB" {
+                return Some(format!("#{}-=>{}", d, v(b)?));
+            }
+            Some(format!("#{}<={}{}{}", d, v(a)?, sym, v(b)?))
+        }
+        (name, [Tok::R(d), s @ Tok::R(_)]) => {
+            let f = match name {
+                "SQRT" => "sqrt",
+                "EXP" => "exp",
+                "LOG" => "ln",
+                "SIN" => "sin",
+                "COS" => "cos",
+                "TAN" => "tan",
+                "NOTBITS" => "not",
+                _ => return None,
+            };
+            Some(format!("#{}<={}({})", d, f, v(s)?))
+        }
+        _ => None,
+    }
+}
+
 fn glyph_stmt(ins: &Instr, o: &GlyphOptions) -> Stmt {
+    if o.dense
+        && !o.long_names
+        && !o.hex
+        && let Some(t) = dense_classical(ins, o)
+    {
+        return Stmt::Raw(t);
+    }
     // 0.4.5: izen laburrak (M, CX, D, N, ...), --long-names ez bada
     let name = match crate::isa::lookup(ins.name) {
         Some(spec) if !o.long_names => crate::isa::short(spec),
@@ -858,8 +954,28 @@ fn glyph_stmt(ins: &Instr, o: &GlyphOptions) -> Stmt {
         .count();
     let rest = &ins.toks[lead..];
     if rest.iter().any(|t| matches!(t, Tok::Text(_))) {
-        // testua eragigaien ondoren (VERBOSELOG): glifo-formak ez du hori adierazten, QOA arrunta bere horretan
-        return Stmt::Raw(format!("`{}`", plain(ins)));
+        // testua eragigaien ondoren (STORETEXT, VERBOSELOG): `STX/#1"testua"` (0.4.6), lehen QOA arrunta
+        // ` ` artean, eta testuak ` bat bazuen ezin zen esportatu
+        let (ops, txt): (Vec<&Tok>, Vec<&Tok>) =
+            rest.iter().partition(|t| !matches!(t, Tok::Text(_)));
+        let name = match crate::isa::lookup(ins.name) {
+            Some(spec) if !o.long_names => crate::isa::short(spec),
+            _ => ins.name,
+        };
+        let mut s = format!(
+            "{}/{}",
+            name,
+            ops.iter()
+                .map(|t| glyph_tok(t, o))
+                .collect::<Vec<_>>()
+                .join(",")
+        );
+        for t in txt {
+            if let Tok::Text(x) = t {
+                s.push_str(&escape(x));
+            }
+        }
+        return Stmt::Raw(s);
     }
     let texts = ins.toks[..lead]
         .iter()
@@ -914,6 +1030,7 @@ fn glyph_tok(t: &Tok, o: &GlyphOptions) -> String {
     match t {
         Tok::Q(k) => format!("{}[{}]", o.qubits, index(*k, o)),
         Tok::O(k) => format!("{}[{}]", o.modes, index(*k, o)),
+        Tok::C(k) if o.dense && !o.hex => format!("#{}{}", o.bits, k),
         Tok::C(k) => format!("#{}[{}]", o.bits, index(*k, o)),
         Tok::R(k) => format!("#{}", k),
         // glifoan zenbaki huts bat erregistro edo zenbaki baten lekuan balio bat da: `ADD/#1,#1,1`
@@ -947,6 +1064,7 @@ fn glyph_list(items: &[Tok], o: &GlyphOptions) -> String {
     let reg = match first {
         Tok::Q(_) => o.qubits.clone(),
         Tok::O(_) => o.modes.clone(),
+        _ if o.dense && !o.hex => return format!("#{}{}..{}", o.bits, a, b),
         _ => format!("#{}", o.bits),
     };
     format!("{}[{}..{}]", reg, index(a, o), index(b, o))
@@ -1070,7 +1188,8 @@ pub fn to_glyph(p: &Program, o: &GlyphOptions) -> Result<String, String> {
                     |c: usize| -> Vec<Tok> { group.iter().map(|r| r[c].clone()).collect() };
                 let mut s = name.clone();
                 if !params.is_empty() {
-                    s.push_str(&format!("({})", params.join(", ")));
+                    let sep = if o.dense { "," } else { ", " };
+                    s.push_str(&format!("({})", params.join(sep)));
                 }
                 for t in texts {
                     s.push_str(t);
@@ -1122,7 +1241,55 @@ pub fn to_glyph(p: &Program, o: &GlyphOptions) -> Result<String, String> {
     if p.n_modes > 0 {
         decls.push(format!("~{}{{{}}}%{};", o.modes, p.n_modes, p.cutoff));
     }
+    // erabili gabeko bit adierazietarako (`CREG out 33`, c0..c2 bakarrik): glifoaren #C{33}-k ez du bit-kopurua
+    // finkatzen, QOA arruntaren CREG-ak bai
+    if let Some(line) = bits_line(p, &instrs(p)?) {
+        decls.push(format!("`{}`;", line));
+    }
     let mut lines = vec![format!("// {}", p.name)];
+    if o.dense {
+        // `;` eta hutsunerik gabe, aurrekoaren azken karakterea eta hurrengoaren lehena biak letra, digitu
+        // edo _ ez badira (glyph.rs-ko arau bera)
+        let ident = |c: Option<char>| c.is_some_and(|c| c.is_ascii_alphanumeric() || c == '_');
+        let all: Vec<String> = decls
+            .iter()
+            .cloned()
+            .chain(text_stmts.into_iter().map(|(s, _)| s))
+            .collect();
+        let mut cur = String::new();
+        for (k, s) in all.iter().enumerate() {
+            let body = s.strip_suffix(';').unwrap_or(s);
+            let next = all.get(k + 1).and_then(|n| n.chars().next());
+            // esleipen baten ondoren eragile batekin hasten den adierazpena (`*3{`, `&0x6`) eragiketaren parte
+            // litzateke: `;`-a geratzen da
+            let assignment = (body.starts_with('#')
+                && body[1..].starts_with(|c: char| c.is_ascii_digit()))
+                || body.starts_with("LXP@");
+            let joins = assignment && next.is_some_and(|c| "*&^<>|+-/".contains(c));
+            let piece = if next.is_some() && (joins || ident(body.chars().last()) && ident(next)) {
+                s.as_str()
+            } else {
+                body
+            };
+            if o.width > 0 && !cur.is_empty() && cur.len() + piece.len() > o.width {
+                lines.push(std::mem::take(&mut cur));
+            }
+            cur.push_str(piece);
+        }
+        if !cur.is_empty() {
+            lines.push(cur);
+        }
+        let text = lines.join("\n") + "\n";
+        let back = crate::glyph::assemble(&text, &p.name).map_err(|d| {
+            t!(
+                "the glyph export does not assemble ({}); this is a QOA bug",
+                "glifo-esportazioa ez da mihiztatzen ({}); QOA-ren akats bat da",
+                d.first().map_or(String::new(), |d| d.message.clone())
+            )
+        })?;
+        same_program(p, &back)?;
+        return Ok(text);
+    }
     if !decls.is_empty() {
         lines.push(decls.join(" "));
     }

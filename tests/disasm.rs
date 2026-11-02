@@ -202,3 +202,33 @@ fn dot_edges_point_at_existing_blocks() {
         }
     }
 }
+
+#[test]
+fn declared_but_unused_bits_survive_every_text_form() {
+    // `CREG out 8` c0 bakarrik erabilita: 8 biteko programa da, eta .qx-a, esportazioak eta glifoa ere bai
+    // (0.4.5 arte .qx-a ez zen kargatzen)
+    let p =
+        qoa::asm::assemble("QINIT 1\nCREG out 8\nH q0\nMEASURE q0 -> out[0]\n", "u.qoa").unwrap();
+    assert_eq!(p.n_bits, 8);
+    let back = qoa::program::Program::from_bytes(&p.to_bytes()).unwrap();
+    assert_eq!(back.n_bits, 8);
+    for text in [
+        disasm::to_qoa(&p).unwrap(),
+        disasm::to_qoa_long(&p).unwrap(),
+    ] {
+        assert!(text.contains("CREG bits 8"), "{}", text);
+    }
+    for o in [
+        GlyphOptions::default(),
+        GlyphOptions {
+            dense: true,
+            ..GlyphOptions::default()
+        },
+    ] {
+        let g = disasm::to_glyph(&p, &o).unwrap();
+        assert_eq!(qoa::glyph::assemble(&g, "u.qg").unwrap().n_bits, 8, "{}", g);
+    }
+    // behar ez denean, lerrorik ez
+    let q = qoa::asm::assemble("QINIT 1\nH q0\nMEASURE q0\n", "v.qoa").unwrap();
+    assert!(!disasm::to_qoa(&q).unwrap().contains("CREG"));
+}

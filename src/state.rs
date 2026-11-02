@@ -771,7 +771,12 @@ impl State {
             .exp()
         };
         let mut pk = vec![0.0; d];
+        // probabilitaterik gabeko fotoi-kopuruek ez dute ezer gehitzen: haiek saltatuta, egoera sakabanatu bat
+        // (FOCK, muga handia) d bider azkarrago doa, emaitza berarekin
         for (n, p) in dist.iter().enumerate() {
+            if *p == 0.0 {
+                continue;
+            }
             for (k, slot) in pk.iter_mut().enumerate().take(n + 1) {
                 *slot += p * weight(n, k);
             }

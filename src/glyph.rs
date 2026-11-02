@@ -123,6 +123,8 @@ enum Stmt {
         params: Vec<String>,
         args: Vec<Operand>,
         dests: Vec<Operand>,
+        // 0.4.6: eragigaien ondorengo testuak (`STX#1"testua"`, `VL/Q[0]"oharra"`), aginduaren ordenan
+        after: Vec<String>,
     },
     Label(String),
     Jump(String),
@@ -170,6 +172,8 @@ struct Parser {
     diags: Vec<Diagnostic>,
     // `""`-k errepikatzen duen azken agindua: izena, parametroak, testuak
     last_op: Option<(String, Vec<String>, Vec<String>)>,
+    // ??x{ eta !!x{-ren balioan `{` blokea da, ez erregistro-adierazpen bat
+    no_declare: bool,
 }
 
 fn diag(pos: Pos, len: u32, message: String) -> Diagnostic {
@@ -191,6 +195,7 @@ impl Parser {
             col: 1,
             regs: HashMap::new(),
             last_op: None,
+            no_declare: false,
             order: Vec::new(),
             counts: [0; 3],
             cutoff: None,
@@ -625,12 +630,45 @@ impl Parser {
     }
 
     fn named(&mut self, name: String, kind: Option<Kind>, pos: Pos) -> Option<Operand> {
-        if self.peek() == Some('{') {
+        if self.peek() == Some('{') && !self.no_declare {
             let size = self.size(kind.unwrap_or(Kind::Qubits))?;
             let at = self.placement()?;
             if !self.declare(&name, kind.unwrap_or(Kind::Qubits), size, at, pos) {
                 return None;
             }
+        }
+        // 0.4.6: # edo ~ duten izenetan indizea kortxeterik gabe: `#C0` = `#C[0]`, `~L0..3` = `~L[0..3]`
+        // (lehen errore bat zen: C0 ez dago adierazita). `Q0` ez: QOA arruntean q0 qubita da jada
+        if kind.is_some()
+            && !self.regs.contains_key(&name)
+            && self.peek() != Some('[')
+            && let Some((base, a)) = split_index(&name, &self.regs)
+        {
+            let b = if self.starts_with("..") && self.peek_at(2).is_some_and(|c| c.is_ascii_digit())
+            {
+                self.bump();
+                self.bump();
+                self.number()?
+            } else {
+                a
+            };
+            if a > b {
+                self.error(
+                    pos,
+                    name.len() as u32,
+                    ts!(
+                        "expected an index like #C2 or #C0..3",
+                        "#C2 edo #C0..3 bezalako indize bat espero zen"
+                    )
+                    .into(),
+                );
+                return None;
+            }
+            return Some(Operand::Named {
+                name: base,
+                range: Some((a, b)),
+                pos,
+            });
         }
         let range = if self.peek() == Some('[') {
             Some(self.index()?)
@@ -672,6 +710,18 @@ impl Parser {
             }
         }
         (name, None)
+    }
+
+    // aginduak testuen ondoren eragigairik hartzen duen (ezezaguna bada, bai: errorea lehen bezala)
+    fn takes_operands(&self, name: &str, texts: usize) -> bool {
+        match crate::isa::lookup(mnemonic(name)) {
+            Some(spec) => spec
+                .operand_specs()
+                .iter()
+                .skip(texts)
+                .any(|o| o.kind != 's'),
+            None => name != "PR",
+        }
     }
 
     // lehen eragigaia jada irakurrita: gainerakoak komaz bereizita
@@ -759,6 +809,7 @@ impl Parser {
                 params: vec![],
                 args: vec![],
                 dests: vec![],
+                after: vec![],
             });
         }
         if self.starts_with("<<#>>") {
@@ -772,6 +823,7 @@ impl Parser {
                 params: vec![],
                 args: vec![],
                 dests: vec![],
+                after: vec![],
             });
         }
         match self.peek()? {
@@ -822,7 +874,10 @@ impl Parser {
                 // 0.4.5: `??x{ ... }` x 1 bada, `!!x{ ... }` x 0 bada
                 let one = self.bump() == Some('?');
                 self.bump();
-                let value = self.operand()?;
+                self.no_declare = true;
+                let value = self.operand();
+                self.no_declare = false;
+                let value = value?;
                 self.skip_spaces();
                 if self.peek() != Some('{') {
                     let p = self.pos();
@@ -982,6 +1037,22 @@ impl Parser {
         if name == "CC" {
             return self.classical_call();
         }
+        // adierazitako erregistro bat adierazpen baten hasieran: ziurrenik koma bat falta da (`CX/Q[0] Q[1]`)
+        if self.regs.contains_key(&name)
+            && crate::isa::lookup(mnemonic(&name)).is_none()
+            && !self.starts_with("::")
+        {
+            self.error(
+                pos,
+                name.len() as u32,
+                t!(
+                    "{} is a register, not an instruction; is a , missing before it?",
+                    "{} erregistro bat da, ez agindu bat; koma bat falta al da haren aurretik?",
+                    name
+                ),
+            );
+            return None;
+        }
         if self.starts_with("::") {
             // 0.4.5: `izena::{ ... }` bloke izendun bat
             self.bump();
@@ -1054,9 +1125,18 @@ impl Parser {
         } else if self.peek() == Some('/') {
             self.bump();
             operands = self.operands()?;
-        } else if matches!(self.peek(), Some('#' | '~')) {
-            // 0.4.5: # edo ~ eragigai baten aurretik `/` gabe (`PUSH#1`, `ADD#4,#1,#2`)
+        } else if matches!(self.peek(), Some('#' | '~')) && self.takes_operands(&name, texts.len())
+        {
+            // 0.4.5: # edo ~ eragigai baten aurretik `/` gabe (`PUSH#1`, `ADD#4,#1,#2`). eragigairik hartzen ez
+            // duen agindu baten ondoren (`RA`, `PRINT"x"`), # hurrengo adierazpena da (0.4.6, `;` gabe)
             operands = self.operands()?;
+        }
+        // 0.4.6: aginduaren testua eragigaien ondoren doanean (STORETEXT, VERBOSELOG): `STX#1"testua"`
+        let mut after = Vec::new();
+        if !operands.is_empty() && texts.is_empty() && self.text_after(&name) {
+            while self.peek() == Some('"') {
+                after.push(self.string()?);
+            }
         }
         let mut args = Vec::new();
         let mut dests = Vec::new();
@@ -1089,7 +1169,79 @@ impl Parser {
             params,
             args,
             dests,
+            after,
         })
+    }
+
+    // aginduaren testua beste eragigai baten ondoren doan (STORETEXT helbidea testua, VERBOSELOG qubita testua)
+    fn text_after(&self, name: &str) -> bool {
+        crate::isa::lookup(mnemonic(name)).is_some_and(|spec| {
+            let k = spec.operand_specs();
+            k.len() > 1 && k.last().is_some_and(|o| o.kind == 's') && k[0].kind != 's'
+        })
+    }
+
+    // uneko posiziotik hasten den adierazpen numeriko oso baten luzera (karaktereetan), 0 osoa ez bada:
+    // zenbakiak, izenak, funtzio-deiak, parentesiak, + - * / ^ eta hutsuneak; bi eragigai jarraian (`2 pi`,
+    // `)H`) adierazpenaren amaiera dira
+    fn expr_len(&self) -> usize {
+        let c = &self.chars[self.i..];
+        let (mut j, mut depth, mut operand) = (0usize, 0i32, true);
+        let mut end = 0;
+        while j < c.len() {
+            let ch = c[j];
+            if ch == ' ' || ch == '\t' {
+                j += 1;
+                continue;
+            }
+            if operand {
+                if ch.is_ascii_digit() || ch == '.' {
+                    while j < c.len() && (c[j].is_ascii_digit() || c[j] == '.') {
+                        j += 1;
+                    }
+                    if j < c.len() && matches!(c[j], 'e' | 'E') {
+                        let sign = j + 1 < c.len() && matches!(c[j + 1], '+' | '-');
+                        let d = j + 1 + usize::from(sign);
+                        if d < c.len() && c[d].is_ascii_digit() {
+                            j = d;
+                            while j < c.len() && c[j].is_ascii_digit() {
+                                j += 1;
+                            }
+                        }
+                    }
+                    operand = false;
+                } else if ch.is_ascii_alphabetic() || ch == '_' {
+                    while j < c.len() && (c[j].is_ascii_alphanumeric() || c[j] == '_') {
+                        j += 1;
+                    }
+                    if j < c.len() && c[j] == '(' {
+                        depth += 1;
+                        j += 1;
+                    } else {
+                        operand = false;
+                    }
+                } else if ch == '(' {
+                    depth += 1;
+                    j += 1;
+                } else if ch == '+' || ch == '-' {
+                    j += 1;
+                } else {
+                    break;
+                }
+            } else if "+-*/^".contains(ch) {
+                operand = true;
+                j += 1;
+            } else if ch == ')' && depth > 0 {
+                depth -= 1;
+                j += 1;
+            } else {
+                break;
+            }
+            if !operand && depth == 0 {
+                end = j;
+            }
+        }
+        end
     }
 
     // esleipen baten eragigaia: zenbakiak zorrotz irakurrita (`2+1` ez da zenbaki bat: 2 eta gero + eragilea),
@@ -1203,6 +1355,7 @@ impl Parser {
             params: vec![],
             args: vec![],
             dests: vec![],
+            after: vec![],
         }
     }
 
@@ -1267,21 +1420,12 @@ impl Parser {
         self.bump();
         self.bump();
         self.skip_spaces();
-        // erregistrorik ez duen eskuin aldea adierazpen konstante oso bat da: `#7<=2*pi/3` -> REGSET R7 2*pi/3
-        let rest: String = {
-            let mut depth = 0i32;
-            self.chars[self.i..]
-                .iter()
-                .take_while(|&&c| {
-                    match c {
-                        '(' => depth += 1,
-                        ')' => depth -= 1,
-                        _ => {}
-                    }
-                    !(depth == 0 && (c == ';' || c == '\n'))
-                })
-                .collect()
-        };
+        // erregistrorik ez duen eskuin aldea adierazpen konstante oso bat da: `#7<=2*pi/3` -> REGSET R7 2*pi/3.
+        // adierazpena bere gramatikak uzten duen arte irakurtzen da, `;` gabe hurrengo adierazpena hasten den lekuan
+        // gelditzeko (`#7<=pi/2#8<=1`)
+        let rest: String = self.chars[self.i..self.i + self.expr_len()]
+            .iter()
+            .collect();
         let register_like = rest
             .split(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
             .any(|w| {
@@ -1289,7 +1433,12 @@ impl Parser {
                     && w.starts_with(['R', 'r', 'c', 'C'])
                     && w[1..].bytes().all(|b| b.is_ascii_digit())
             });
+        let after = self.chars[self.i + rest.chars().count()..]
+            .iter()
+            .copied()
+            .find(|c| *c != ' ' && *c != '\t');
         let constant = !rest.trim().is_empty()
+            && !matches!(after, Some('&' | '|' | '<' | '>' | '@' | '['))
             && !rest.contains(['#', '@', '~', '"'])
             && !register_like
             && !self.regs.keys().any(|k| {
@@ -1491,12 +1640,36 @@ impl Parser {
             let start = self.i;
             match self.statement() {
                 Some(stmt) => {
+                    // adierazpenaren azken karakterea (hutsuneak kontuan hartu gabe)
+                    let last = self.chars[..self.i]
+                        .iter()
+                        .rev()
+                        .copied()
+                        .find(|c| !c.is_whitespace());
                     self.skip_spaces();
                     let len = (self.i - start) as u32;
+                    // 0.4.6: `;` utz daiteke adierazpenen arteko muga argia denean: aurrekoa letra, digitu edo _
+                    // batekin amaitzen bada eta hurrengoa batekin hasten bada izan ezik (`#PF` ezin baita
+                    // `#P` eta `F...`-tik bereizi)
+                    let ident =
+                        |c: Option<char>| c.is_some_and(|c| c.is_ascii_alphanumeric() || c == '_');
+                    let next_starts = {
+                        let save = (self.i, self.line, self.col);
+                        self.skip_blank();
+                        let next = self.peek();
+                        (self.i, self.line, self.col) = save;
+                        next
+                    };
                     match self.peek() {
                         Some(';') => {
                             self.bump();
                             out.push((stmt, pos, len));
+                        }
+                        _ if next_starts.is_none()
+                            || (self.peek() != Some(';')
+                                && !(ident(last) && ident(next_starts))) =>
+                        {
+                            out.push((stmt, pos, len))
                         }
                         // bloke baten amaiera `}` ondoren `;` gabe ere onartzen da
                         _ if matches!(
@@ -1632,6 +1805,16 @@ fn push_lines(
 }
 
 // glifo-izen laburrak (QOA-k berak ez dituenak)
+// `C12` -> (`C`, 12), `C` adierazitako erregistro bat bada (aurrizki adierazi luzeena) eta gainerakoa digituak
+fn split_index(name: &str, regs: &HashMap<String, Register>) -> Option<(String, usize)> {
+    (1..name.len()).find_map(|k| {
+        let (base, digits) = name.split_at(name.len() - k);
+        (regs.contains_key(base) && digits.bytes().all(|b| b.is_ascii_digit()))
+            .then(|| digits.parse().ok().map(|n| (base.to_string(), n)))
+            .flatten()
+    })
+}
+
 // esportatzailearentzat: `buru` eta `izena` itsatsita (`HQ`) berriz `buru` + `izena` gisa irakurtzen den, `izenak`
 // deklaratuta daudenean (Parser::unglue-ren arau berberak)
 pub(crate) fn glues(head: &str, ident: &str, declared: &[&str]) -> bool {
@@ -1945,10 +2128,19 @@ impl Emit<'_> {
                 params,
                 args,
                 dests,
+                after,
             } => match op_lines(
                 regs, name, texts, operands, params, args, dests, pos, len,
             ) {
-                Ok(v) => v.into_iter().for_each(emit),
+                // eragigaien ondorengo testuak lerro bakoitzaren amaieran
+                Ok(v) => v
+                    .into_iter()
+                    .map(|l| {
+                        after
+                            .iter()
+                            .fold(l, |acc, t| format!("{} {}", acc, t))
+                    })
+                    .for_each(emit),
                 Err(d) => self.diags.push(d),
             },
         }

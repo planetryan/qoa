@@ -66,6 +66,11 @@ MEASURE q1 -> c1
 
 - Adierazpen bakoitza `;`-rekin amaitzen da. Lerro batean nahi adina adierazpen sartzen dira; lerro-jauziek
   ez dute ezer esan nahi.
+- 0.4.6tik `;` utz daiteke muga argia den lekuetan: adierazpen bat letra, digitu edo `_` batekin amaitzen bada
+  eta hurrengoa batekin hasten bada bakarrik behar da (beraz `HQ;XQ`-k gordetzen du, `HQ[0]XQ[0]`-k ez du
+  behar), eta esleipen baten ondoren hurrengo adierazpena eragile batekin hasten bada (`#1<=5;&f`,
+  `#1<=5;*3{...}`), han `&` eta `*` aritmetikaren parte gisa irakurriko liratekeelako.
+  `Q{2}#C{2}HQ[0]CXQ[0],Q[1]MQ.#C` Bell programa oso bat da.
 - Lehen karakterea `;` duen lerroa iruzkina da (jatorrizko zirriborroan bezala). `//`-k edonon hasten du iruzkin bat.
 
 ### Erregistroak
@@ -87,7 +92,7 @@ giltzarik gabe erabiltzen da.
 | `Q` | Q-ren elementu guztiak | `q0`, `q1`, ... |
 | `Q[2]`, `Q[0x2]` | elementu bat | `q2` |
 | `Q[1..3]` | 1etik 3ra arteko elementuak, biak barne | `q1`, `q2`, `q3` |
-| `#C`, `#C[0]` | bitak | `c0`, ... |
+| `#C`, `#C[0]`, `#C0`, `#C0..2` | bitak; `#` edo `~` aurrean dutenean, indizeak ez du kortxeterik behar (0.4.6) | `c0`, ... |
 | `#2` | 2. erregistro klasikoa | `R2` |
 | `(pi/4)`, `1.5` | zenbaki edo adierazpen bat | bera |
 | `q3`, `o1`, `c0`, `R2` | QOA arrunteko eragigaiak dauden bezala onartzen dira | bera |
@@ -174,6 +179,7 @@ bihurtzen da, eta `qoa import`-ek erakusten ditu:
 | `#2<=LXP@(100);`, `LXP@(#1)<=#2;` | LXP, erakusle handi hedagarria: helbide bateko memoria-gelaxka (zenbaki, adierazpen edo erregistro bat; 2^32 - 1 arte) | `LOAD R2 (100)`, `STORE R2 R1` |
 | `izena::{ ... };` eta gero `::izena;` | adierazpenen bloke izendun bat, erabiltzen den lekuan idatzia | adierazpenak, aldi bakoitzean |
 | `"";` | aurreko agindua berriz, eragigai berriekin: `HQ[0]; ""Q[1];`, `RZ(pi/4)/Q[0]; ""/Q[1];` | `H q0`, `H q1` |
+| `STX#1"abc";`, `VL/Q[0]"oharra";` | testua beste eragigaien ondoren duen agindu batek (STORETEXT, VERBOSELOG) han hartzen du (0.4.6) | `STORETEXT R1 "abc"` |
 
 Esleipen batek eragile edo funtzio bakarra hartzen du; `#1<=#2*2+1` errore bat da, banatzeko esaten duena.
 Esleipen bateko zenbakiak zorrotz irakurtzen dira, beraz `2+1` bi zenbaki eta eragile bat da, inoiz ez zenbaki
@@ -285,6 +291,7 @@ jatorrizkoarekin konparatzen da idatzi aurretik. Aukerak:
 | `--long-names` | `MEASURE` eta `CNOT`, `M` eta `CX` ordez |
 | `--no-ranges` | adierazpen bat elementu bakoitzeko |
 | `--hex` | indizeak hamaseitarrean, `Q[0x3]` bezala |
+| `--dense` | ahalik eta trinkoen: `;` eta hutsunerik gabe muga argia denean, bitak `#C0` gisa, agindu klasikoak esleipen gisa (`#2<=#1+3`, `#2_+1`) |
 
 ## Adibideak
 
