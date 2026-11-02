@@ -111,4 +111,5 @@ nodes, one state split over many processes, and OpenCL GPUs including AMD Instin
 ([hpc.md](hpc.md)); and 128-bit precision ([precision.md](precision.md)). In 0.4.3: `qoa --benchmark`, and
 QOA's assembler written in QOA, which rebuilds itself identically ([self-hosting.md](self-hosting.md)). In
 0.4.4: the glyph syntax made stable, numbers and named constants in plain QOA, MPI with nothing to build, and
-QOA made safe with any input ([safety.md](safety.md)).
+QOA made safe with any input ([safety.md](safety.md)). In 0.4.5: a SHA-256 in every compiled file and sealed
+sources, short forms for every instruction, and denser glyphs ([glyph.md](glyph.md)).

@@ -1,6 +1,11 @@
 # QOA v0.4.5 Release Notes
 
-**Status:** in progress, not released yet (euskaraz behean)
+**Status:** released 2026-11-02 (euskaraz behean)
+
+Builds on [0.4.4](<QOA v0.4.4.md>): every compiled file now carries its own SHA-256 and sources can be sealed,
+so a changed or damaged file is refused instead of run; every instruction has a short form (`Mq0.c0` for
+`MEASURE q0 -> c0`), now the preferred way to write QOA and glyphs; and glyphs gain dense forms for
+conditions, arithmetic, memory and reusable blocks.
 
 ## Added
 
@@ -65,7 +70,12 @@
 
 # QOA v0.4.5 bertsio-oharrak
 
-**Egoera:** lanean, oraindik argitaratu gabe
+**Egoera:** 2026-11-02an argitaratua
+
+[0.4.4](<QOA v0.4.4.md>)-ren gainean: fitxategi konpilatu bakoitzak bere SHA-256-a du orain eta iturburuak zigila
+daitezke, beraz aldatutako edo hondatutako fitxategi bat baztertu egiten da, exekutatu beharrean; agindu
+bakoitzak forma labur bat du (`Mq0.c0` `MEASURE q0 -> c0`-rentzat), QOA eta glifoak idazteko modu hobetsia
+orain; eta glifoek forma trinkoak dituzte baldintza, aritmetika, memoria eta bloke berrerabilgarrientzat.
 
 ## Gehitua
 
