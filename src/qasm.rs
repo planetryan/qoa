@@ -1711,7 +1711,8 @@ fn closed_region(p: &Program, from: usize, j: usize) -> bool {
 }
 
 // [a, b) blokea itxita: kanpotik ez da haren barrura jauzirik egiten (a barne), eta barrutik ez da kanpora
-// ateratzen
+// ateratzen, b-ra izan ezik (blokearen amaierara: barruko if batek bertara salta dezake; flatten3-k egituratzen
+// ez badu, jauzia esportatu ezin den eragiketa gisa geratzen da, inoiz ez programa desberdin gisa)
 fn closed_block(p: &Program, a: usize, b: usize) -> bool {
     closed_block_but(p, a, b, None)
 }
@@ -1726,9 +1727,18 @@ fn closed_block_but(p: &Program, a: usize, b: usize, entry: Option<usize>) -> bo
                 .is_some_and(|t| inside(t) && !(Some(pc) == entry && t == a))
     });
     let jumps_out = p.ops[a..b].iter().any(|op| {
-        matches!(op, Op::Halt | Op::Return) || op.jump_target().is_some_and(|t| !inside(t))
+        matches!(op, Op::Halt | Op::Return)
+            || op.jump_target().is_some_and(|t| !inside(t) && t != b)
     });
     !jumps_in && !jumps_out
+}
+
+// x-ra [lo, x) tartetik bakarrik salta daiteke (blokearen amaierako JUMP-a: kanpotik ez da bertara sartzen)
+fn entered_only_from(p: &Program, x: usize, lo: usize) -> bool {
+    !p.ops
+        .iter()
+        .enumerate()
+        .any(|(pc, op)| !(lo..x).contains(&pc) && op.jump_target() == Some(x))
 }
 
 // if/else-ren amaiera: then adarraren azken JUMP-aren helburua
@@ -1783,6 +1793,7 @@ fn flatten3(
                 && *t <= to
                 && matches!(p.ops[*t - 1], Op::Jump { to: d } if d == pc)
                 && closed_block(p, pc + 1, *t - 1)
+                && entered_only_from(p, *t - 1, pc + 1)
                 && !p
                     .ops
                     .iter()
@@ -1821,6 +1832,7 @@ fn flatten3(
                 && *t <= to
                 && matches!(p.ops[*t - 1], Op::Jump { to: d } if d > *t && d <= to)
                 && closed_block(p, pc + 1, *t - 1)
+                && entered_only_from(p, *t - 1, pc + 1)
                 && closed_block_but(p, *t, else_end(p, *t), Some(pc)) =>
             {
                 // if/else: `JUMPIF c v else; A; JUMP done; else: B; done:`

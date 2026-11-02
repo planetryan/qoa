@@ -718,6 +718,11 @@ fn openqasm_3_export_refuses_what_it_cannot_say() {
             "OpenQASM 3",
         ),
         ("QINIT 1\nMEASURE q0 -> R0\n", "measurement into a register"),
+        // kanpoko jauzi bat then adarraren amaierako JUMP-era: if/else ez da, eta ezin da egituratu
+        (
+            "QINIT 3\nH q0\nMEASURE q0 -> c0\nH q1\nMEASURE q1 -> c1\nJUMPIFONE c1 erdi\nJUMPIFZERO c0 bestela\nX q2\nerdi:\nJUMP eginda\nbestela:\nH q2\neginda:\nMEASURE q2 -> c2\n",
+            "cannot be expressed in OpenQASM 3",
+        ),
     ];
     for (src, want) in cases {
         let prog = qoa::asm::assemble(src, "t").unwrap();
@@ -843,6 +848,11 @@ fn openqasm_3_export_then_import_gives_the_same_counts() {
         )
     })
     .collect();
+    // if bat if/else baten barruan, kanpokoaren amaierara salto eginez
+    sources.push((
+        "nested".into(),
+        "QINIT 3\nH q0\nH q1\nMEASURE q0 -> c0\nMEASURE q1 -> c1\nJUMPIFZERO c0 bestela\nX q2\nJUMPIFZERO c1 amaiera\nZ q2\nH q2\namaiera:\nJUMP eginda\nbestela:\nH q2\neginda:\nMEASURE q2 -> c2\n".into(),
+    ));
     sources.push((
         "if/else".into(),
         "QINIT 3\nH q0\nMEASURE q0 -> c0\nJUMPIFONE c0 bestela\nX q1\nJUMP eginda\nbestela:\nH q2\nT q2\neginda:\nLOOPSTART 3\nRY q1 0.3\nLOOPEND\nSXDG q2\nCSX q2 q1\nMEASUREALL\n".into(),

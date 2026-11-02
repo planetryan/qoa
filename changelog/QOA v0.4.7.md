@@ -12,7 +12,7 @@
   that way. A test checks that both give the same program byte for byte.
 * **OpenQASM 3 export: `qoa export --to qasm3`.** Counted loops stay `for` loops, a forward jump on a
   measured bit becomes an `if` block (an `if`/`else` when a `JUMP` skips a second block), and
-  repeat-until-success becomes a `while` loop. Gates missing from `stdgates.inc` use modifiers (`inv @ sx`,
+  repeat-until-success becomes a `while` loop, and blocks nest. Gates missing from `stdgates.inc` use modifiers (`inv @ sx`,
   `ctrl(3) @ x`). Every exportable example gives the same distribution in Qiskit Aer as in QOA
   ([docs/hardware.md](../docs/hardware.md#openqasm-3)).
 * **OpenQASM 3 import:** `qoa run` and `qoa import` read bits, `if`/`else` (and `else if`), `while`, `for`
@@ -55,7 +55,7 @@
 * **OpenQASM 3 esportazioa: `qoa export --to qasm3`.** Kopuru finkoko begiztak `for` begizta gisa geratzen
   dira, neurtutako bit baten araberako aurrerako jauzi bat `if` bloke bihurtzen da (`if`/`else` bat `JUMP`
   batek bigarren bloke bat saltatzen duenean), eta arrakasta lortu arte errepikatzea `while` begizta bihurtzen
-  da. `stdgates.inc`-n ez dauden ateek modifikatzaileak erabiltzen dituzte (`inv @ sx`, `ctrl(3) @ x`).
+  da, eta blokeak bata bestearen barruan joan daitezke. `stdgates.inc`-n ez dauden ateek modifikatzaileak erabiltzen dituzte (`inv @ sx`, `ctrl(3) @ x`).
   Esporta daitekeen adibide orok banaketa bera ematen du qiskit Aer-en eta QOA-n
   ([docs/hardware.eu.md](../docs/hardware.eu.md#openqasm-3)).
 * **OpenQASM 3 inportazioa:** `qoa run`-ek eta `qoa import`-ek bitak, `if`/`else` (eta `else if`), `while`,
