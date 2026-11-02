@@ -630,6 +630,49 @@ impl Parser {
         Some(Operand::Named { name, range, pos })
     }
 
+    // itsatsitako agindu bat: izena ez bada agindu bat, aurrizki luzeena agindu bat bada eta gainerakoa deklaratutako
+    // erregistro bat edo erregistro arrunt bat (q0, c1, o2, R3), bi zati: (agindua, lehen eragigaia). eragigaiak
+    // huts egiten badu (tarte okerra), Some(None)
+    fn unglue(&mut self, name: String, pos: Pos) -> (String, Option<Option<Operand>>) {
+        if crate::isa::lookup(mnemonic(&name)).is_some() || name == "PR" || !name.is_ascii() {
+            return (name, None);
+        }
+        for k in (1..name.len()).rev() {
+            let (head, rest) = name.split_at(k);
+            if crate::isa::lookup(mnemonic(head)).is_none() && head != "PR" {
+                continue;
+            }
+            let plain = {
+                let mut c = rest.chars();
+                c.next().is_some_and(|l| "qQcCoOrR".contains(l))
+                    && rest.len() > 1
+                    && c.all(|d| d.is_ascii_digit())
+            };
+            if self.regs.contains_key(rest) || plain {
+                let at = Pos {
+                    line: pos.line,
+                    col: pos.col + k as u32,
+                };
+                let op = self.named(rest.to_string(), None, at);
+                return (head.to_string(), Some(op));
+            }
+        }
+        (name, None)
+    }
+
+    // lehen eragigaia jada irakurrita: gainerakoak komaz bereizita
+    fn more_operands(&mut self, first: Operand) -> Option<Vec<Operand>> {
+        let mut out = vec![first];
+        loop {
+            self.skip_spaces();
+            if self.peek() != Some(',') {
+                return Some(out);
+            }
+            self.bump();
+            out.push(self.operand()?);
+        }
+    }
+
     fn operands(&mut self) -> Option<Vec<Operand>> {
         let mut out = vec![self.operand()?];
         loop {
@@ -859,19 +902,26 @@ impl Parser {
         if name == "CC" {
             return self.classical_call();
         }
+        // 0.4.5: agindua bere lehen eragigaiari itsatsita (`HQ`, `CXA,B`, `Mq0`)
+        let (name, glued) = self.unglue(name, pos);
         let mut params = Vec::new();
-        if self.peek() == Some('(') {
+        if glued.is_none() && self.peek() == Some('(') {
             let p = self.paren()?;
             params.extend(split_params(&p));
         }
         let mut texts = Vec::new();
-        while self.peek() == Some('"') {
+        while glued.is_none() && self.peek() == Some('"') {
             texts.push(self.string()?);
         }
         let mut operands = Vec::new();
         self.skip_spaces();
-        if self.peek() == Some('/') {
+        if let Some(first) = glued {
+            operands = self.more_operands(first?)?;
+        } else if self.peek() == Some('/') {
             self.bump();
+            operands = self.operands()?;
+        } else if matches!(self.peek(), Some('#' | '~')) {
+            // 0.4.5: # edo ~ eragigai baten aurretik `/` gabe (`PUSH#1`, `ADD#4,#1,#2`)
             operands = self.operands()?;
         }
         let mut args = Vec::new();
@@ -883,6 +933,13 @@ impl Parser {
                 args.push(self.operand()?);
             } else if self.starts_with("$>") {
                 self.bump();
+                self.bump();
+                dests = self.operands()?;
+            } else if self.peek() == Some('.')
+                && self.peek_at(1) != Some('.')
+                && !operands.is_empty()
+            {
+                // 0.4.5: `.` `$>`-ren ordez (`M/Q.#C`, `Mq0.c0`)
                 self.bump();
                 dests = self.operands()?;
             } else {
@@ -1119,6 +1176,35 @@ fn push_lines(
 }
 
 // glifo-izen laburrak (QOA-k berak ez dituenak)
+// esportatzailearentzat: `buru` eta `izena` itsatsita (`HQ`) berriz `buru` + `izena` gisa irakurtzen den, `izenak`
+// deklaratuta daudenean (Parser::unglue-ren arau berberak)
+pub(crate) fn glues(head: &str, ident: &str, declared: &[&str]) -> bool {
+    let joined = format!("{}{}", head, ident);
+    if ident.is_empty()
+        || !joined.is_ascii()
+        || crate::isa::lookup(mnemonic(&joined)).is_some()
+        || joined == "PR"
+    {
+        return false;
+    }
+    for k in (1..joined.len()).rev() {
+        let (h, rest) = joined.split_at(k);
+        if crate::isa::lookup(mnemonic(h)).is_none() && h != "PR" {
+            continue;
+        }
+        let plain = {
+            let mut c = rest.chars();
+            c.next().is_some_and(|l| "qQcCoOrR".contains(l))
+                && rest.len() > 1
+                && c.all(|d| d.is_ascii_digit())
+        };
+        if declared.contains(&rest) || plain {
+            return k == head.len();
+        }
+    }
+    false
+}
+
 fn mnemonic(name: &str) -> &str {
     match name {
         "M" => "MEASURE",

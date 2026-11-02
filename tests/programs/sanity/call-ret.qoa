@@ -1,11 +1,11 @@
 ; azpierrutina: R0 bikoiztu
 ; expect-output: 40
-REGSET R0 5
-CALL bikoiztu
-CALL bikoiztu
-CALL bikoiztu
-PRINTF "{}\n" R0
-HALT
+SETR0 5
+C bikoiztu
+C bikoiztu
+C bikoiztu
+PF "{}\n" R0
+END
 bikoiztu:
-ADD R0 R0 R0
-RETSUB
+ADDR0 R0 R0
+RET

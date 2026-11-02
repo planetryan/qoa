@@ -51,10 +51,10 @@ Where it is useful, where other tools are better, and what stands in the way of 
 | Windows 10 / 11 | x64, ARM64 | `qoa.exe run examples\bell.qoa`, or `run.cmd ...` / `.\run.ps1 ...` |
 | Linux (glibc 2.35 or newer) | x86-64, ARM64, RISC-V 64, IBM POWER8 or newer (ppc64le), IBM Z (s390x), LoongArch 64 (glibc 2.36+) | `./qoa run examples/bell.qoa`, or `./run.sh ...` |
 | Any Linux, static (musl), Android (Termux) | x86-64, ARM64, RISC-V 64 | `./qoa run examples/bell.qoa`, or `./run.sh ...` |
+| macOS | Intel, Apple Silicon | `./qoa run examples/bell.qoa`, or `./run.sh ...` |
 
 All builds are 64-bit: QOA computes in 64-bit floating point and needs a 64-bit address space for large
 states.
-| macOS | Intel, Apple Silicon | `./qoa run examples/bell.qoa`, or `./run.sh ...` |
 
 The `run` scripts pick the right binary for the machine they run on. In a source checkout they build QOA
 first. `SHA256SUMS` lists every file's checksum. The binaries are not signed: macOS may refuse to open a
@@ -93,32 +93,37 @@ time       0.5 ms
 ## The language in one page
 
 ```
-; comments start with ; (or //)
-QINIT 3                     ; 3 qubits: q0, q1, q2
-QMODE 2 6                   ; 2 optical modes, each holding 0..5 photons
+; comments start with ; (or //). every line here is in the short form; the long names work too
+QI 3                        ; 3 qubits: q0, q1, q2
+QO 2 6                      ; 2 optical modes, each holding 0..5 photons
 
-H q0                        ; gates take typed operands: q3 is a qubit, o1 a mode, R2 a register, c0 a bit
-CNOT q0 q1
-RZ q2 pi/4                  ; angles are expressions: pi/4, -3*pi/2, sqrt(2)/2
-H q0..q2                    ; a range applies a one-qubit instruction to each qubit
+Hq0                         ; gates take typed operands: q3 is a qubit, o1 a mode, R2 a register, c0 a bit
+CXq0 q1
+RZq2 pi/4                   ; angles are expressions: pi/4, -3*pi/2, sqrt(2)/2
+Hq0..q2                     ; a range applies a one-qubit instruction to each qubit
 
-SINGLEPHOTON o0
-BS o0 o1 pi/4               ; 50:50 beamsplitter
-EMIT q1 o1                  ; qubit excitation -> photon
+SPo0
+BSo0 o1 pi/4                ; 50:50 beamsplitter
+Eq1 o1                      ; qubit excitation -> photon
 
-MEASURE q0 -> c0            ; results go where you route them: a bit (c0) or a register (R0)
-COUNT o0 -> R1
-JUMPIFONE c0 done           ; branch on a measured bit
-X q2
+Mq0.c0                      ; results go where you route them: a bit (c0) or a register (R0)
+No0.R1
+JOc0 done                   ; branch on a measured bit
+Xq2
 done:
-LOOPSTART 3                 ; loops, subroutines (CALL/RETSUB), arithmetic (ADD, MUL, ...)
-  PRINTF "photons in o0: {}\n" R1
-LOOPEND
+LS 3                        ; loops, subroutines (CALL/RETSUB), arithmetic (ADD, MUL, ...)
+  PF "photons in o0: {}\n" R1
+LE
 ```
 
-Registers can be named if you like (`QREG data 2`, `CREG flags 2`, `OREG arm 2`, then `data[1]`, or `data`
-for all of them); `q0`, `c0` and `o0` keep working. Mnemonics are case-insensitive, and the long names from
-QOA 0.3 (`APPLYHADAMARD`, `PHOTONEMIT`, ...) still work as aliases. `qoa isa NAME` explains any instruction; [docs/ISA.md](docs/ISA.md) lists them all.
+Every instruction has a full name and a short one, and from 0.4.5 the short forms are preferred: `Mq0.c0` is
+`MEASURE q0 -> c0`, `CXq0 q1` is `CNOT q0 q1`, `No0.R1` is `COUNT o0 -> R1`, `LS 3` ... `LE` is
+`LOOPSTART 3` ... `LOOPEND`. An instruction may touch its first operand when that is a plain register
+(`Hq0`), and `.` routes a result like `->`. Both forms give the same program, byte for byte; `qoa export --to
+qoa` writes the short one and `--long-names` the long one. Registers can be named if you like (`QREG data 2`,
+`CREG flags 2`, `OREG arm 2`, then `data[1]`, or `data` for all of them); `q0`, `c0` and `o0` keep working.
+Mnemonics are case-insensitive, and the long names from QOA 0.3 (`APPLYHADAMARD`, `PHOTONEMIT`, ...) still
+work as aliases. `qoa isa NAME` explains any instruction; [docs/ISA.md](docs/ISA.md) lists them all.
 Errors point at the exact spot:
 
 ```
@@ -134,12 +139,12 @@ error: CNOT uses qubit 0 twice; the qubits must be different
 The same language can also be written densely, many statements per line, in `.qg` files:
 
 ```
-Q{2}; #C{2}; H/Q[0]; CX/Q[0],Q[1]; M/Q$>#C; PF"bell: {}\n"%#C;
+Q{2}; #C{2}; HQ[0]; CXQ[0],Q[1]; MQ.#C; PF"bell: {}\n"%#C;
 ```
 
 `qoa import file.qg` shows the plain QOA it stands for, `qoa export --to glyph file.qoa` goes the other
-way, and errors point at the glyph. `CC[0x10]%a%b$>#2` calls a classical routine at an address, with its
-arguments on the stack. It is a stable part of QOA since 0.4.4, with a grammar and a stability promise:
+way, and errors point at the glyph. The short forms work here too (`HQ[0]` is `H/Q[0]`, `.` is `$>`).
+`CC[0x10]%a%b$>#2` calls a classical routine at an address, with its arguments on the stack. It is a stable part of QOA since 0.4.4, with a grammar and a stability promise:
 see [docs/glyph.md](docs/glyph.md).
 
 ### Looking inside a program

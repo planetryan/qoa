@@ -235,3 +235,46 @@ fn runtime_messages_name_the_glyph_line() {
     let text = String::from_utf8(out).unwrap();
     assert!(text.contains("state at line 5"), "{}", text);
 }
+
+#[test]
+fn short_forms_expand_like_the_long_ones() {
+    // 0.4.5: izen laburrak, agindua lehen eragigaiari itsatsita, `.` `$>`-ren ordez, eta # / ~ `/` gabe
+    let pairs: &[(&str, &str)] = &[
+        (
+            "Q{2}; #C{2}; HQ[0]; CXQ[0],Q[1]; MQ.#C;",
+            "Q{2}; #C{2}; H/Q[0]; CNOT/Q[0],Q[1]; MEASURE/Q$>#C;",
+        ),
+        ("Q{2}; HQ;", "Q{2}; H/Q;"),
+        (
+            "Q{3}; #C{3}; MQ[0..1].#C[0..1];",
+            "Q{3}; #C{3}; M/Q[0..1]$>#C[0..1];",
+        ),
+        ("QI/2; Mq1.c1;", "QINIT/2; MEASURE/q1$>c1;"),
+        (
+            "SET#1,(5); ADD#2,#1,1; PUSH#2; POP#3;",
+            "REGSET/#1,(5); ADD/#2,#1,1; PUSH/#2; POP/#3;",
+        ),
+        (
+            "~L{1}%4; DL[0],0.5; NL[0].#4;",
+            "~L{1}%4; DISPLACE/L[0],0.5; COUNT/L[0]$>#4;",
+        ),
+        // erregistro baten izena agindu labur batena da (E = EMIT): E{2} eta EE,L
+        ("E{2}; ~L{2}%4; XE; EE,L;", "E{2}; ~L{2}%4; X/E; EMIT/E,L;"),
+        // aurrizki luzeena irabazten du: CX + Q, ez C + XQ
+        ("Q{2}; CXQ[0],Q[1];", "Q{2}; CNOT/Q[0],Q[1];"),
+    ];
+    let ops = |src: &str| {
+        qoa::glyph::assemble(src, "proba.qg")
+            .unwrap_or_else(|d| panic!("{}", qoa::asm::render(&d, src, "proba.qg")))
+            .ops
+    };
+    for (short, long) in pairs {
+        assert_eq!(ops(short), ops(long), "{}", short);
+    }
+    // RSTQ RESET-en ezizena da (eragigairik gabe): ez da itsasten
+    let e = errors("Q{1}; RSTQ;");
+    assert!(!e.is_empty());
+    // ezezaguna lehen bezala
+    let e = errors("Q{1}; HELLO;");
+    assert!(e[0].2.contains("HELLO"), "{:?}", e);
+}

@@ -7,29 +7,29 @@ CONST half newline/20
 CONST letter 65
 RREG acc 2
 RREG i 1 8
-REGSET acc[0] 3
+SET acc[0] 3
 ADD acc[1] acc[0] (4)
-MUL R2 (newline) (1.25)
-SQRT R3 (2)
-STORE (42) (100)
-LOAD R4 (100)
+MULR2 (newline) (1.25)
+SQRTR3 (2)
+ST (42) (100)
+LDR4 (100)
 PUSH (letter)
-POP R5
-ADD R6 (half) (2.5)
-PRINTF "sum={} dist={} sq={} mem={} pushed={} total={}\n" acc[1] R2 R3 R4 R5 R6
+POPR5
+ADDR6 (half) (2.5)
+PF "sum={} dist={} sq={} mem={} pushed={} total={}\n" acc[1] R2 R3 R4 R5 R6
 PRINT "loop="
-REGSET i 0
+SET i 0
 next:
-PRINTF "{}" i
+PF "{}" i
 ADD i i (1)
-IFEQ i (5) done
-CHAROUT (32)
-JMP next
+IEQ i (5) done
+CO (32)
+J next
 done:
-CHAROUT (newline)
-IFGT (newline) (half) yes
-PRINTLN "small"
-JMP end
+CO (newline)
+IGT (newline) (half) yes
+PLN "small"
+J end
 yes:
-PRINTLN "big"
+PLN "big"
 end:

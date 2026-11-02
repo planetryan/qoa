@@ -28,11 +28,12 @@ qoa check examples/bell.qg      # mihiztatu eta jakinarazi, exekutatu gabe
 ## Lehen programa bat
 
 ```
-Q{2}; #C{2}; H/Q[0]; CX/Q[0],Q[1]; M/Q$>#C;
+Q{2}; #C{2}; HQ[0]; CXQ[0],Q[1]; MQ.#C;
 ```
 
-honela irakurtzen da: "bi qubit Q, bi bit C; H Q[0]-n; CNOT Q[0]-tik Q[1]-era; neurtu Q, C-ra", eta
-programa hau bera da:
+honela irakurtzen da: "bi qubit Q, bi bit C; H Q[0]-n; CNOT Q[0]-tik Q[1]-era; neurtu Q, C-ra". 0.4.5-eko
+forma laburretan idatzita dago (ikus [Forma laburrak](#forma-laburrak)); adierazpen berberak osorik
+`H/Q[0]; CNOT/Q[0],Q[1]; MEASURE/Q$>#C;` dira. Biak programa hau bera dira:
 
 ```
 QINIT 2
@@ -131,10 +132,29 @@ erraztasun bat da, eta hemen ez da behar.
 | `` `edozein QOA arrunt` `` | ihesa: atzera-komatxoen arteko testua dagoen bezala erabiltzen da | bera |
 | `END` | gelditu | `HALT` |
 
-QOA arruntak ez dituen izen laburrak: `M` MEASURE-rentzat eta `CX` CNOT-rentzat. Beste agindu guztiek beren
-QOA izena edo ezizena erabiltzen dute (`qoa isa`-k zerrendatzen ditu). Bit-erregistro bat inprimatzeak R31
+Aginduek beren QOA izenak, ezizenak edo izen laburrak erabiltzen dituzte (`qoa isa`-k zerrendatzen ditu; ikus
+[Forma laburrak](#forma-laburrak)). Bit-erregistro bat inprimatzeak R31
 erabiltzen du (eta R30, ... adierazpen bereko balio gehiagorentzat) aldi baterako, beraz glifo-programek
 goiko erregistroak libre utzi behar lituzkete.
+
+### Forma laburrak
+
+0.4.5etik agindu bakoitzak izen labur bat du, `qoa isa`-k lehenik zerrendatzen duena (`M` MEASURE-rentzat,
+`CX` CNOT-entzat, `D` DISPLACE-rentzat, `N` COUNT-entzat, `E` EMIT-entzat, `B` BELL-entzat, `SET`
+REGSET-entzat, ...), eta hiru forma laburrek bereizleak aurrezten dituzte. Glifoak idazteko modu hobetsia
+dira, eta `qoa export --to glyph`-ek haiek idazten ditu (`--long-names`-ek forma osoak):
+
+| laburra | osoa | araua |
+|---|---|---|
+| `HQ[0]`, `HQ`, `CXA,B` | `H/Q[0]`, `H/Q`, `CNOT/A,B` | agindu batek bere lehen eragigaia uki dezake, eragigai hori deklaratutako erregistro bat (`Q`, `A`) edo erregistro arrunt bat (`q0`, `c1`, `o2`, `R3`) denean |
+| `MQ.#C`, `NL[0].#4` | `M/Q$>#C`, `COUNT/L[0]$>#4` | `.`-k emaitza bat bideratzen du, `$>` bezala |
+| `PUSH#1`, `ADD#4,#1,#2` | `PUSH/#1`, `ADD/#4,#1,#2` | ez da `/` behar `#` edo `~`-rekin hasten den eragigai baten aurretik |
+
+Letrak elkarri itsatsita daudenean, agindu-izen luzeenak irabazten du: `CXQ` CX da Q-n, ez C `XQ`-n. Bera
+agindu edo ezizen bat den izen bat agindu hori da: `RSTQ` RSTQ ezizena da (RESET, ezer berrezarri gabe),
+beraz RESET Q-n `RST/Q` idazten da. Parametroek eta testuek beren lekua gordetzen dute (`RZ(pi/4)/Q[0]`,
+`PF"x"%#1`). Forma labur guztiak errore bat ziren 0.4.5 aurretik, beraz ez du programa batek ere esanahia
+aldatzen.
 
 ### Dei klasikoak (CC)
 
@@ -164,7 +184,7 @@ M/Q$>#C; CC[0x10]%#C[0]%#C[1]%#C[2]$>#5; PF"deskodetua: {}\n"%#5; END;
 ## Gramatika
 
 Hutsuneak eta lerro-jauziak edozein bi tokenen artean ager daitezke, izen, zenbaki, testu edo `$>` baten
-barruan izan ezik. Gramatika honetan `{ x }`-k zero `x` edo gehiago esan nahi du, `[ x ]`-k aukerako `x` bat,
+barruan, eta agindu baten eta hark ukitzen duen eragigaiaren artean izan ezik. Gramatika honetan `{ x }`-k zero `x` edo gehiago esan nahi du, `[ x ]`-k aukerako `x` bat,
 eta komatxo arteko testua bere horretan idazten da.
 
 ```
@@ -182,7 +202,8 @@ adierazpena  = adierazpen-erregistroa
              | "`" qoa-arrunta "`" ;                  (* QOA arrunta, bere horretan *)
 adierazpen-erregistroa = [ "#" | "~" ] izena "{" zenbakia "}" [ "[" zenbakia "]" ] [ "%" zenbakia ] ;
 agindua      = izena [ "(" adierazpen-zenb { "," adierazpen-zenb } ")" ] { testua }
-               [ "/" eragigaia { "," eragigaia } ] { "%" balioa } [ "$>" helmuga ] ;
+               [ ( "/" | itsatsia ) eragigaia { "," eragigaia } ] { "%" balioa } [ ( "$>" | "." ) helmuga ] ;
+itsatsia     = (* ezer ez: lehen eragigaiak izena ukitzen du (HQ, Mq0), edo # edo ~-rekin hasten da (PUSH#1) *) ;
 eragigaia    = erregistroa | "(" adierazpen-zenb ")" | zenbakia | hitza ;
 erregistroa  = [ "#" | "~" ] izena [ "{" zenbakia "}" [ "[" zenbakia "]" ] ]
                [ "[" zenbakia [ ".." zenbakia ] "]" ]

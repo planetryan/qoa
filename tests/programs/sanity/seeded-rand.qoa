@@ -1,11 +1,11 @@
 ; SEEDRNG-ren ondoren RAND errepikagarria da
 ; expect-output: berdinak
-SEEDRNG 42
-RAND R0
-SEEDRNG 42
-RAND R1
-IFEQ R0 R1 berdin
-PRINTLN "desberdinak"
-HALT
+SRNG 42
+RNR0
+SRNG 42
+RNR1
+IEQR0 R1 berdin
+PLN "desberdinak"
+END
 berdin:
-PRINTLN "berdinak"
+PLN "berdinak"

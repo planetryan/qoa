@@ -3,11 +3,11 @@
 ; qubita H-ren ondoren neurtuta, moduaren paritatea beti qubitaren berdina da:
 ;   q0 = 0 -> katu bikoitia (fotoi-kopuru bikoitiak), q0 = 1 -> katu bakoitia
 ; expect-only: 0_o0=0 1_o0=1
-QINIT 1
-QMODE 1 24
-DISPLACE o0 2.0
-H q0
-DISPERSIVE q0 o0 pi
-H q0
-MEASURE q0
-PARITY o0               ; 0 bikoitia, 1 bakoitia
+QI 1
+QO 1 24
+Do0 2.0
+Hq0
+DSPq0 o0 pi
+Hq0
+Mq0
+MPo0                    ; 0 bikoitia, 1 bakoitia

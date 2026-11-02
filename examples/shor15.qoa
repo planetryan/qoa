@@ -12,140 +12,140 @@
 ; expect-only: ----0100 ----1100
 ; expect-share: ----0100 0.5 0.1
 
-QINIT 8
-REGSET R10 1
-REGSET R11 2
-REGSET R12 15
-REGSET R13 16
-REGSET R14 7
-REGSET R15 0
-REGSET R7 0                     ; saiakerak
+QI 8
+SETR10 1
+SETR11 2
+SETR12 15
+SETR13 16
+SETR14 7
+SETR15 0
+SETR7 0                         ; saiakerak
 
 saiakera:
-RESETALL
-ADD R7 R7 R10
-H q0..q3
-X q4                            ; lan-erregistroa = 1
+RA
+ADDR7 R7 R10
+Hq0..q3
+Xq4                             ; lan-erregistroa = 1
 
 ; U^1, q0-k kontrolatuta
-CSWAP q0 q4 q5
-CSWAP q0 q5 q6
-CSWAP q0 q6 q7
-CNOT q0 q4
-CNOT q0 q5
-CNOT q0 q6
-CNOT q0 q7
+CSq0 q4 q5
+CSq0 q5 q6
+CSq0 q6 q7
+CXq0 q4
+CXq0 q5
+CXq0 q6
+CXq0 q7
 ; U^2, q1-ek kontrolatuta
-LOOPSTART 2
-  CSWAP q1 q4 q5
-  CSWAP q1 q5 q6
-  CSWAP q1 q6 q7
-  CNOT q1 q4
-  CNOT q1 q5
-  CNOT q1 q6
-  CNOT q1 q7
-LOOPEND
+LS 2
+  CSq1 q4 q5
+  CSq1 q5 q6
+  CSq1 q6 q7
+  CXq1 q4
+  CXq1 q5
+  CXq1 q6
+  CXq1 q7
+LE
 ; U^4, q2-k kontrolatuta
-LOOPSTART 4
-  CSWAP q2 q4 q5
-  CSWAP q2 q5 q6
-  CSWAP q2 q6 q7
-  CNOT q2 q4
-  CNOT q2 q5
-  CNOT q2 q6
-  CNOT q2 q7
-LOOPEND
+LS 4
+  CSq2 q4 q5
+  CSq2 q5 q6
+  CSq2 q6 q7
+  CXq2 q4
+  CXq2 q5
+  CXq2 q6
+  CXq2 q7
+LE
 ; U^8, q3-k kontrolatuta
-LOOPSTART 8
-  CSWAP q3 q4 q5
-  CSWAP q3 q5 q6
-  CSWAP q3 q6 q7
-  CNOT q3 q4
-  CNOT q3 q5
-  CNOT q3 q6
-  CNOT q3 q7
-LOOPEND
+LS 8
+  CSq3 q4 q5
+  CSq3 q5 q6
+  CSq3 q6 q7
+  CXq3 q4
+  CXq3 q5
+  CXq3 q6
+  CXq3 q7
+LE
 
 ; qft alderantzizkoa q0..q3 gainean
-SWAP q0 q3
-SWAP q1 q2
-H q0
-CPHASE q0 q1 -pi/2
-H q1
-CPHASE q0 q2 -pi/4
-CPHASE q1 q2 -pi/2
-H q2
-CPHASE q0 q3 -pi/8
-CPHASE q1 q3 -pi/4
-CPHASE q2 q3 -pi/2
-H q3
-MEASURE q0..q3
-PACKBITS R0 c0..c3              ; m
-IFEQ R0 R15 saiakera            ; m = 0: ez du informaziorik, berriz
+SWAPq0 q3
+SWAPq1 q2
+Hq0
+CPq0 q1 -pi/2
+Hq1
+CPq0 q2 -pi/4
+CPq1 q2 -pi/2
+Hq2
+CPq0 q3 -pi/8
+CPq1 q3 -pi/4
+CPq2 q3 -pi/2
+Hq3
+Mq0..q3
+PBR0 c0..c3                     ; m
+IEQR0 R15 saiakera              ; m = 0: ez du informaziorik, berriz
 
 ; r: (m * r) mod 16 = 0 egiten duen r txikiena
-REGSET R1 0
+SETR1 0
 bilatu_r:
-ADD R1 R1 R10
-MUL R20 R0 R1
-REGCOPY R21 R13
-CALL modulua
-IFNE R20 R15 bilatu_r
+ADDR1 R1 R10
+MULR20 R0 R1
+RCR21 R13
+C modulua
+INER20 R15 bilatu_r
 
 ; r bikoitia izan behar du
-REGCOPY R20 R1
-REGCOPY R21 R11
-CALL modulua
-IFNE R20 R15 saiakera
+RCR20 R1
+RCR21 R11
+C modulua
+INER20 R15 saiakera
 
 ; x = 7^(r/2) mod 15
-DIV R2 R1 R11
-REGSET R3 1
-LOOPSTART R2
-  MUL R20 R3 R14
-  REGCOPY R21 R12
-  CALL modulua
-  REGCOPY R3 R20
-LOOPEND
+DIVR2 R1 R11
+SETR3 1
+LS R2
+  MULR20 R3 R14
+  RCR21 R12
+  C modulua
+  RCR3 R20
+LE
 
 ; egiaztatu benetako periodoa dela: x^2 = 7^r mod 15 = 1
-MUL R20 R3 R3
-REGCOPY R21 R12
-CALL modulua
-IFNE R20 R10 saiakera
+MULR20 R3 R3
+RCR21 R12
+C modulua
+INER20 R10 saiakera
 ; x = 1 edo x = 14 (-1) badira, faktoreak hutsalak dira
-IFEQ R3 R10 saiakera
-REGSET R4 14
-IFEQ R3 R4 saiakera
+IEQR3 R10 saiakera
+SETR4 14
+IEQR3 R4 saiakera
 
 ; faktoreak: zkh(x - 1, 15) eta zkh(x + 1, 15)
-SUB R22 R3 R10
-REGCOPY R23 R12
-CALL zkh
-REGCOPY R5 R22
-ADD R22 R3 R10
-REGCOPY R23 R12
-CALL zkh
-REGCOPY R6 R22
-PRINTF "15 = {} x {}  (m = {}, r = {}, {} saiakera)\n" R5 R6 R0 R1 R7
-HALT
+SUBR22 R3 R10
+RCR23 R12
+C zkh
+RCR5 R22
+ADDR22 R3 R10
+RCR23 R12
+C zkh
+RCR6 R22
+PF "15 = {} x {}  (m = {}, r = {}, {} saiakera)\n" R5 R6 R0 R1 R7
+END
 
 ; R20 = R20 mod R21, kenketa errepikatuz (biak positiboak)
 modulua:
-IFLT R20 R21 modulua_amaitu
-SUB R20 R20 R21
-JUMP modulua
+ILTR20 R21 modulua_amaitu
+SUBR20 R20 R21
+J modulua
 modulua_amaitu:
-RETSUB
+RET
 
 ; R22 = zkh(R22, R23), euklidesen algoritmoa kenketekin (biak positiboak)
 zkh:
-IFEQ R22 R23 zkh_amaitu
-IFGT R22 R23 zkh_a
-SUB R23 R23 R22
-JUMP zkh
+IEQR22 R23 zkh_amaitu
+IGTR22 R23 zkh_a
+SUBR23 R23 R22
+J zkh
 zkh_a:
-SUB R22 R22 R23
-JUMP zkh
+SUBR22 R22 R23
+J zkh
 zkh_amaitu:
-RETSUB
+RET

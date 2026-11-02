@@ -53,10 +53,10 @@ Artxibo bat dago sistema bakoitzeko, eta `qoa-<bertsioa>-all.zip`-ek sistema guz
 | Windows 10 / 11 | x64, ARM64 | `qoa.exe run examples\bell.qoa`, edo `run.cmd ...` / `.\run.ps1 ...` |
 | Linux (glibc 2.35 edo berriagoa) | x86-64, ARM64, RISC-V 64, IBM POWER8 edo berriagoa (ppc64le), IBM Z (s390x), LoongArch 64 (glibc 2.36+) | `./qoa run examples/bell.qoa`, edo `./run.sh ...` |
 | Edozein linux, estatikoa (musl), Android (Termux) | x86-64, ARM64, RISC-V 64 | `./qoa run examples/bell.qoa`, edo `./run.sh ...` |
+| macOS | Intel, Apple Silicon | `./qoa run examples/bell.qoa`, edo `./run.sh ...` |
 
 Bitar guztiak 64 bitekoak dira: QOA-k 64 biteko koma higikorrean kalkulatzen du, eta egoera handiek 64 biteko
 helbide-espazioa behar dute.
-| macOS | Intel, Apple Silicon | `./qoa run examples/bell.qoa`, edo `./run.sh ...` |
 
 `run` script-ek exekutatzen diren makinarako bitar egokia aukeratzen dute. Iturburu-kopia batean QOA
 konpilatzen dute lehenik. `SHA256SUMS`-ek fitxategi guztien laburpenak ditu. Bitarrak ez daude sinatuta:
@@ -96,30 +96,34 @@ denbora    0.5 ms
 ## Lengoaia orrialde batean
 
 ```
-; iruzkinak ;-rekin hasten dira (edo //-rekin)
-QINIT 3                     ; 3 qubit: q0, q1, q2
-QMODE 2 6                   ; 2 modu optiko, bakoitzak 0..5 fotoi
+; iruzkinak ;-rekin hasten dira (edo //-rekin). hemengo lerro guztiak forma laburrean daude; izen luzeek ere balio dute
+QI 3                        ; 3 qubit: q0, q1, q2
+QO 2 6                      ; 2 modu optiko, bakoitzak 0..5 fotoi
 
-H q0                        ; eragigaiek mota dute: q3 qubita, o1 modua, R2 erregistroa, c0 bita
-CNOT q0 q1
-RZ q2 pi/4                  ; angeluak adierazpenak dira: pi/4, -3*pi/2, sqrt(2)/2
-H q0..q2                    ; tarte batek qubit bakarreko agindua qubit bakoitzari aplikatzen dio
+Hq0                         ; eragigaiek mota dute: q3 qubita, o1 modua, R2 erregistroa, c0 bita
+CXq0 q1
+RZq2 pi/4                   ; angeluak adierazpenak dira: pi/4, -3*pi/2, sqrt(2)/2
+Hq0..q2                     ; tarte batek qubit bakarreko agindua qubit bakoitzari aplikatzen dio
 
-SINGLEPHOTON o0
-BS o0 o1 pi/4               ; 50:50 izpi-zatitzailea
-EMIT q1 o1                  ; qubitaren kitzikapena -> fotoia
+SPo0
+BSo0 o1 pi/4                ; 50:50 izpi-zatitzailea
+Eq1 o1                      ; qubitaren kitzikapena -> fotoia
 
-MEASURE q0 -> c0            ; emaitzak bideratzen dituzun lekura doaz: bit batera (c0) edo erregistro batera (R0)
-COUNT o0 -> R1
-JUMPIFONE c0 amaiera        ; neurtutako bit baten araberako jauzia
-X q2
+Mq0.c0                      ; emaitzak bideratzen dituzun lekura doaz: bit batera (c0) edo erregistro batera (R0)
+No0.R1
+JOc0 amaiera                ; neurtutako bit baten araberako jauzia
+Xq2
 amaiera:
-LOOPSTART 3                 ; begiztak, azpierrutinak (CALL/RETSUB), aritmetika (ADD, MUL, ...)
-  PRINTF "fotoiak o0-n: {}\n" R1
-LOOPEND
+LS 3                        ; begiztak, azpierrutinak (CALL/RETSUB), aritmetika (ADD, MUL, ...)
+  PF "fotoiak o0-n: {}\n" R1
+LE
 ```
 
-Erregistroei izena eman dakieke nahi izanez gero (`QREG data 2`, `CREG flags 2`, `OREG arm 2`, gero
+Agindu bakoitzak izen oso bat eta labur bat ditu, eta 0.4.5etik forma laburrak dira hobetsiak: `Mq0.c0`
+`MEASURE q0 -> c0` da, `CXq0 q1` `CNOT q0 q1`, `No0.R1` `COUNT o0 -> R1`, `LS 3` ... `LE` `LOOPSTART 3` ...
+`LOOPEND`. Agindu batek bere lehen eragigaia uki dezake erregistro arrunt bat denean (`Hq0`), eta `.`-k emaitza
+bat bideratzen du `->` bezala. Bi formek programa bera ematen dute, byte bat aldatu gabe; `qoa export --to qoa`-k
+laburra idazten du eta `--long-names`-ek luzea. Erregistroei izena eman dakieke nahi izanez gero (`QREG data 2`, `CREG flags 2`, `OREG arm 2`, gero
 `data[1]`, edo `data` guztientzat); `q0`, `c0` eta `o0` erabiltzen jarraitzen dute. Mnemonikoetan berdin dio
 maiuskula edo minuskula, eta QOA 0.3-ko izen luzeek (`APPLYHADAMARD`, `PHOTONEMIT`...) ezizen gisa
 funtzionatzen dute oraindik. `qoa isa IZENA`-k edozein agindu azaltzen du;
@@ -138,11 +142,12 @@ errorea: CNOT-k 0. qubita bi aldiz erabiltzen du; qubitek desberdinak izan behar
 Lengoaia bera modu trinkoan ere idatz daiteke, lerro bakoitzean adierazpen askorekin, `.qg` fitxategietan:
 
 ```
-Q{2}; #C{2}; H/Q[0]; CX/Q[0],Q[1]; M/Q$>#C; PF"bell: {}\n"%#C;
+Q{2}; #C{2}; HQ[0]; CXQ[0],Q[1]; MQ.#C; PF"bell: {}\n"%#C;
 ```
 
 `qoa import fitxategia.qg`-k ordezkatzen duen QOA arrunta erakusten du, `qoa export --to glyph
-fitxategia.qoa`-k alderantziz egiten du, eta erroreek glifoa seinalatzen dute. `CC[0x10]%a%b$>#2`-k helbide
+fitxategia.qoa`-k alderantziz egiten du, eta erroreek glifoa seinalatzen dute. Forma laburrek hemen ere balio dute
+(`HQ[0]` `H/Q[0]` da, `.` `$>` da). `CC[0x10]%a%b$>#2`-k helbide
 bateko errutina klasiko bat deitzen du, argumentuak pilan dituela. QOA-ren parte egonkorra da 0.4.4-tik,
 gramatika eta egonkortasun-agindu batekin: ikus [docs/glyph.eu.md](docs/glyph.eu.md).
 

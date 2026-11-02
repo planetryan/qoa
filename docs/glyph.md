@@ -27,11 +27,12 @@ qoa check examples/bell.qg      # assemble and report, without running
 ## A first program
 
 ```
-Q{2}; #C{2}; H/Q[0]; CX/Q[0],Q[1]; M/Q$>#C;
+Q{2}; #C{2}; HQ[0]; CXQ[0],Q[1]; MQ.#C;
 ```
 
-reads "two qubits Q, two bits C; H on Q[0]; CNOT from Q[0] to Q[1]; measure Q into C", and is the same
-program as
+reads "two qubits Q, two bits C; H on Q[0]; CNOT from Q[0] to Q[1]; measure Q into C". It is written in the
+short forms of 0.4.5 (see [Short forms](#short-forms)); the same statements in full are
+`H/Q[0]; CNOT/Q[0],Q[1]; MEASURE/Q$>#C;`. Both are the same program as
 
 ```
 QINIT 2
@@ -128,9 +129,26 @@ not needed here.
 | `` `any plain QOA` `` | escape: the text between backticks is used as it is | itself |
 | `END` | stop | `HALT` |
 
-Short names that plain QOA does not have: `M` for MEASURE and `CX` for CNOT. Every other instruction uses
-its QOA name or alias (`qoa isa` lists them). Printing a bit register uses R31 (then R30, ... for more
+Instructions use their QOA names, aliases or short names (`qoa isa` lists them; see [Short forms](#short-forms)). Printing a bit register uses R31 (then R30, ... for more
 values in the same statement) as scratch, so glyph programs should leave the top registers free.
+
+### Short forms
+
+From 0.4.5 every instruction has a short name, the one `qoa isa` lists first (`M` for MEASURE, `CX` for
+CNOT, `D` for DISPLACE, `N` for COUNT, `E` for EMIT, `B` for BELL, `SET` for REGSET, ...), and three short
+forms save the separators. They are the preferred way to write glyphs, and `qoa export --to glyph` writes
+them (`--long-names` writes the full forms):
+
+| short | full | rule |
+|---|---|---|
+| `HQ[0]`, `HQ`, `CXA,B` | `H/Q[0]`, `H/Q`, `CNOT/A,B` | an instruction may touch its first operand when that operand is a declared register (`Q`, `A`) or a plain register (`q0`, `c1`, `o2`, `R3`) |
+| `MQ.#C`, `NL[0].#4` | `M/Q$>#C`, `COUNT/L[0]$>#4` | `.` routes a result, like `$>` |
+| `PUSH#1`, `ADD#4,#1,#2` | `PUSH/#1`, `ADD/#4,#1,#2` | no `/` is needed before an operand that starts with `#` or `~` |
+
+When the letters run together, the longest instruction name wins: `CXQ` is CX on Q, not C on `XQ`. A name
+that is itself an instruction or alias is that instruction: `RSTQ` is the alias RSTQ (RESET with nothing to
+reset), so RESET on Q is written `RST/Q`. Parameters and texts keep their place (`RZ(pi/4)/Q[0]`,
+`PF"x"%#1`). Every short form was an error before 0.4.5, so no program changes meaning.
 
 ### Classical calls (CC)
 
@@ -157,7 +175,8 @@ M/Q$>#C; CC[0x10]%#C[0]%#C[1]%#C[2]$>#5; PF"decoded: {}\n"%#5; END;
 
 ## Grammar
 
-Spaces and line breaks may appear between any two tokens, except inside a name, number, string or `$>`. In
+Spaces and line breaks may appear between any two tokens, except inside a name, number, string or `$>`, and
+between an instruction and an operand it touches. In
 this grammar `{ x }` means zero or more `x`, `[ x ]` means an optional `x`, and quoted text is written as is.
 
 ```
@@ -175,7 +194,8 @@ statement    = declaration
              | "`" plain-qoa "`" ;                (* plain QOA, used as it is *)
 declaration  = [ "#" | "~" ] name "{" number "}" [ "[" number "]" ] [ "%" number ] ;
 instruction  = name [ "(" expression { "," expression } ")" ] { string }
-               [ "/" operand { "," operand } ] { "%" value } [ "$>" destination ] ;
+               [ ( "/" | glued ) operand { "," operand } ] { "%" value } [ ( "$>" | "." ) destination ] ;
+glued        = (* nothing: the first operand touches the name (HQ, Mq0), or starts with # or ~ (PUSH#1) *) ;
 operand      = register | "(" expression ")" | number | word ;
 register     = [ "#" | "~" ] name [ "{" number "}" [ "[" number "]" ] ] [ "[" number [ ".." number ] "]" ]
              | "#" digits ;                       (* #3 is classical register R3 *)

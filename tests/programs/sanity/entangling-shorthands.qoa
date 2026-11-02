@@ -1,7 +1,7 @@
 ; BELL, GHZ eta CLUSTER: BELLCHECK-ek (simulagailuan bakarrik) fideltasuna inprimatzen du
 ; expect-output: Bell fidelity of q0 q1 = 1.000000
-QINIT 6
-BELL q0 q1
-BELLCHECK q0 q1
-GHZ q2 q3 q4
-CLUSTER q4 q5
+QI 6
+Bq0 q1
+BCq0 q1
+GHZq2 q3 q4
+CLq4 q5

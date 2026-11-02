@@ -117,11 +117,11 @@ fn glyph_export_collapses_runs_into_ranges() {
     )
     .unwrap();
     let text = disasm::to_glyph(&p, &GlyphOptions::default()).unwrap();
-    assert!(text.contains("H/Q[0..3];"), "{}", text);
-    assert!(text.contains("M/Q[0..1]$>#C[0..1];"), "{}", text);
-    assert!(text.contains("CX/Q[0..1],Q[2..3];"), "{}", text);
+    assert!(text.contains("HQ[0..3];"), "{}", text);
+    assert!(text.contains("MQ[0..1].#C[0..1];"), "{}", text);
+    assert!(text.contains("CXQ[0..1],Q[2..3];"), "{}", text);
     // bi H berdin ez dira tarte bat
-    assert!(text.contains("H/Q[0]; H/Q[0];"), "{}", text);
+    assert!(text.contains("HQ[0]; HQ[0];"), "{}", text);
     let hex = GlyphOptions {
         hex: true,
         ..GlyphOptions::default()
@@ -129,8 +129,20 @@ fn glyph_export_collapses_runs_into_ranges() {
     assert!(
         disasm::to_glyph(&p, &hex)
             .unwrap()
-            .contains("H/Q[0x0..0x3];")
+            .contains("HQ[0x0..0x3];")
     );
+    // izen eta forma luzeak
+    let long = GlyphOptions {
+        long_names: true,
+        ..GlyphOptions::default()
+    };
+    let text = disasm::to_glyph(&p, &long).unwrap();
+    assert!(text.contains("MEASURE/Q[0..1]$>#C[0..1];"), "{}", text);
+    assert!(text.contains("CNOT/Q[0..1],Q[2..3];"), "{}", text);
+    // itsatsi ezin denean (RST + Q = RSTQ, beste ezizen bat), `/` geratzen da
+    let r = qoa::asm::assemble("QINIT 1\nRESET q0\nMEASURE q0\n", "r.qoa").unwrap();
+    let text = disasm::to_glyph(&r, &GlyphOptions::default()).unwrap();
+    assert!(text.contains("RST/Q[0];"), "{}", text);
     let bad = GlyphOptions {
         qubits: "X".into(),
         ..GlyphOptions::default()

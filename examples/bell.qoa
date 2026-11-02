@@ -2,7 +2,7 @@
 ; bi qubitak beti berdin neurtzen dira: 00 edo 11, inoiz ez 01 edo 10
 ; expect-only: 00 11
 ; expect-share: 00 0.5 0.05
-QINIT 2
-H q0
-CNOT q0 q1
-MEASURE q0..q1          ; q0 -> c0, q1 -> c1
+QI 2
+Hq0
+CXq0 q1
+Mq0..q1                 ; q0 -> c0, q1 -> c1

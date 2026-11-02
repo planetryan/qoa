@@ -383,13 +383,31 @@ fn plain_tok(t: &Tok) -> String {
 }
 
 fn plain(ins: &Instr) -> String {
-    let mut s = String::from(ins.name);
-    for t in &ins.toks {
-        s.push(' ');
-        s.push_str(&plain_tok(t));
+    plain_in(ins, false)
+}
+
+// agindu bat QOA arruntean: luzea (`MEASURE q0 -> c0`) edo 0.4.5-eko forma laburrenean (`Mq0.c0`): izen laburra,
+// lehen erregistroa itsatsita berriz berdin irakurtzen bada, eta `.` `->`-ren ordez
+fn plain_in(ins: &Instr, short: bool) -> String {
+    let name = match crate::isa::lookup(ins.name) {
+        Some(spec) if short => crate::isa::short(spec),
+        _ => ins.name,
+    };
+    let mut s = String::from(name);
+    for (i, t) in ins.toks.iter().enumerate() {
+        let text = plain_tok(t);
+        let glue = short && i == 0 && is_register(t) && {
+            let joined = format!("{}{}", name, text);
+            crate::isa::lookup(&joined).is_none()
+                && crate::asm::glued(&joined) == Some((name, text.as_str()))
+        };
+        if !glue {
+            s.push(' ');
+        }
+        s.push_str(&text);
     }
     if let Some(d) = &ins.dest {
-        s.push_str(" -> ");
+        s.push_str(if short { "." } else { " -> " });
         s.push_str(&plain_tok(d));
     }
     s
@@ -401,12 +419,21 @@ fn targets(p: &Program) -> BTreeSet<usize> {
 }
 
 fn header(p: &Program) -> Vec<String> {
+    header_in(p, false)
+}
+
+fn header_in(p: &Program, short: bool) -> Vec<String> {
     let mut out = Vec::new();
+    let (qi, qm) = if short {
+        ("QI", "QO")
+    } else {
+        ("QINIT", "QMODE")
+    };
     if p.n_qubits > 0 {
-        out.push(format!("QINIT {}", p.n_qubits));
+        out.push(format!("{} {}", qi, p.n_qubits));
     }
     if p.n_modes > 0 {
-        out.push(format!("QMODE {} {}", p.n_modes, p.cutoff));
+        out.push(format!("{} {} {}", qm, p.n_modes, p.cutoff));
     }
     out
 }
@@ -528,15 +555,24 @@ pub fn check_loaded(p: &Program) -> Result<(), String> {
 }
 
 // QOA arrunt kanonikoa
+// QOA arruntean, 0.4.5-eko forma laburretan (`Mq0.c0`); `to_qoa_long`-ek izen eta forma luzeak idazten ditu
 pub fn to_qoa(p: &Program) -> Result<String, String> {
+    to_qoa_in(p, true)
+}
+
+pub fn to_qoa_long(p: &Program) -> Result<String, String> {
+    to_qoa_in(p, false)
+}
+
+fn to_qoa_in(p: &Program, short: bool) -> Result<String, String> {
     let ins = instrs(p)?;
     let labels = targets(p);
-    let mut out = header(p);
+    let mut out = header_in(p, short);
     for (a, i) in ins.iter().enumerate() {
         if labels.contains(&a) {
             out.push(format!("{}:", label(a)));
         }
-        out.push(plain(i));
+        out.push(plain_in(i, short));
     }
     if labels.contains(&ins.len()) {
         out.push(format!("{}:", label(ins.len())));
@@ -548,6 +584,14 @@ pub fn to_qoa(p: &Program) -> Result<String, String> {
 
 // zerrenda: QOA kanonikoa, eragiketa bakoitzaren helbidea eta iturburu-lerroa iruzkinetan
 pub fn listing(p: &Program) -> Result<String, String> {
+    listing_in(p, true)
+}
+
+pub fn listing_long(p: &Program) -> Result<String, String> {
+    listing_in(p, false)
+}
+
+fn listing_in(p: &Program, short: bool) -> Result<String, String> {
     let ins = instrs(p)?;
     let labels = targets(p);
     let mut out = vec![
@@ -566,10 +610,10 @@ pub fn listing(p: &Program) -> Result<String, String> {
             "; lerro bakoitza: agindua ; helbidea  iturburu-lerroa"
         ),
     ];
-    out.extend(header(p));
+    out.extend(header_in(p, short));
     let width = ins
         .iter()
-        .map(|i| plain(i).len())
+        .map(|i| plain_in(i, short).len())
         .max()
         .unwrap_or(0)
         .min(56);
@@ -580,7 +624,7 @@ pub fn listing(p: &Program) -> Result<String, String> {
         let line = p.lines.get(a).copied().unwrap_or(0);
         out.push(format!(
             "{:<width$}  ; 0x{:04x}  {}",
-            plain(i),
+            plain_in(i, short),
             a,
             if line == 0 {
                 ts!("generated", "sortua").to_string()
@@ -783,10 +827,10 @@ fn is_register(t: &Tok) -> bool {
 }
 
 fn glyph_stmt(ins: &Instr, o: &GlyphOptions) -> Stmt {
-    let name = match ins.name {
-        "MEASURE" if !o.long_names => "M",
-        "CNOT" if !o.long_names => "CX",
-        n => n,
+    // 0.4.5: izen laburrak (M, CX, D, N, ...), --long-names ez bada
+    let name = match crate::isa::lookup(ins.name) {
+        Some(spec) if !o.long_names => crate::isa::short(spec),
+        _ => ins.name,
     }
     .to_string();
     let label_tok = |t: &Tok| match t {
@@ -1032,8 +1076,25 @@ pub fn to_glyph(p: &Program, o: &GlyphOptions) -> Result<String, String> {
                     s.push_str(t);
                 }
                 if n_ops > 0 {
-                    s.push('/');
                     let cols: Vec<String> = (0..n_ops).map(|c| glyph_list(&column(c), o)).collect();
+                    // 0.4.5: lehen eragigaia itsatsita (`HQ[0]`) edo # / ~ baten aurretik `/` gabe (`PUSH#1`),
+                    // berriz berdin irakurtzen denean
+                    let ident: String = cols[0]
+                        .chars()
+                        .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                        .collect();
+                    let bare = !o.long_names
+                        && params.is_empty()
+                        && texts.is_empty()
+                        && (cols[0].starts_with(['#', '~'])
+                            || crate::glyph::glues(
+                                name,
+                                &ident,
+                                &[o.qubits.as_str(), o.bits.as_str(), o.modes.as_str()],
+                            ));
+                    if !bare {
+                        s.push('/');
+                    }
                     s.push_str(&cols.join(","));
                 }
                 for a in args {
@@ -1041,7 +1102,7 @@ pub fn to_glyph(p: &Program, o: &GlyphOptions) -> Result<String, String> {
                     s.push_str(&glyph_tok(a, o));
                 }
                 if dest.is_some() {
-                    s.push_str("$>");
+                    s.push_str(if o.long_names { "$>" } else { "." });
                     s.push_str(&glyph_list(&column(n_ops), o));
                 }
                 s.push(';');

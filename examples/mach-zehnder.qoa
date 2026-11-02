@@ -4,10 +4,10 @@
 ; fasea = pi/3 denean, o0 25% eta o1 75%.
 ; expect-only: o0=0_o1=1 o0=1_o1=0
 ; expect-share: o0=0_o1=1 0.75 0.03
-QMODE 2 3
-SINGLEPHOTON o0
-BS o0 o1 pi/4
-MODEPHASE o1 pi/3
-BS o0 o1 pi/4
-DETECT o0
-DETECT o1
+QO 2 3
+SPo0
+BSo0 o1 pi/4
+PHo1 pi/3
+BSo0 o1 pi/4
+PDo0
+PDo1

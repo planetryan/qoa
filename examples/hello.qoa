@@ -1,4 +1,4 @@
 ; kaixo mundua: irteera klasikoa bakarrik, egoera kuantikorik gabe
 ; expect-output: Kaixo, mundua!
-PRINTLN "Kaixo, mundua!"
-HALT
+PLN "Kaixo, mundua!"
+END

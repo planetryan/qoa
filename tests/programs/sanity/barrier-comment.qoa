@@ -1,7 +1,7 @@
 ; BARRIER eta COMMENT ez dute ezer egiten
 ; expect-prob: |1> 1
-QINIT 1
-BARRIER
+QI 1
+BR
 COMMENT hau iruzkina da eta ez da exekutatzen
-X q0
-BARRIER q0
+Xq0
+BRq0

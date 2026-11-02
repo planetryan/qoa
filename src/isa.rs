@@ -1832,6 +1832,24 @@ pub fn markdown_reference() -> String {
         "Mnemonics are case-insensitive. Every alias does exactly what its main name does.\n\n",
         "Mnemonikoetan berdin dio maiuskula edo minuskula. Ezizen bakoitzak bere izen nagusiak egiten duen gauza bera egiten du.\n\n",
     ));
+    out.push_str(pick(
+        "## Short forms\n\nFrom QOA 0.4.5 every instruction has a short name (the *Short* column), the preferred way to write it: \
+         `M q0` is `MEASURE q0`. Three more short forms, in plain QOA and in the glyph syntax, give the same program with fewer characters:\n\n\
+         | Short | Long | Rule |\n|---|---|---|\n\
+         | `Mq0` | `MEASURE q0` | an instruction may touch its first operand when that operand is a plain register or range of its kind (`q3`, `o1`, `c0`, `R2`, `q0..q3`) |\n\
+         | `M q0.c0` | `MEASURE q0 -> c0` | `.` routes a result, like `->` |\n\
+         | `Mq0.c0` | `MEASURE q0 -> c0` | both together |\n\n\
+         Short names that were not aliases before 0.4.5 (`D`, `K`, `N`, `E`, `C`, `J`, ...) never reserve a name: \
+         a register or constant called `L` or `C` keeps working. The long forms keep working everywhere.\n\n",
+        "## Forma laburrak\n\nQOA 0.4.5etik agindu bakoitzak izen labur bat du (*Laburra* zutabea), idazteko modu hobetsia: \
+         `M q0` `MEASURE q0` da. Beste hiru forma laburrek, QOA arruntean eta glifo-sintaxian, programa bera ematen dute karaktere gutxiagorekin:\n\n\
+         | Laburra | Luzea | Araua |\n|---|---|---|\n\
+         | `Mq0` | `MEASURE q0` | agindu batek bere lehen eragigaia uki dezake, eragigai hori bere motako erregistro arrunt edo tarte bat denean (`q3`, `o1`, `c0`, `R2`, `q0..q3`) |\n\
+         | `M q0.c0` | `MEASURE q0 -> c0` | `.`-k emaitza bat bideratzen du, `->` bezala |\n\
+         | `Mq0.c0` | `MEASURE q0 -> c0` | biak batera |\n\n\
+         0.4.5 aurretik ezizen ez ziren izen laburrek (`D`, `K`, `N`, `E`, `C`, `J`, ...) ez dute inoiz izenik erreserbatzen: \
+         `L` edo `C` izeneko erregistro edo konstante batek funtzionatzen jarraitzen du. Forma luzeek leku guztietan funtzionatzen jarraitzen dute.\n\n",
+    ));
     out.push_str(pick("## Operands\n\n", "## Eragigaiak\n\n"));
     out.push_str(pick(
         "| Written as | Meaning |\n|---|---|\n",
@@ -1874,8 +1892,8 @@ pub fn markdown_reference() -> String {
         }
         out.push_str(&format!("## {}\n\n", group.title()));
         out.push_str(pick(
-            "| Instruction | Does | Aliases |\n|---|---|---|\n",
-            "| Agindua | Zer egiten du | Ezizenak |\n|---|---|---|\n",
+            "| Instruction | Short | Does | Aliases |\n|---|---|---|---|\n",
+            "| Agindua | Laburra | Zer egiten du | Ezizenak |\n|---|---|---|---|\n",
         ));
         for s in specs {
             let mut does = s.summary().to_string();
@@ -1893,8 +1911,9 @@ pub fn markdown_reference() -> String {
                 ));
             }
             out.push_str(&format!(
-                "| `{}` | {} | {} |\n",
+                "| `{}` | `{}` | {} | {} |\n",
                 s.usage(),
+                short(s),
                 does.replace('|', "\\|"),
                 s.aliases.join(", ")
             ));

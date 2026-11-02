@@ -6,10 +6,10 @@ QREG data 2
 QREG anc 1
 CREG out 3
 OREG arm 2
-QMODE 2 3
+QO 2 3
 H data[0]
-CNOT data[0] data[1]
-CNOT data[1] anc
-SINGLEPHOTON arm[1]
-MEASURE data -> out[0..1]
-MEASURE q2 -> out[2]
+CX data[0] data[1]
+CX data[1] anc
+SP arm[1]
+M data.out[0..1]
+Mq2.out[2]

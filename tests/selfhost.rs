@@ -43,7 +43,7 @@ fn isa_block() -> String {
                 f
             );
         }
-        out.push_str(&format!("STORETEXT R1 \"{}\"\n", fields.join("|")));
+        out.push_str(&format!("STXR1 \"{}\"\n", fields.join("|")));
     }
     out
 }
@@ -69,7 +69,7 @@ fn unicode_block(f: fn(char) -> bool) -> String {
             .iter()
             .map(|(a, b)| format!("{:x}-{:x}", a, b))
             .collect();
-        out.push_str(&format!("STORETEXT R1 \"{}\"\n", items.join(" ")));
+        out.push_str(&format!("STXR1 \"{}\"\n", items.join(" ")));
     }
     out
 }

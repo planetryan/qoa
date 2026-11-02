@@ -2,13 +2,13 @@
 ; 10 qubit eta 2 modu (muga 3): 1024 * 9 anplitude
 ; expect-prob: |1000000000; 0 0> 0.5
 ; expect-prob: |1001111110; 0 0> 0.5
-QINIT 10
-QMODE 2 3
-X q0
-EMIT q0 o0
-EMIT q5 o0
-EMIT q5 o1
-EMIT q9 o1
-GHZ q1..q4
-CNOT q4 q5
-CNOT q5 q6
+QI 10
+QO 2 3
+Xq0
+Eq0 o0
+Eq5 o0
+Eq5 o1
+Eq9 o1
+GHZq1..q4
+CXq4 q5
+CXq5 q6

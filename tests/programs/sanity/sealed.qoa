@@ -2,9 +2,9 @@
 ; biek egiaztatzen dute. testuak ascii ez diren karaktereak ditu, laburpena byteen gainean dela frogatzeko
 ; expect-output: π ≈ 3.14 eta ñ
 ; expect-output: 1
-QINIT 1
-PRINTLN "π ≈ 3.14 eta ñ"
-X q0
-MEASURE q0 -> R1
-PRINTF "{}\n" R1
-SEAL sha256:e7ad197c4ce174a25dcafdba03726056b6620cd76f3f0cb1a362058d8491e88a
+QI 1
+PLN "π ≈ 3.14 eta ñ"
+Xq0
+Mq0.R1
+PF "{}\n" R1
+SEAL sha256:72fcb6589927058455fc7bfebf14348c41558fa95ac1006b4d556eac344a60cb

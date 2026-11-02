@@ -741,10 +741,21 @@ fn export_writes_glyph_listing_json_and_dot() {
     let b = qoa("en", &["export", "--to-glyph", "examples/teleport.qoa"]);
     assert!(a.status.success(), "{}", stderr(&a));
     assert_eq!(stdout(&a), stdout(&b));
+    assert!(stdout(&a).contains("MQ[0..1].#C[0..1];"), "{}", stdout(&a));
+    let long = qoa(
+        "en",
+        &[
+            "export",
+            "--to",
+            "glyph",
+            "--long-names",
+            "examples/teleport.qoa",
+        ],
+    );
     assert!(
-        stdout(&a).contains("M/Q[0..1]$>#C[0..1];"),
+        stdout(&long).contains("MEASURE/Q[0..1]$>#C[0..1];"),
         "{}",
-        stdout(&a)
+        stdout(&long)
     );
     let c = qoa(
         "en",
@@ -760,7 +771,7 @@ fn export_writes_glyph_listing_json_and_dot() {
             "examples/bell.qoa",
         ],
     );
-    assert!(stdout(&c).contains("H/R[0x0];\n"), "{}", stdout(&c));
+    assert!(stdout(&c).contains("HR[0x0];\n"), "{}", stdout(&c));
     let bad = qoa(
         "en",
         &["export", "--to", "qasm", "--hex", "examples/bell.qoa"],
@@ -788,9 +799,24 @@ fn export_writes_glyph_listing_json_and_dot() {
     assert!(from_bin.status.success(), "{}", stderr(&from_bin));
     assert_eq!(stdout(&from_bin), stdout(&from_src));
     assert!(
-        stdout(&from_src).contains("JUMPIFZERO R0 addr_0x2"),
+        stdout(&from_src).contains("JZR0 addr_0x2"),
         "{}",
         stdout(&from_src)
+    );
+    let long = qoa(
+        "en",
+        &[
+            "export",
+            "--to",
+            "qoa",
+            "--long-names",
+            "examples/retry.qoa",
+        ],
+    );
+    assert!(
+        stdout(&long).contains("JUMPIFZERO R0 addr_0x2"),
+        "{}",
+        stdout(&long)
     );
     let listing = stdout(&qoa(
         "eu",

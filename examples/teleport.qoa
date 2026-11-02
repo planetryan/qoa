@@ -2,18 +2,18 @@
 ; q0-ren egoera q2-ra bidaltzen da, bi bit klasiko bakarrik erabiliz.
 ; egiaztapena: amaieran q2-ren prestaketa desegiten da; teleportazioak funtzionatu badu, c2 beti 0 da.
 ; expect-only: 000 001 010 011
-QINIT 3
-U q0 1.0 0.5 -0.3       ; bidali beharreko egoera "ausazkoa"
-BELL q1 q2              ; q1 (alice) eta q2 (bob) entrelazatuta
-CNOT q0 q1              ; bell-neurketa q0 eta q1 gainean
-H q0
-MEASURE q0 -> c0
-MEASURE q1 -> c1
-JUMPIFZERO c1 x_gabe    ; c1 = 1 bada, X q2-n
-X q2
+QI 3
+Uq0 1.0 0.5 -0.3        ; bidali beharreko egoera "ausazkoa"
+Bq1 q2                  ; q1 (alice) eta q2 (bob) entrelazatuta
+CXq0 q1                 ; bell-neurketa q0 eta q1 gainean
+Hq0
+Mq0.c0
+Mq1.c1
+JZc1 x_gabe             ; c1 = 1 bada, X q2-n
+Xq2
 x_gabe:
-JUMPIFZERO c0 z_gabe    ; c0 = 1 bada, Z q2-n
-Z q2
+JZc0 z_gabe             ; c0 = 1 bada, Z q2-n
+Zq2
 z_gabe:
-U q2 -1.0 0.3 -0.5      ; U-ren alderantzizkoa: q2-k q0-ren egoera bazuen, orain |0> da
-MEASURE q2 -> c2        ; beti 0
+Uq2 -1.0 0.3 -0.5       ; U-ren alderantzizkoa: q2-k q0-ren egoera bazuen, orain |0> da
+Mq2.c2                  ; beti 0

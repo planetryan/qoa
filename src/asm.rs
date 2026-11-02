@@ -535,7 +535,7 @@ fn single_dot(s: &str) -> Option<usize> {
 
 // itsatsitako agindua: aurrizki luzeena agindu bat bada eta gainerakoa haren lehen eragigaiaren motako
 // erregistro arrunta (letra eta digituak; ondoren `.` bat egon daiteke)
-fn glued(text: &str) -> Option<(&str, &str)> {
+pub(crate) fn glued(text: &str) -> Option<(&str, &str)> {
     if !text.is_ascii() {
         return None;
     }

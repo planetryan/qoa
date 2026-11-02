@@ -22,6 +22,27 @@
   crash or a power cut leaves the previous file untouched.
 * The assembler written in QOA (`tools/asm.qoa`) computes SHA-256 itself, in QOA, writes the same format 4
   files byte for byte, and checks seals with the same messages in English and Basque.
+* **Short forms, preferred from now on.** Every instruction has a short name (`qoa isa` shows it first):
+  `M` for MEASURE, `CX` for CNOT, `D` for DISPLACE, `SQ` for SQUEEZE, `K` for KERR, `N` for COUNT, `E` for
+  EMIT, `B` for BELL, `SET` for REGSET, `LD`/`ST` for LOAD/STORE, `J` for JUMP, `C` for CALL, `RET`, `LS`/`LE`
+  for loops, and so on. An instruction may touch its first operand when that is a plain register or range of
+  its kind (`Hq0`, `SETR1 5`, `Mq0..q2`), and `.` routes a result like `->`: `MEASURE q0 -> c0` can be
+  written `Mq0.c0`. The glyph syntax gets the same: `HQ[0]`, `CXQ[0],Q[1]`, `MQ.#C` (`.` for `$>`), and no
+  `/` before an operand starting with `#` or `~` (`PUSH#1`, `ADD#4,#1,#2`). Both assemblers read all of it
+  the same way. The long forms keep working everywhere, and every short form was an error before, so no
+  program changes meaning; the new short names never reserve a name, so a register called `L` or `C` from
+  an older program keeps working.
+* `qoa export --to qoa`, `--to listing` and `--to glyph` write the short forms; `--long-names` writes the
+  full ones (it now works for all three). Every export is still reassembled and compared before it is written.
+* Every example, every test program and the assembler written in QOA are now written in the short forms,
+  each checked to compile to exactly the same bytes as before (the assembler's source is 13% smaller).
+
+## Fixed
+
+* `KERR mode kappa time` with a kappa and a time whose product is too large for a 64-bit float was accepted
+  and wrote a `.qx` that QOA would then refuse to load. Both assemblers now say "kappa × time is not a
+  finite number". The hostile-input test now checks that every program that assembles also loads from its
+  own `.qx`.
 
 ## Changed
 
@@ -29,7 +50,7 @@
   examples and `sha256sum`). The bincode library, which is no longer maintained, is gone; the program bytes
   are exactly what bincode wrote, checked against a file bincode itself made, so every older file still loads.
 * QOA 0.4.4 and older cannot read format 4 files and say so clearly ("format version 4 is not supported");
-  compile the source again with them if needed.
+  compile the source again with them if needed. Sources written in the new short forms need 0.4.5 too.
 * The hostile-input test now also damages files whose checksum is recomputed afterwards, and files in the
   older format without one, so the reader itself keeps being tested behind the checksum.
 
@@ -64,6 +85,29 @@
 * QOAn idatzitako mihiztatzaileak (`tools/asm.qoa`) SHA-256 berak kalkulatzen du, QOAn, 4. formatuko
   fitxategi berberak idazten ditu byte bat bera aldatu gabe, eta zigiluak egiaztatzen ditu mezu berberekin
   ingelesez eta euskaraz.
+* **Forma laburrak, hemendik aurrera hobetsiak.** Agindu bakoitzak izen labur bat du (`qoa isa`-k lehenik
+  erakusten du): `M` MEASURE-rentzat, `CX` CNOT-entzat, `D` DISPLACE-rentzat, `SQ` SQUEEZE-rentzat, `K`
+  KERR-entzat, `N` COUNT-entzat, `E` EMIT-entzat, `B` BELL-entzat, `SET` REGSET-entzat, `LD`/`ST` LOAD/STORE-entzat,
+  `J` JUMP-entzat, `C` CALL-entzat, `RET`, `LS`/`LE` begiztentzat, eta abar. Agindu batek bere lehen eragigaia
+  uki dezake hura bere motako erregistro arrunt edo tarte bat denean (`Hq0`, `SETR1 5`, `Mq0..q2`), eta `.`-k
+  emaitza bat bideratzen du `->` bezala: `MEASURE q0 -> c0` `Mq0.c0` idatz daiteke. Glifo-sintaxiak gauza bera
+  du: `HQ[0]`, `CXQ[0],Q[1]`, `MQ.#C` (`.` `$>`-ren ordez), eta ez da `/` behar `#` edo `~`-rekin hasten den
+  eragigai baten aurretik (`PUSH#1`, `ADD#4,#1,#2`). Mihiztatzaile biek modu berean irakurtzen dute dena.
+  Forma luzeek leku guztietan funtzionatzen jarraitzen dute, eta forma labur guztiak errore bat ziren lehen,
+  beraz ez du programa batek ere esanahia aldatzen; izen labur berriek ez dute inoiz izenik erreserbatzen,
+  beraz programa zahar bateko `L` edo `C` izeneko erregistro batek funtzionatzen jarraitzen du.
+* `qoa export --to qoa`-k, `--to listing`-ek eta `--to glyph`-ek forma laburrak idazten dituzte;
+  `--long-names`-ek osoak (orain hiruentzat dabil). Esportazio bakoitza berriz mihiztatu eta konparatzen da
+  idatzi aurretik, lehen bezala.
+* Adibide guztiak, proba-programa guztiak eta QOAn idatzitako mihiztatzailea forma laburretan daude orain,
+  bakoitza lehengo byte berberetara konpilatzen dela egiaztatuta (mihiztatzailearen iturburua %13 txikiagoa da).
+
+## Konpondua
+
+* Biderkadura 64 biteko koma higikorrerako handiegia duten kappa eta denbora batekin, `KERR modua kappa denbora`
+  onartu egiten zen, eta gero QOA-k kargatzeari uko egingo zion `.qx` bat idazten zuen. Mihiztatzaile biek
+  orain "kappa × denbora ez da zenbaki finitu bat" diote. Eraso-probak orain egiaztatzen du mihiztatzen den
+  programa orok bere `.qx`-tik ere kargatzen duela.
 
 ## Aldatua
 
@@ -72,6 +116,7 @@
   programa-byteak bincode-k idazten zituenak dira zehazki, bincode-k berak egindako fitxategi baten aurka
   egiaztatuta, beraz fitxategi zahar guztiak kargatzen dira oraindik.
 * QOA 0.4.4-k eta zaharragoek ezin dituzte 4. formatuko fitxategiak irakurri, eta argi esaten dute ("format
-  version 4 is not supported"); behar izanez gero, konpilatu berriz iturburua haiekin.
+  version 4 is not supported"); behar izanez gero, konpilatu berriz iturburua haiekin. Forma labur berrietan
+  idatzitako iturburuek ere 0.4.5 behar dute.
 * Eraso-probak orain ondoren laburpena berriz kalkulatzen zaien fitxategiak ere hondatzen ditu, eta laburpenik
   gabeko formatu zaharreko fitxategiak, irakurlea bera laburpenaren atzean probatzen jarrai dadin.

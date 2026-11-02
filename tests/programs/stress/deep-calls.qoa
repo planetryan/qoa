@@ -1,16 +1,16 @@
 ; 50000 maila sakoneko deiak: R0 zerora jaitsi errekurtsiboki, gero itzuli guztiak
 ; expect-output: sakonera 50000
-REGSET R0 50000
-REGSET R1 1
-REGSET R2 0
-REGSET R3 0
-CALL jaitsi
-PRINTF "sakonera {}\n" R3
-HALT
+SETR0 50000
+SETR1 1
+SETR2 0
+SETR3 0
+C jaitsi
+PF "sakonera {}\n" R3
+END
 jaitsi:
-IFEQ R0 R2 hondoa
-SUB R0 R0 R1
-ADD R3 R3 R1
-CALL jaitsi
+IEQR0 R2 hondoa
+SUBR0 R0 R1
+ADDR3 R3 R1
+C jaitsi
 hondoa:
-RETSUB
+RET

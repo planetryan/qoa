@@ -197,8 +197,8 @@ enum Command {
         ))]
         names: String,
         #[arg(long, help_heading = "glyph", help = ts!(
-            "glyph: write MEASURE and CNOT instead of M and CX",
-            "glifoa: idatzi MEASURE eta CNOT, M eta CX ordez"
+            "write instructions with their full names and forms (MEASURE q0 -> c0) instead of the short ones (Mq0.c0); for glyph, qoa and listing",
+            "idatzi aginduak beren izen eta forma osoekin (MEASURE q0 -> c0), laburren ordez (Mq0.c0); glyph, qoa eta listing-entzat"
         ))]
         long_names: bool,
         #[arg(long, help_heading = "glyph", help = ts!(
@@ -1213,11 +1213,22 @@ fn glyph_options(
     no_ranges: bool,
     hex: bool,
 ) -> Result<qoa::disasm::GlyphOptions, String> {
-    let glyph_flags = width != 100 || names != "Q,C,L" || long_names || no_ranges || hex;
+    let glyph_flags = width != 100 || names != "Q,C,L" || no_ranges || hex;
     if glyph_flags && to != ExportFormat::Glyph {
         return Err(t!(
-            "--width, --names, --long-names, --no-ranges and --hex only apply to --to glyph",
-            "--width, --names, --long-names, --no-ranges eta --hex --to glyph-ekin bakarrik dabiltza"
+            "--width, --names, --no-ranges and --hex only apply to --to glyph",
+            "--width, --names, --no-ranges eta --hex --to glyph-ekin bakarrik dabiltza"
+        ));
+    }
+    if long_names
+        && !matches!(
+            to,
+            ExportFormat::Glyph | ExportFormat::Qoa | ExportFormat::Listing
+        )
+    {
+        return Err(t!(
+            "--long-names only applies to --to glyph, qoa and listing",
+            "--long-names --to glyph, qoa eta listing-ekin bakarrik dabil"
         ));
     }
     let parts: Vec<&str> = names.split(',').map(str::trim).collect();
@@ -1253,8 +1264,22 @@ fn cmd_export(
         ExportFormat::Glyph => {
             return write_or_print(output, &local(qoa::disasm::to_glyph(&p, glyph))?);
         }
-        ExportFormat::Qoa => return write_or_print(output, &local(qoa::disasm::to_qoa(&p))?),
-        ExportFormat::Listing => return write_or_print(output, &local(qoa::disasm::listing(&p))?),
+        ExportFormat::Qoa => {
+            let text = if glyph.long_names {
+                qoa::disasm::to_qoa_long(&p)
+            } else {
+                qoa::disasm::to_qoa(&p)
+            };
+            return write_or_print(output, &local(text)?);
+        }
+        ExportFormat::Listing => {
+            let text = if glyph.long_names {
+                qoa::disasm::listing_long(&p)
+            } else {
+                qoa::disasm::listing(&p)
+            };
+            return write_or_print(output, &local(text)?);
+        }
         ExportFormat::Json => return write_or_print(output, &local(qoa::disasm::to_json(&p))?),
         ExportFormat::Dot => return write_or_print(output, &local(qoa::disasm::to_dot(&p))?),
     };
@@ -1354,6 +1379,7 @@ fn cmd_isa(name: Option<String>, markdown: bool) -> Result<(), String> {
             return Ok(());
         }
         println!("{}  {}", label(ts!("usage", "erabilera")), spec.usage());
+        println!("{}  {}", label(ts!("short", "laburra")), isa::short(spec));
         println!("{}  {}", label(ts!("does", "egiten du")), spec.summary());
         if spec.status == Status::SimOnly {
             println!(
@@ -1410,7 +1436,13 @@ fn cmd_isa(name: Option<String>, markdown: bool) -> Result<(), String> {
             } else {
                 ""
             };
-            println!("  {:<46} {}{}", s.usage(), s.summary(), marker);
+            let short = isa::short(s);
+            let short = if short == s.name {
+                String::new()
+            } else {
+                short.to_string()
+            };
+            println!("  {:<5} {:<46} {}{}", short, s.usage(), s.summary(), marker);
         }
         println!();
     }
@@ -1418,8 +1450,8 @@ fn cmd_isa(name: Option<String>, markdown: bool) -> Result<(), String> {
     println!(
         "{}",
         t!(
-            "{} instructions from QOA 0.3 were removed; `qoa isa NAME` says why. `qoa isa --markdown` prints all of this as docs.",
-            "QOA 0.3-ko {} agindu kendu dira; `qoa isa IZENA`-k zergatik esaten du. `qoa isa --markdown`-ek hau guztia dokumentazio gisa inprimatzen du.",
+            "The first column is each instruction's short name (the same instruction, preferred). {} instructions from QOA 0.3 were removed; `qoa isa NAME` says why. `qoa isa --markdown` prints all of this as docs.",
+            "Lehen zutabea agindu bakoitzaren izen laburra da (agindu bera, hobetsia). QOA 0.3-ko {} agindu kendu dira; `qoa isa IZENA`-k zergatik esaten du. `qoa isa --markdown`-ek hau guztia dokumentazio gisa inprimatzen du.",
             removed
         )
     );

@@ -11,38 +11,38 @@
 ; q0..q3 = gakoa (k0 baxuena), q4..q7 = zifratua kalkulatzeko lan-qubitak
 ; expect-share: ----1011 0.961 0.02
 
-QINIT 8
-H q0..q3
+QI 8
+Hq0..q3
 
-LOOPSTART 3
+LS 3
   ; --- orakulua: f(k) kalkulatu q4..q7-n, 0111 bada fasea -1, gero dena desegin
-  CNOT q0 q4
-  CNOT q1 q5
-  CNOT q2 q6
-  CNOT q3 q7
-  CCX q4 q6 q5            ; y1 ^= y0 & y2
-  CNOT q5 q7              ; y3 ^= y1
-  CCX q7 q6 q4            ; y0 ^= y3 & y2
-  CNOT q4 q6              ; y2 ^= y0
-  CNOT q7 q5              ; y1 ^= y3
-  X q7                    ; helburua 0111: y3 = 0 denez, X-z inguratu
-  MCZ q4 q5 q6 q7
-  X q7
-  CNOT q7 q5              ; desegin, alderantzizko ordenan
-  CNOT q4 q6
-  CCX q7 q6 q4
-  CNOT q5 q7
-  CCX q4 q6 q5
-  CNOT q3 q7
-  CNOT q2 q6
-  CNOT q1 q5
-  CNOT q0 q4
+  CXq0 q4
+  CXq1 q5
+  CXq2 q6
+  CXq3 q7
+  CCXq4 q6 q5             ; y1 ^= y0 & y2
+  CXq5 q7                 ; y3 ^= y1
+  CCXq7 q6 q4             ; y0 ^= y3 & y2
+  CXq4 q6                 ; y2 ^= y0
+  CXq7 q5                 ; y1 ^= y3
+  Xq7                     ; helburua 0111: y3 = 0 denez, X-z inguratu
+  MCZq4 q5 q6 q7
+  Xq7
+  CXq7 q5                 ; desegin, alderantzizko ordenan
+  CXq4 q6
+  CCXq7 q6 q4
+  CXq5 q7
+  CCXq4 q6 q5
+  CXq3 q7
+  CXq2 q6
+  CXq1 q5
+  CXq0 q4
   ; --- difusioa gakoaren gainean
-  H q0..q3
-  X q0..q3
-  MCZ q0 q1 q2 q3
-  X q0..q3
-  H q0..q3
-LOOPEND
+  Hq0..q3
+  Xq0..q3
+  MCZq0 q1 q2 q3
+  Xq0..q3
+  Hq0..q3
+LE
 
-MEASURE q0..q3
+Mq0..q3

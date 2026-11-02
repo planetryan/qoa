@@ -4,12 +4,12 @@
 ; expect-output: theta = 0  <Z> = 1
 ; expect-output: theta = 1.5707963267948966  <Z> = 0\n
 ; expect-output: <Z> = 0.7071067811865476
-QINIT 1
-REGSET R0 0                     ; theta
-REGSET R1 pi/8                  ; pausoa
-LOOPSTART 9
-  EXPECT q0 Z R3                ; R3 = <Z>, egoera aldatu gabe
-  PRINTF "theta = {}  <Z> = {}\n" R0 R3
-  RY q0 pi/8
-  ADD R0 R0 R1
-LOOPEND
+QI 1
+SETR0 0                         ; theta
+SETR1 pi/8                      ; pausoa
+LS 9
+  EVq0 Z R3                     ; R3 = <Z>, egoera aldatu gabe
+  PF "theta = {}  <Z> = {}\n" R0 R3
+  RYq0 pi/8
+  ADDR0 R0 R1
+LE

@@ -2,18 +2,18 @@
 ; q0..q2 kontatzeko qubitak dira, q3 T-ren autobektorea (|1>).
 ; emaitza beti 001 da (c2 c1 c0 ordenan): 1/8 = 0.001 bitarrean.
 ; expect-only: -001
-QINIT 4
-X q3                    ; |1> T-ren autobektorea da
-H q0..q2
-CPHASE q0 q3 pi/4       ; T^1
-CPHASE q1 q3 pi/2       ; T^2
-CPHASE q2 q3 pi         ; T^4
+QI 4
+Xq3                     ; |1> T-ren autobektorea da
+Hq0..q2
+CPq0 q3 pi/4            ; T^1
+CPq1 q3 pi/2            ; T^2
+CPq2 q3 pi              ; T^4
 ; qft alderantzizkoa q0..q2 gainean
-SWAP q0 q2
-H q0
-CPHASE q0 q1 -pi/2
-H q1
-CPHASE q0 q2 -pi/4
-CPHASE q1 q2 -pi/2
-H q2
-MEASURE q0..q2
+SWAPq0 q2
+Hq0
+CPq0 q1 -pi/2
+Hq1
+CPq0 q2 -pi/4
+CPq1 q2 -pi/2
+Hq2
+Mq0..q2
