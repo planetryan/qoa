@@ -284,6 +284,7 @@ pub fn assemble(source: &str, name: &str) -> Result<Program, Vec<Diagnostic>> {
         let Ok(toks) = tokenize(strip_comment(raw), line_no) else {
             continue;
         };
+        let toks = short_forms(toks);
         if let Some(name) = toks.first().and_then(|t| t.text.strip_suffix(':')) {
             a.label_names.insert(name.to_ascii_lowercase());
         }
@@ -321,7 +322,7 @@ pub fn assemble(source: &str, name: &str) -> Result<Program, Vec<Diagnostic>> {
     for (n, raw) in source.lines().enumerate() {
         let line_no = n as u32 + 1;
         let toks = match tokenize(strip_comment(raw), line_no) {
-            Ok(t) => t,
+            Ok(t) => short_forms(t),
             Err(d) => {
                 a.diags.push(d);
                 continue;
@@ -458,6 +459,124 @@ pub fn assemble(source: &str, name: &str) -> Result<Program, Vec<Diagnostic>> {
 }
 
 // lerroaren hasierako etiketa saltatu (lehen pasaldirako)
+// 0.4.5-eko forma laburrak, tokenetan: agindu bat bere lehen eragigaiari itsatsita (`Hq0`, `Mq0`, `SETR1 5`),
+// eragigai hori mota horretako erregistro arrunta bada (q3, o1, c0, R2), eta emaitza bideratzen duten aginduetan
+// `.` `->`-ren ordez (`M q0.c0`, `N o0.R3`). forma horiek errore bat ziren lehen, beraz ez dute ezer aldatzen
+fn short_forms(mut toks: Vec<Token>) -> Vec<Token> {
+    let at = usize::from(toks.first().is_some_and(|t| t.text.ends_with(':')));
+    let Some(head) = toks.get(at) else {
+        return toks;
+    };
+    if isa::lookup(&head.text).is_none()
+        && let Some((name, rest)) = glued(&head.text)
+    {
+        let (line, col) = (head.line, head.col);
+        let n = name.chars().count() as u32;
+        toks.splice(
+            at..=at,
+            [
+                Token {
+                    text: name.to_string(),
+                    line,
+                    col,
+                },
+                Token {
+                    text: rest.to_string(),
+                    line,
+                    col: col + n,
+                },
+            ],
+        );
+    }
+    let Some(spec) = toks.get(at).and_then(|t| isa::lookup(&t.text)) else {
+        return toks;
+    };
+    let routes = spec.operand_specs().iter().any(|o| o.kind == 'd');
+    if routes && toks.len() > at + 1 && !toks[at + 1..].iter().any(|t| t.text == "->") {
+        let last = toks.len() - 1;
+        if let Some(i) = single_dot(&toks[last].text) {
+            let t = toks[last].clone();
+            let before = &t.text[..i];
+            let after = &t.text[i + 1..];
+            let col = t.col + before.chars().count() as u32;
+            let mut new = Vec::new();
+            if !before.is_empty() {
+                new.push(Token {
+                    text: before.to_string(),
+                    line: t.line,
+                    col: t.col,
+                });
+            }
+            new.push(Token {
+                text: "->".to_string(),
+                line: t.line,
+                col,
+            });
+            if !after.is_empty() {
+                new.push(Token {
+                    text: after.to_string(),
+                    line: t.line,
+                    col: col + 1,
+                });
+            }
+            toks.splice(last..=last, new);
+        }
+    }
+    toks
+}
+
+// `.` bakarra (ez `..` tarte baten zatia): haren posizioa
+fn single_dot(s: &str) -> Option<usize> {
+    let b = s.as_bytes();
+    (0..b.len()).find(|&i| {
+        b[i] == b'.' && (i == 0 || b[i - 1] != b'.') && (i + 1 == b.len() || b[i + 1] != b'.')
+    })
+}
+
+// itsatsitako agindua: aurrizki luzeena agindu bat bada eta gainerakoa haren lehen eragigaiaren motako
+// erregistro arrunta (letra eta digituak; ondoren `.` bat egon daiteke)
+fn glued(text: &str) -> Option<(&str, &str)> {
+    if !text.is_ascii() {
+        return None;
+    }
+    for k in (1..text.len()).rev() {
+        let (name, rest) = text.split_at(k);
+        let Some(spec) = isa::lookup(name) else {
+            continue;
+        };
+        let Some(first) = spec.operand_specs().first().map(|o| o.kind) else {
+            continue;
+        };
+        let letters: &[char] = match first {
+            'q' => &['q', 'Q'],
+            'o' => &['o', 'O'],
+            'c' => &['c', 'C'],
+            'r' | 'x' => &['r', 'R'],
+            'v' => &['c', 'C', 'r', 'R'],
+            _ => continue,
+        };
+        // erregistro bat (q0) edo tarte bat (q0..q3), eta gero aukeran `.` eta helburua
+        let reg = single_dot(rest).map_or(rest, |i| &rest[..i]);
+        let plain = |r: &str, first: bool| {
+            let mut chars = r.chars();
+            let lead = chars.next();
+            let digits: String = chars.collect();
+            let lettered = lead.is_some_and(|c| letters.contains(&c));
+            let numbered = !first && lead.is_some_and(|c| c.is_ascii_digit());
+            (lettered && !digits.is_empty() || numbered)
+                && digits.chars().all(|c| c.is_ascii_digit())
+        };
+        let ok = match reg.split_once("..") {
+            Some((a, b)) => plain(a, true) && plain(b, false),
+            None => plain(reg, true),
+        };
+        if ok {
+            return Some((name, rest));
+        }
+    }
+    None
+}
+
 fn strip_label(toks: &[Token]) -> Vec<Token> {
     match toks.first() {
         Some(t) if t.text.ends_with(':') => toks[1..].to_vec(),
@@ -1972,10 +2091,22 @@ impl Asm {
                 o: idx(0),
                 theta: float(1, 0.0),
             },
-            "KERR" => Op::Kerr {
-                o: idx(0),
-                kappa: float(1, 0.0) * float(2, 1.0),
-            },
+            "KERR" => {
+                // kappa eta denbora finituak dira, baina haien biderkadura gainezka daiteke
+                let kappa = float(1, 0.0) * float(2, 1.0);
+                if !kappa.is_finite() {
+                    let tok = groups.get(2).and_then(|g| g.first()).unwrap_or(head);
+                    self.error(Diagnostic::at(
+                        tok,
+                        t!(
+                            "kappa × time is not a finite number",
+                            "kappa × denbora ez da zenbaki finitu bat"
+                        ),
+                    ));
+                    return;
+                }
+                Op::Kerr { o: idx(0), kappa }
+            }
             "CROSSKERR" | "BS" | "MODESWAP" => {
                 let (a, b) = (idx(0), idx(1));
                 if !distinct(self, &[(a, 0), (b, 1)], false) {
@@ -2396,7 +2527,7 @@ fn free_name(name: &str) -> bool {
         && name[1..].chars().all(|c| c.is_ascii_digit());
     let reserved = ["pi", "tau", "e", "sqrt", "sin", "cos", "tan", "exp", "ln"]
         .contains(&name.to_ascii_lowercase().as_str());
-    shaped && !operand_like && !reserved && isa::lookup(name).is_none()
+    shaped && !operand_like && !reserved && !isa::reserved(name)
 }
 
 fn rotation(axis: Basis, angle: f64) -> Gate {

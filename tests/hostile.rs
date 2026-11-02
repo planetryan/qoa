@@ -75,7 +75,11 @@ fn exercise(p: &Program) {
     let _ = qoa::disasm::to_glyph(p, &Default::default());
     let _ = qoa::qasm::from_program(p);
     let _ = qoa::ionq::from_program(p, 2);
-    let _ = p.to_bytes();
+    // mihiztatzaileak onartzen duen programa orok bere .qx-tik kargatu behar du (bestela `qoa compile`-k
+    // `qoa run`-ek hondatutzat joko lukeen fitxategi bat idatziko luke)
+    if let Err(e) = Program::from_bytes(&p.to_bytes()) {
+        panic!("{}: bere .qx-a ez da kargatzen: {}", p.name, e);
+    }
 }
 
 fn mutate(rng: &mut StdRng, bytes: &[u8]) -> Vec<u8> {

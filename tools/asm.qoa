@@ -33,7 +33,7 @@
 ;   61 OCUR 62 OEND 63 OTAIL 64 OHEAD   eragiketen byte-korrontea
 ;   65 P10 10^0..10^22   66 BIGR 67 BIGD 68 BIGT bigint-ak   69 P2_32 70 N2_32 71 P2_64 72 N2_64
 ;   73 VALP balioak (eragigai bakoitzeko 4 gelaxka) 74 GRPP taldeak 75 TP 76 NT 77 ABP geziak
-;   78 LISTP 79 NLIST   84 CONSTHT konstanteak 85 NEXTR 86 CONSTV haien ordena 87 "value" 88 erabili gabea
+;   78 LISTP 79 NLIST   84 CONSTHT konstanteak 85 NEXTR 86 CONSTV haien ordena 87 "value" 88 "->" (forma laburrak)
 ;   89 EDEPTH adierazpenaren habiaraketa (ex.unary aktiboak)   96 SHA SHA-256-aren egoera (sha.init)
 ;   1000-tik aurrera: memoria dinamikoa
 
@@ -995,6 +995,9 @@ LOAD R1 R0
 REGSET R2 87
 STORE R1 R2
 STORETEXT R1 "value"
+REGSET R2 88
+STORE R1 R2
+STORETEXT R1 "->"
 STORE R1 R0
 ; adierazpenetako izenak
 CALL fnames
@@ -1505,6 +1508,7 @@ JUMP tokenize.next
 tokenize.done:
 REGSET R1 41
 STORE R11 R1
+CALL shortforms
 REGSET R0 0
 JUMP tokenize.ret
 tokenize.unterminated:
@@ -1522,6 +1526,400 @@ POP R9
 POP R8
 RETSUB
 
+; ---------------------------------------------------------------- forma laburrak (0.4.5)
+; shortforms: asm.rs-eko short_forms bezala, tokenetan: agindu bat bere lehen eragigaiari itsatsita (`Hq0`,
+; `SETR1 5`), eragigai hori mota horretako erregistro arrunta bada, eta emaitza bideratzen duten aginduetan `.`
+; `->`-ren ordez (`M q0.c0`). aldatzen ditu R0-R7
+shortforms:
+PUSH R8
+PUSH R9
+PUSH R10
+PUSH R11
+PUSH R12
+PUSH R13
+PUSH R14
+REGSET R0 40
+LOAD R8 R0
+REGSET R0 41
+LOAD R9 R0
+IFEQ R9 R30 sf.done
+REGSET R10 0
+LOAD R0 R8
+ADD R1 R8 R31
+LOAD R1 R1
+CALL endscolon
+IFEQ R0 R30 sf.at
+REGSET R10 1
+sf.at:
+IFLT R10 R9 sf.head
+JUMP sf.done
+sf.head:
+MUL R11 R10 (3)
+ADD R11 R8 R11
+LOAD R0 R11
+ADD R1 R11 R31
+LOAD R1 R1
+CALL lookup
+IFNE R0 R30 sf.known
+LOAD R0 R11
+ADD R1 R11 R31
+LOAD R1 R1
+CALL glued
+IFEQ R0 R30 sf.known
+; R12 = k: lehen k karaktereak agindua, gainerakoa eragigai berri bat
+REGCOPY R12 R0
+ADD R0 R10 R31
+CALL tokins
+MUL R11 R10 (3)
+ADD R11 R8 R11
+LOAD R13 R11
+ADD R0 R11 R31
+LOAD R14 R0
+STORE R12 R0
+ADD R0 R11 (2)
+LOAD R7 R0
+ADD R1 R11 (3)
+ADD R0 R13 R12
+STORE R0 R1
+ADD R1 R1 R31
+SUB R0 R14 R12
+STORE R0 R1
+ADD R1 R1 R31
+ADD R0 R7 R12
+STORE R0 R1
+sf.known:
+REGSET R0 41
+LOAD R9 R0
+MUL R11 R10 (3)
+ADD R11 R8 R11
+LOAD R0 R11
+ADD R1 R11 R31
+LOAD R1 R1
+CALL lookup
+IFEQ R0 R30 sf.done
+; bideratzen du: eragigaien artean d mota
+ADD R1 R0 (2)
+LOAD R1 R1
+ADD R2 R0 (3)
+LOAD R2 R2
+sf.kinds:
+IFEQ R2 R30 sf.done
+LOAD R0 R1
+IFEQ R0 (100) sf.routes
+ADD R1 R1 (5)
+SUB R2 R2 R31
+JUMP sf.kinds
+sf.routes:
+ADD R1 R10 R31
+IFLT R1 R9 sf.ascan
+JUMP sf.done
+; at-en ondoren -> tokenik ez
+sf.ascan:
+IFEQ R1 R9 sf.split
+MUL R2 R1 (3)
+ADD R2 R8 R2
+ADD R3 R2 R31
+LOAD R3 R3
+IFNE R3 (2) sf.anext
+LOAD R3 R2
+LOAD R4 R3
+IFNE R4 (45) sf.anext
+ADD R3 R3 R31
+LOAD R4 R3
+IFEQ R4 (62) sf.done
+sf.anext:
+ADD R1 R1 R31
+JUMP sf.ascan
+; azken tokena `.` bakar batean: aurrekoa, ->, ondorengoa
+sf.split:
+SUB R11 R9 R31
+MUL R11 R11 (3)
+ADD R11 R8 R11
+LOAD R13 R11
+ADD R0 R11 R31
+LOAD R14 R0
+REGCOPY R0 R13
+REGCOPY R1 R14
+CALL singledot
+IFEQ R0 R29 sf.done
+REGCOPY R12 R0
+ADD R0 R11 (2)
+LOAD R7 R0
+REGCOPY R6 R11
+IFEQ R12 R30 sf.arrow
+ADD R0 R11 R31
+STORE R12 R0
+ADD R6 R11 (3)
+sf.arrow:
+REGSET R0 88
+LOAD R0 R0
+STORE R0 R6
+ADD R1 R6 R31
+STORE (2) R1
+ADD R1 R1 R31
+ADD R0 R7 R12
+STORE R0 R1
+ADD R6 R6 (3)
+ADD R0 R12 R31
+IFEQ R0 R14 sf.count
+ADD R1 R13 R0
+STORE R1 R6
+SUB R1 R14 R0
+ADD R2 R6 R31
+STORE R1 R2
+ADD R1 R7 R0
+ADD R2 R2 R31
+STORE R1 R2
+ADD R6 R6 (3)
+sf.count:
+SUB R0 R6 R8
+DIV R0 R0 (3)
+REGSET R1 41
+STORE R0 R1
+sf.done:
+POP R14
+POP R13
+POP R12
+POP R11
+POP R10
+POP R9
+POP R8
+RETSUB
+
+; tokins: R0 = j -> tokenak j-tik aurrera posizio bat eskuinera (j-ren kopia bat geratzen da), NTOK + 1.
+; aldatzen ditu R0-R5
+tokins:
+REGSET R1 40
+LOAD R1 R1
+REGSET R2 41
+LOAD R3 R2
+ADD R4 R3 R31
+STORE R4 R2
+tokins.loop:
+SUB R3 R3 R31
+IFLT R3 R0 tokins.done
+MUL R4 R3 (3)
+ADD R4 R1 R4
+LOAD R5 R4
+ADD R2 R4 (3)
+STORE R5 R2
+ADD R4 R4 R31
+LOAD R5 R4
+ADD R2 R4 (3)
+STORE R5 R2
+ADD R4 R4 R31
+LOAD R5 R4
+ADD R2 R4 (3)
+STORE R5 R2
+JUMP tokins.loop
+tokins.done:
+RETSUB
+
+; singledot: R0, R1 = testua -> R0 = `.` bakar baten posizioa (ez `..` baten zatia), edo -1. aldatzen ditu R0-R4
+singledot:
+REGSET R2 0
+singledot.next:
+IFEQ R2 R1 singledot.no
+ADD R3 R0 R2
+LOAD R4 R3
+IFNE R4 (46) singledot.step
+IFEQ R2 R30 singledot.after
+SUB R4 R3 R31
+LOAD R4 R4
+IFEQ R4 (46) singledot.step
+singledot.after:
+ADD R4 R2 R31
+IFEQ R4 R1 singledot.yes
+ADD R4 R3 R31
+LOAD R4 R4
+IFEQ R4 (46) singledot.step
+singledot.yes:
+REGCOPY R0 R2
+RETSUB
+singledot.step:
+ADD R2 R2 R31
+JUMP singledot.next
+singledot.no:
+REGSET R0 -1
+RETSUB
+
+; glued: R0, R1 = tokena -> R0 = k, lehen k karaktereak agindu bat badira eta gainerakoa haren lehen eragigaiaren
+; motako erregistro arrunta (q0) edo tarte bat (q0..q3), aukeran `.` eta helburua ondoren; bestela 0.
+; aldatzen ditu R0-R7
+glued:
+PUSH R8
+PUSH R9
+PUSH R10
+PUSH R11
+PUSH R12
+PUSH R13
+REGCOPY R8 R0
+REGCOPY R9 R1
+REGSET R2 0
+glued.ascii:
+IFEQ R2 R9 glued.start
+ADD R0 R8 R2
+LOAD R0 R0
+IFGT R0 (127) glued.no
+ADD R2 R2 R31
+JUMP glued.ascii
+glued.start:
+SUB R10 R9 R31
+glued.try:
+IFLT R10 R31 glued.no
+REGCOPY R0 R8
+REGCOPY R1 R10
+CALL lookup
+IFEQ R0 R30 glued.step
+ADD R1 R0 (3)
+LOAD R1 R1
+IFEQ R1 R30 glued.step
+ADD R1 R0 (2)
+LOAD R1 R1
+LOAD R11 R1
+; gainerakoa: R12, R13 (`.` bakarra arte)
+ADD R12 R8 R10
+SUB R13 R9 R10
+REGCOPY R0 R12
+REGCOPY R1 R13
+CALL singledot
+IFEQ R0 R29 glued.reg
+REGCOPY R13 R0
+glued.reg:
+REGCOPY R0 R11
+REGCOPY R1 R12
+REGCOPY R2 R13
+CALL gluereg
+IFNE R0 R30 glued.yes
+glued.step:
+SUB R10 R10 R31
+JUMP glued.try
+glued.yes:
+REGCOPY R0 R10
+JUMP glued.ret
+glued.no:
+REGSET R0 0
+glued.ret:
+POP R13
+POP R12
+POP R11
+POP R10
+POP R9
+POP R8
+RETSUB
+
+; gluereg: R0 = eragigai-mota, R1, R2 = testua -> R0 = 1 mota horretako erregistro bat (q0) edo tarte bat (q0..q3)
+; bada. aldatzen ditu R0-R7
+gluereg:
+PUSH R8
+PUSH R9
+PUSH R10
+REGCOPY R8 R0
+REGCOPY R9 R1
+REGCOPY R10 R2
+; lehen ".."
+REGSET R3 0
+gluereg.find:
+ADD R4 R3 R31
+IFLT R4 R10 gluereg.look
+JUMP gluereg.whole
+gluereg.look:
+ADD R5 R9 R3
+LOAD R6 R5
+IFNE R6 (46) gluereg.fstep
+ADD R5 R5 R31
+LOAD R6 R5
+IFEQ R6 (46) gluereg.range
+gluereg.fstep:
+ADD R3 R3 R31
+JUMP gluereg.find
+gluereg.range:
+; [0, R3) eta [R3+2, luzera)
+PUSH R3
+REGCOPY R0 R8
+REGCOPY R1 R9
+REGCOPY R2 R3
+REGSET R3 1
+CALL gluepart
+POP R3
+IFEQ R0 R30 gluereg.ret
+REGCOPY R0 R8
+ADD R1 R9 R3
+ADD R1 R1 (2)
+SUB R2 R10 R3
+SUB R2 R2 (2)
+REGSET R3 0
+CALL gluepart
+JUMP gluereg.ret
+gluereg.whole:
+REGCOPY R0 R8
+REGCOPY R1 R9
+REGCOPY R2 R10
+REGSET R3 1
+CALL gluepart
+gluereg.ret:
+POP R10
+POP R9
+POP R8
+RETSUB
+
+; gluepart: R0 = mota, R1, R2 = testua, R3 = 1 lehena bada -> R0 = 1 mota horren letra eta digituak badira (edo,
+; lehena ez bada, digituak bakarrik). aldatzen ditu R0-R7
+gluepart:
+IFEQ R2 R30 gluepart.no
+LOAD R4 R1
+; R5 = letra egokia
+REGSET R5 0
+IFNE R0 (113) gluepart.o
+IFEQ R4 (113) gluepart.l
+IFEQ R4 (81) gluepart.l
+gluepart.o:
+IFNE R0 (111) gluepart.c
+IFEQ R4 (111) gluepart.l
+IFEQ R4 (79) gluepart.l
+gluepart.c:
+IFEQ R0 (99) gluepart.cc
+IFNE R0 (118) gluepart.r
+gluepart.cc:
+IFEQ R4 (99) gluepart.l
+IFEQ R4 (67) gluepart.l
+gluepart.r:
+IFEQ R0 (114) gluepart.rr
+IFEQ R0 (120) gluepart.rr
+IFEQ R0 (118) gluepart.rr
+JUMP gluepart.kind
+gluepart.rr:
+IFEQ R4 (114) gluepart.l
+IFEQ R4 (82) gluepart.l
+JUMP gluepart.kind
+gluepart.l:
+REGSET R5 1
+gluepart.kind:
+; letrarekin: gutxienez digitu bat; digituarekin (lehena ez bada): onartua
+IFEQ R5 R30 gluepart.num
+IFLT R2 (2) gluepart.no
+JUMP gluepart.digits
+gluepart.num:
+IFNE R3 R30 gluepart.no
+IFLT R4 (48) gluepart.no
+IFGT R4 (57) gluepart.no
+gluepart.digits:
+REGSET R6 1
+gluepart.d:
+IFEQ R6 R2 gluepart.yes
+ADD R7 R1 R6
+LOAD R7 R7
+IFLT R7 (48) gluepart.no
+IFGT R7 (57) gluepart.no
+ADD R6 R6 R31
+JUMP gluepart.d
+gluepart.yes:
+REGSET R0 1
+RETSUB
+gluepart.no:
+REGSET R0 0
+RETSUB
+
 ; ---------------------------------------------------------------- agindu-taula
 ; zehaztapen bakoitza (24 gelaxka): 0 izena 1 luzera 2 eragigaiak 3 kopurua 4 hedapena (q0..q3) 5 kendua
 ; 6-7 kentzearen arrazoia ingelesez 8-9 euskaraz 10-11 erabilera ingelesez 12-13 euskaraz 14 eraikitzailea
@@ -1530,186 +1928,187 @@ RETSUB
 ; gehiago, 2 zero edo gehiago). izen-taulako erregistroak: [gakoa, luzera, zehaztapena]
 
 ; isatext: src/isa.rs-eko taula testu gisa memoriara. erregistro bakoitza: izena|ezizenak|eragigaiak|hedapena|
-; kendua|arrazoia (en)|arrazoia (eu)|erabilera (en)|erabilera (eu); erregistro hutsak amaitzen du. -> R0 = hasiera
+; kendua|arrazoia (en)|arrazoia (eu)|erabilera (en)|erabilera (eu)|izen labur leuna; erregistro hutsak amaitzen
+; du. -> R0 = hasiera
 isatext:
 REGSET R0 0
 LOAD R1 R0
 REGCOPY R2 R1
 ; @isa-begin
-STORETEXT R1 "QINIT|QI INITQUBIT IQ QINITQ|i:qubits|0|0|||QINIT qubits|QINIT qubitak"
-STORETEXT R1 "QMODE|MODES|i:modes i:cutoff?|0|0|||QMODE modes [cutoff]|QMODE moduak [muga]"
-STORETEXT R1 "QREG||w:name i:size i:first?|0|0|||QREG name size [first]|QREG izena size [first]"
-STORETEXT R1 "CREG||w:name i:size i:first?|0|0|||CREG name size [first]|CREG izena size [first]"
-STORETEXT R1 "OREG||w:name i:size i:first?|0|0|||OREG name size [first]|OREG izena size [first]"
-STORETEXT R1 "RREG||w:name i:size i:first?|0|0|||RREG name size [first]|RREG izena size [first]"
-STORETEXT R1 "CONST||w:name f:value|0|0|||CONST name value|CONST izena balioa"
-STORETEXT R1 "H|HAD APPLYHADAMARD|q:qubit|1|0|||H qubit|H qubita"
-STORETEXT R1 "X|APPLYBITFLIP|q:qubit|1|0|||X qubit|X qubita"
-STORETEXT R1 "Y||q:qubit|1|0|||Y qubit|Y qubita"
-STORETEXT R1 "Z|APPLYPHASEFLIP|q:qubit|1|0|||Z qubit|Z qubita"
-STORETEXT R1 "S|APPLYSGATE|q:qubit|1|0|||S qubit|S qubita"
-STORETEXT R1 "SDG|SDAG|q:qubit|1|0|||SDG qubit|SDG qubita"
-STORETEXT R1 "T|APPLYTGATE|q:qubit|1|0|||T qubit|T qubita"
-STORETEXT R1 "TDG|TDAG|q:qubit|1|0|||TDG qubit|TDG qubita"
-STORETEXT R1 "SX|SQRTX|q:qubit|1|0|||SX qubit|SX qubita"
-STORETEXT R1 "SXDG|SXDAG|q:qubit|1|0|||SXDG qubit|SXDG qubita"
-STORETEXT R1 "PHASE|P PHASESHIFT SETPHASE SETP SPH PSE U1|q:qubit f:angle|1|0|||PHASE qubit angle|PHASE qubita angelua"
-STORETEXT R1 "RX||q:qubit f:angle|1|0|||RX qubit angle|RX qubita angelua"
-STORETEXT R1 "RY||q:qubit f:angle|1|0|||RY qubit angle|RY qubita angelua"
-STORETEXT R1 "RZ||q:qubit f:angle|1|0|||RZ qubit angle|RZ qubita angelua"
-STORETEXT R1 "U|U3|q:qubit f:theta f:phi f:lambda|1|0|||U qubit theta phi lambda|U qubita theta phi lambda"
-STORETEXT R1 "ROT|APPLYROTATION AR|q:qubit b:axis f:angle|1|0|||ROT qubit axis angle|ROT qubita ardatza angelua"
-STORETEXT R1 "MROT|APPLYMULTIQUBITROTATION AMQR|b:axis f:angle q:qubits+|0|0|||MROT axis angle qubits...|MROT ardatza angelua qubitak..."
-STORETEXT R1 "GATE|APPLYGATE AGATE AG|g:name q:qubit|0|0|||GATE name qubit|GATE izena qubita"
-STORETEXT R1 "CNOT|CX CONTROLLEDNOT CN ENTANGLE|q:control q:target|0|0|||CNOT control target|CNOT kontrola helburua"
-STORETEXT R1 "CY||q:control q:target|0|0|||CY control target|CY kontrola helburua"
-STORETEXT R1 "CZ||q:control q:target|0|0|||CZ control target|CZ kontrola helburua"
-STORETEXT R1 "CH||q:control q:target|0|0|||CH control target|CH kontrola helburua"
-STORETEXT R1 "CSX||q:control q:target|0|0|||CSX control target|CSX kontrola helburua"
-STORETEXT R1 "CU|CU3|q:control q:target f:theta f:phi f:lambda|0|0|||CU control target theta phi lambda|CU kontrola helburua theta phi lambda"
-STORETEXT R1 "CPHASE|CP CONTROLLEDPHASEROTATION APPLYCPHASE CPR CU1|q:control q:target f:angle|0|0|||CPHASE control target angle|CPHASE kontrola helburua angelua"
-STORETEXT R1 "CRX||q:control q:target f:angle|0|0|||CRX control target angle|CRX kontrola helburua angelua"
-STORETEXT R1 "CRY||q:control q:target f:angle|0|0|||CRY control target angle|CRY kontrola helburua angelua"
-STORETEXT R1 "CRZ||q:control q:target f:angle|0|0|||CRZ control target angle|CRZ kontrola helburua angelua"
-STORETEXT R1 "SWAP||q:a q:b|0|0|||SWAP a b|SWAP a b"
-STORETEXT R1 "CSWAP|CONTROLLEDSWAP CS FREDKIN|q:control q:a q:b|0|0|||CSWAP control a b|CSWAP kontrola a b"
-STORETEXT R1 "CCX|TOFFOLI CCNOT|q:control1 q:control2 q:target|0|0|||CCX control1 control2 target|CCX kontrola1 kontrola2 helburua"
-STORETEXT R1 "MCX||q:controls+ q:target|0|0|||MCX controls... target|MCX kontrolak... helburua"
-STORETEXT R1 "MCZ||q:qubits+|0|0|||MCZ qubits...|MCZ qubitak..."
-STORETEXT R1 "BELL|ENTANGLEBELL EBELL EB|q:a q:b|0|0|||BELL a b|BELL a b"
-STORETEXT R1 "GHZ|ENTANGLEMULTI EMULTI EM|q:qubits+|0|0|||GHZ qubits...|GHZ qubitak..."
-STORETEXT R1 "CLUSTER|ENTANGLECLUSTER ECLUSTER ECR|q:qubits+|0|0|||CLUSTER qubits...|CLUSTER qubitak..."
-STORETEXT R1 "ESWAP|ENTANGLESWAP ESP|q:a q:b q:c q:d|0|0|||ESWAP a b c d|ESWAP a b c d"
-STORETEXT R1 "MEASURE|MEAS M QMEAS QM APPLYQNDMEASUREMENT AQND AQAD AQNM|q:qubit d:to?|1|0|||MEASURE qubit [-> to]|MEASURE qubita [-> helmuga]"
-STORETEXT R1 "MEASUREIN|MEASUREINBASIS MEASB MIB|q:qubit b:basis d:to?|0|0|||MEASUREIN qubit basis [-> to]|MEASUREIN qubita oinarria [-> helmuga]"
-STORETEXT R1 "MEASUREALL|MALL||0|0|||MEASUREALL|MEASUREALL"
-STORETEXT R1 "RESET|RST RSTQ QRESET QR|q:qubit|1|0|||RESET qubit|RESET qubita"
-STORETEXT R1 "RESETALL|RSTALL RSA||0|0|||RESETALL|RESETALL"
-STORETEXT R1 "TOBASIS|APPLYMEASUREMENTBASISCHANGE AMBC|q:qubit b:basis|1|0|||TOBASIS qubit basis|TOBASIS qubita oinarria"
-STORETEXT R1 "DISPLACE|APPLYDISPLACEMENT ADISP AD|o:mode f:re f:im?|0|0|||DISPLACE mode re [im]|DISPLACE modua re [im]"
-STORETEXT R1 "DISPLACEREG|APPLYDISPLACEMENTFEEDBACK|o:mode r:alpha|0|0|||DISPLACEREG mode alpha|DISPLACEREG modua alpha"
-STORETEXT R1 "SQUEEZE|APPLYSQUEEZING ASQ AS|o:mode f:r f:phi?|0|0|||SQUEEZE mode r [phi]|SQUEEZE modua r [phi]"
-STORETEXT R1 "SQUEEZEREG|APPLYSQUEEZINGFEEDBACK ASWF ASF ASFB|o:mode r:r|0|0|||SQUEEZEREG mode r|SQUEEZEREG modua r"
-STORETEXT R1 "MODEPHASE|DYNAMICPHASECOMPENSATION DPC DPCMP PHASEROT|o:mode f:angle|0|0|||MODEPHASE mode angle|MODEPHASE modua angelua"
-STORETEXT R1 "KERR|APPLYKERRNONLINEARITY AKNL|o:mode f:kappa f:time?|0|0|||KERR mode kappa [time]|KERR modua kappa [denbora]"
-STORETEXT R1 "CROSSKERR|CROSSPHASEMODULATION CPM CPMOD|o:a o:b f:kappa|0|0|||CROSSKERR a b kappa|CROSSKERR a b kappa"
-STORETEXT R1 "BS|BEAMSPLITTER|o:a o:b f:theta f:phi?|0|0|||BS a b theta [phi]|BS a b theta [phi]"
-STORETEXT R1 "MODESWAP|OPTICALROUTING OROUTE OPTR|o:a o:b|0|0|||MODESWAP a b|MODESWAP a b"
-STORETEXT R1 "ADDPHOTON|PHOTONADDITION PADD PA|o:mode|0|0|||ADDPHOTON mode|ADDPHOTON modua"
-STORETEXT R1 "SUBPHOTON|APPLYPHOTONSUBTRACTION APSUB APS|o:mode|0|0|||SUBPHOTON mode|SUBPHOTON modua"
-STORETEXT R1 "LOSS|PHOTONLOSS PHOTONLOSSSIMULATE PLS PLSIM SETOPTICALATTENUATION SOATT SOA|o:mode f:probability|0|0|||LOSS mode probability|LOSS modua probabilitatea"
-STORETEXT R1 "FOCK||o:mode i:photons|0|0|||FOCK mode photons|FOCK modua fotoiak"
-STORETEXT R1 "SINGLEPHOTON|SINGLEPHOTONSOURCEON SPSON|o:mode|0|0|||SINGLEPHOTON mode|SINGLEPHOTON modua"
-STORETEXT R1 "COUNT|PHOTONCOUNT PCOUNT PC PHOTONNUMBERRESOLVINGDETECTION PNRD PNR|o:mode d:to?|0|0|||COUNT mode [-> to]|COUNT modua [-> helmuga]"
-STORETEXT R1 "DETECT|PHOTONDETECT PDETECT PD|o:mode d:to?|0|0|||DETECT mode [-> to]|DETECT modua [-> helmuga]"
-STORETEXT R1 "PARITY|MEASUREPARITY MPAR MP|o:mode d:to?|0|0|||PARITY mode [-> to]|PARITY modua [-> helmuga]"
-STORETEXT R1 "COINCIDENCE|PHOTONDETECTCOINCIDENCE PDCOIN PDC|o:modes+ d:to|0|0|||COINCIDENCE modes... -> to|COINCIDENCE moduak... -> helmuga"
-STORETEXT R1 "EMIT|PHOTONEMIT PEMIT PE ABSORB|q:qubit o:mode|0|0|||EMIT qubit mode|EMIT qubita modua"
-STORETEXT R1 "DISPERSIVE||q:qubit o:mode f:angle|0|0|||DISPERSIVE qubit mode angle|DISPERSIVE qubita modua angelua"
-STORETEXT R1 "DUMPSTATE|DSTATE DS||0|0|||DUMPSTATE|DUMPSTATE"
-STORETEXT R1 "EXPECT|QUANTUMSTATETOMOGRAPHY QST QSTAT|q:qubit b:basis r:to?|0|0|||EXPECT qubit basis [to]|EXPECT qubita oinarria [helmuga]"
-STORETEXT R1 "BELLCHECK|BELLSTATEVERIFICATION BSV BSTATE|q:a q:b r:to?|0|0|||BELLCHECK a b [to]|BELLCHECK a b [helmuga]"
-STORETEXT R1 "MEANPHOTON|NMEAN|o:mode r:to?|0|0|||MEANPHOTON mode [to]|MEANPHOTON modua [helmuga]"
-STORETEXT R1 "REGSET|SET RSET RGST|r:reg f:value|0|0|||REGSET reg value|REGSET erregistroa balioa"
-STORETEXT R1 "REGCOPY|MOV RCOPY RC|r:dst x:src|0|0|||REGCOPY dst src|REGCOPY dst src"
-STORETEXT R1 "ADD|REGADD RADD RGA|r:dst x:a x:b|0|0|||ADD dst a b|ADD dst a b"
-STORETEXT R1 "SUB|REGSUB RSUB RGS|r:dst x:a x:b|0|0|||SUB dst a b|SUB dst a b"
-STORETEXT R1 "MUL|REGMUL|r:dst x:a x:b|0|0|||MUL dst a b|MUL dst a b"
-STORETEXT R1 "DIV|REGDIV|r:dst x:a x:b|0|0|||DIV dst a b|DIV dst a b"
-STORETEXT R1 "ANDBITS|AND ANDB AB|r:dst x:a x:b|0|0|||ANDBITS dst a b|ANDBITS dst a b"
-STORETEXT R1 "ORBITS|OR ORB OB|r:dst x:a x:b|0|0|||ORBITS dst a b|ORBITS dst a b"
-STORETEXT R1 "XORBITS|XOR XORB XB|r:dst x:a x:b|0|0|||XORBITS dst a b|XORBITS dst a b"
-STORETEXT R1 "NOTBITS|NOTB NB|r:dst x:src|0|0|||NOTBITS dst src|NOTBITS dst src"
-STORETEXT R1 "SHL||r:dst x:src x:amount|0|0|||SHL dst src amount|SHL dst src kopurua"
-STORETEXT R1 "SHR||r:dst x:src x:amount|0|0|||SHR dst src amount|SHR dst src kopurua"
-STORETEXT R1 "SQRT|SR|r:dst x:src|0|0|||SQRT dst src|SQRT dst src"
-STORETEXT R1 "EXP||r:dst x:src|0|0|||EXP dst src|EXP dst src"
-STORETEXT R1 "LOG|LN|r:dst x:src|0|0|||LOG dst src|LOG dst src"
-STORETEXT R1 "SIN||r:dst x:src|0|0|||SIN dst src|SIN dst src"
-STORETEXT R1 "COS||r:dst x:src|0|0|||COS dst src|COS dst src"
-STORETEXT R1 "TAN||r:dst x:src|0|0|||TAN dst src|TAN dst src"
-STORETEXT R1 "POW||r:dst x:a x:b|0|0|||POW dst a b|POW dst a b"
-STORETEXT R1 "RAND|RN|r:reg|0|0|||RAND reg|RAND erregistroa"
-STORETEXT R1 "SEEDRNG|SRNG|i:seed|0|0|||SEEDRNG seed|SEEDRNG hazia"
-STORETEXT R1 "INPUT|INP|r:reg|0|0|||INPUT reg|INPUT erregistroa"
-STORETEXT R1 "GETTIME|GTIME GT|r:reg|0|0|||GETTIME reg|GETTIME erregistroa"
-STORETEXT R1 "LOAD|LD|r:dst x:addr|0|0|||LOAD dst addr|LOAD dst addr"
-STORETEXT R1 "STORE|ST|x:src x:addr|0|0|||STORE src addr|STORE src addr"
-STORETEXT R1 "STORETEXT|STEXT|r:addr s:text|0|0|||STORETEXT addr text|STORETEXT addr testua"
-STORETEXT R1 "GETC|GETBYTE|r:dst|0|0|||GETC dst|GETC dst"
-STORETEXT R1 "PUTC|PUTBYTE|x:src|0|0|||PUTC src|PUTC src"
-STORETEXT R1 "STREAM||i:stream|0|0|||STREAM stream|STREAM stream"
-STORETEXT R1 "ARGC||r:dst|0|0|||ARGC dst|ARGC dst"
-STORETEXT R1 "ARGBYTE||r:dst x:arg x:index|0|0|||ARGBYTE dst arg index|ARGBYTE dst arg index"
-STORETEXT R1 "GETLANG||r:dst|0|0|||GETLANG dst|GETLANG dst"
-STORETEXT R1 "PUSH|PUSHREG|x:reg|0|0|||PUSH reg|PUSH erregistroa"
-STORETEXT R1 "POP|POPREG|r:reg|0|0|||POP reg|POP erregistroa"
-STORETEXT R1 "CHARLOAD|CLOAD CLD|r:reg k:char|0|0|||CHARLOAD reg char|CHARLOAD erregistroa karakterea"
-STORETEXT R1 "PACKBITS||r:dst c:bits+|0|0|||PACKBITS dst bits...|PACKBITS dst bitak..."
-STORETEXT R1 "JUMP|JMP|l:label|0|0|||JUMP label|JUMP etiketa"
-STORETEXT R1 "JUMPIFZERO|JIZ JZ|v:value l:label|0|0|||JUMPIFZERO value label|JUMPIFZERO balioa etiketa"
-STORETEXT R1 "JUMPIFONE|JIO JO|v:value l:label|0|0|||JUMPIFONE value label|JUMPIFONE balioa etiketa"
-STORETEXT R1 "IFEQ|IEQ|x:a x:b l:label|0|0|||IFEQ a b label|IFEQ a b etiketa"
-STORETEXT R1 "IFNE|INE|x:a x:b l:label|0|0|||IFNE a b label|IFNE a b etiketa"
-STORETEXT R1 "IFGT|IGT|x:a x:b l:label|0|0|||IFGT a b label|IFGT a b etiketa"
-STORETEXT R1 "IFLT|ILT|x:a x:b l:label|0|0|||IFLT a b label|IFLT a b etiketa"
-STORETEXT R1 "CALL|CALLLABEL|l:label|0|0|||CALL label|CALL etiketa"
-STORETEXT R1 "RETSUB|RET RS||0|0|||RETSUB|RETSUB"
-STORETEXT R1 "LOOPSTART|LOOP LSTART LS|n:count|0|0|||LOOPSTART count|LOOPSTART kopurua"
-STORETEXT R1 "LOOPEND|ENDLOOP LEND LE||0|0|||LOOPEND|LOOPEND"
-STORETEXT R1 "HALT|HLT END||0|0|||HALT|HALT"
-STORETEXT R1 "EXIT||i:status|0|0|||EXIT status|EXIT status"
-STORETEXT R1 "BARRIER|BR|q:qubits*|0|0|||BARRIER [qubits...]|BARRIER [qubitak...]"
-STORETEXT R1 "PRINT||s:text|0|0|||PRINT text|PRINT testua"
-STORETEXT R1 "PRINTLN|PLN|s:text?|0|0|||PRINTLN [text]|PRINTLN [testua]"
-STORETEXT R1 "PRINTF|PF|s:format r:regs*|0|0|||PRINTF format [regs...]|PRINTF formatua [erregistroak...]"
-STORETEXT R1 "CHAROUT|COUT CO|x:reg|0|0|||CHAROUT reg|CHAROUT erregistroa"
-STORETEXT R1 "VERBOSELOG|VLOG VL|q:qubit s:text|0|0|||VERBOSELOG qubit text|VERBOSELOG qubita testua"
-STORETEXT R1 "DUMPREGS|DREGS DR||0|0|||DUMPREGS|DUMPREGS"
-STORETEXT R1 "COMMENT|CMT CM||0|0|||COMMENT|COMMENT"
-STORETEXT R1 "SETPOS|SPOS STP||0|1|position bookkeeping that never affected the quantum state|egoera kuantikoan inoiz eraginik izan ez zuen posizio-erregistroa|SETPOS|SETPOS"
-STORETEXT R1 "SETWL|SWL SW||0|1|wavelength bookkeeping that never affected the quantum state|egoera kuantikoan inoiz eraginik izan ez zuen uhin-luzera erregistroa|SETWL|SETWL"
-STORETEXT R1 "WLSHIFT|WLS WLSH||0|1|wavelength bookkeeping that never affected the quantum state|egoera kuantikoan inoiz eraginik izan ez zuen uhin-luzera erregistroa|WLSHIFT|WLSHIFT"
-STORETEXT R1 "MOVE|MV||0|1|position bookkeeping that never affected the quantum state|egoera kuantikoan inoiz eraginik izan ez zuen posizio-erregistroa|MOVE|MOVE"
-STORETEXT R1 "MARKOBSERVED|MOBS MO||0|1|it had no effect; a measured qubit is simply measured|ez zuen eraginik; neurtutako qubit bat neurtuta dago, besterik ez|MARKOBSERVED|MARKOBSERVED"
-STORETEXT R1 "RELEASE|REL RL||0|1|it had no effect; a simulator has nothing to release|ez zuen eraginik; simulagailu batek ez du ezer askatzeko|RELEASE|RELEASE"
-STORETEXT R1 "DECOHERENCEPROTECT|DPROT DP||0|1|there is no physical model behind it; study decoherence with `qoa run --noise`|ez dago eredu fisikorik atzean; dekoherentzia aztertzeko erabili `qoa run --noise`|DECOHERENCEPROTECT|DECOHERENCEPROTECT"
-STORETEXT R1 "ENTANGLESWAPMEASURE|ESWAPM ESM||0|1|use ESWAP, then branch on the measured bits with JUMPIFONE|erabili ESWAP, eta gero adarkatu neurtutako bitekin JUMPIFONE bidez|ENTANGLESWAPMEASURE|ENTANGLESWAPMEASURE"
-STORETEXT R1 "ENTANGLEWITHCLASSICALFEEDBACK|EWCFB ECFB||0|1|use gates plus JUMPIFONE/IFEQ for classical feedback|erabili ateak eta JUMPIFONE/IFEQ atzeraelikadura klasikorako|ENTANGLEWITHCLASSICALFEEDBACK|ENTANGLEWITHCLASSICALFEEDBACK"
-STORETEXT R1 "ENTANGLEDISTRIBUTED|EDIST ED||0|1|networked entanglement between machines is not modelled|makinen arteko sareko entrelazamendua ez dago modelatuta|ENTANGLEDISTRIBUTED|ENTANGLEDISTRIBUTED"
-STORETEXT R1 "APPLYNONLINEARPHASESHIFT|ANLPS ANLP ANLPH||0|1|it was never defined; use KERR or CROSSKERR|ez zen inoiz definitu; erabili KERR edo CROSSKERR|APPLYNONLINEARPHASESHIFT|APPLYNONLINEARPHASESHIFT"
-STORETEXT R1 "APPLYNONLINEARSIGMA|ANLS ANLSI||0|1|it was never defined; use KERR or CROSSKERR|ez zen inoiz definitu; erabili KERR edo CROSSKERR|APPLYNONLINEARSIGMA|APPLYNONLINEARSIGMA"
-STORETEXT R1 "QUANTUMZENOEFFECT|QZE QZEN||0|1|it needs continuous-time evolution, which QOA does not model; repeated MEASURE in a LOOPSTART shows the freezing|denbora jarraituko bilakaera behar du, eta QOA-k ez du modelatzen; LOOPSTART baten barruko MEASURE errepikatuek izozte bera erakusten dute|QUANTUMZENOEFFECT|QUANTUMZENOEFFECT"
-STORETEXT R1 "APPLYLINEAROPTICALTRANSFORM|ALOT ALOPT||0|1|build the network from BS and MODEPHASE; every linear optical unitary decomposes into them|eraiki sarea BS eta MODEPHASE erabiliz; unitario optiko lineal oro haietan deskonposatzen da|APPLYLINEAROPTICALTRANSFORM|APPLYLINEAROPTICALTRANSFORM"
-STORETEXT R1 "ERRORCORRECT|ECORR EC||0|1|no error-correcting code was ever specified; write the correction circuit with gates|ez zen inoiz errore-zuzentzeko koderik zehaztu; idatzi zuzenketa-zirkuitua ateekin|ERRORCORRECT|ERRORCORRECT"
-STORETEXT R1 "ERRORSYNDROME|ESYN ES||0|1|no code was ever specified; write the syndrome circuit with gates and MEASURE|ez zen inoiz koderik zehaztu; idatzi sindrome-zirkuitua ateekin eta MEASURE-rekin|ERRORSYNDROME|ERRORSYNDROME"
-STORETEXT R1 "PHOTONROUTE|PROUTE PR||0|1|ports were never defined; use MODESWAP or BS|atakak ez ziren inoiz definitu; erabili MODESWAP edo BS|PHOTONROUTE|PHOTONROUTE"
-STORETEXT R1 "TIMEDELAY|TDELAY TD||0|1|an ideal delay changes nothing; model a real one with LOSS and MODEPHASE|atzerapen ideal batek ez du ezer aldatzen; benetakoa modelatzeko erabili LOSS eta MODEPHASE|TIMEDELAY|TIMEDELAY"
-STORETEXT R1 "OPTICALDELAYLINECONTROL|ODLC ODL||0|1|an ideal delay changes nothing; model a real one with LOSS and MODEPHASE|atzerapen ideal batek ez du ezer aldatzen; benetakoa modelatzeko erabili LOSS eta MODEPHASE|OPTICALDELAYLINECONTROL|OPTICALDELAYLINECONTROL"
-STORETEXT R1 "WAIT|||0|1|an ideal wait changes nothing; use `qoa run --noise` to study idle errors|itxaronaldi ideal batek ez du ezer aldatzen; geldirik dauden erroreak aztertzeko erabili `qoa run --noise`|WAIT|WAIT"
-STORETEXT R1 "PHOTONBUNCHINGCONTROL|PBUNCH PBC||0|1|bunching comes from interference (see BS), it is not a switch|multzokatzea interferentziatik dator (ikus BS), ez da etengailu bat|PHOTONBUNCHINGCONTROL|PHOTONBUNCHINGCONTROL"
-STORETEXT R1 "SINGLEPHOTONSOURCEOFF|SPSOFF||0|1|sources are instantaneous (SINGLEPHOTON); there is nothing to switch off|iturriak berehalakoak dira (SINGLEPHOTON); ez dago ezer itzaltzeko|SINGLEPHOTONSOURCEOFF|SINGLEPHOTONSOURCEOFF"
-STORETEXT R1 "APPLYDISPLACEMENTOPERATOR|ADO ADOP||0|1|use DISPLACE|erabili DISPLACE|APPLYDISPLACEMENTOPERATOR|APPLYDISPLACEMENTOPERATOR"
-STORETEXT R1 "OPTICALSWITCHCONTROL|OSC OSW||0|1|use MODESWAP to switch|erabili MODESWAP aldatzeko|OPTICALSWITCHCONTROL|OPTICALSWITCHCONTROL"
-STORETEXT R1 "MEASUREWITHDELAY|MWD MWDEL||0|1|an ideal delay changes nothing; use MEASURE|atzerapen ideal batek ez du ezer aldatzen; erabili MEASURE|MEASUREWITHDELAY|MEASUREWITHDELAY"
-STORETEXT R1 "PHOTONLOSSCORRECTION|PLC PLCOR||0|1|no loss-correcting code was ever specified|ez zen inoiz galera zuzentzeko koderik zehaztu|PHOTONLOSSCORRECTION|PHOTONLOSSCORRECTION"
-STORETEXT R1 "PHOTONEMISSIONPATTERN|PEPAT PEP||0|1|it was never defined; use EMIT inside LOOPSTART|ez zen inoiz definitu; erabili EMIT LOOPSTART baten barruan|PHOTONEMISSIONPATTERN|PHOTONEMISSIONPATTERN"
-STORETEXT R1 "APPLYFEEDFORWARDGATE|AFFG||0|1|use JUMPIFONE or IFEQ to apply gates conditionally|erabili JUMPIFONE edo IFEQ ateak baldintzapean aplikatzeko|APPLYFEEDFORWARDGATE|APPLYFEEDFORWARDGATE"
-STORETEXT R1 "THERMALAVG|||0|1|not a quantum-circuit operation|ez da zirkuitu kuantikoko eragiketa bat|THERMALAVG|THERMALAVG"
-STORETEXT R1 "WKBFACTOR|||0|1|not a quantum-circuit operation|ez da zirkuitu kuantikoko eragiketa bat|WKBFACTOR|WKBFACTOR"
-STORETEXT R1 "CMP|||0|1|IFEQ, IFNE, IFGT and IFLT compare registers directly|IFEQ, IFNE, IFGT eta IFLT aginduek erregistroak zuzenean konparatzen dituzte|CMP|CMP"
-STORETEXT R1 "JMPABS|JMPA JABS||0|1|byte addresses no longer exist; jump to a label|byte-helbideak jada ez daude; jauzi etiketa batera|JMPABS|JMPABS"
-STORETEXT R1 "CALLADDR|CADDR CA||0|1|byte addresses no longer exist; CALL a label|byte-helbideak jada ez daude; erabili CALL etiketa batekin|CALLADDR|CALLADDR"
-STORETEXT R1 "LOADMEM|LMEM LM||0|1|memory is now LOAD dst addr, with the address in a register|memoria orain LOAD helmuga helbidea da, helbidea erregistro batean|LOADMEM|LOADMEM"
-STORETEXT R1 "STOREMEM|SMEM SM||0|1|memory is now STORE src addr, with the address in a register|memoria orain STORE iturria helbidea da, helbidea erregistro batean|STOREMEM|STOREMEM"
-STORETEXT R1 "LOADCLASSICAL|LCL LC||0|1|memory is now LOAD dst addr, with the address in a register|memoria orain LOAD helmuga helbidea da, helbidea erregistro batean|LOADCLASSICAL|LOADCLASSICAL"
-STORETEXT R1 "STORECLASSICAL|SCL SC||0|1|memory is now STORE src addr, with the address in a register|memoria orain STORE iturria helbidea da, helbidea erregistro batean|STORECLASSICAL|STORECLASSICAL"
-STORETEXT R1 "ALLOC|ALC||0|1|memory needs no allocation: LOAD and STORE use cells 0, 1, 2, ... directly|memoriak ez du esleipenik behar: LOAD eta STORE 0, 1, 2, ... gelaxkak zuzenean erabiltzen dituzte|ALLOC|ALLOC"
-STORETEXT R1 "FREE|FRE||0|1|memory needs no freeing: LOAD and STORE use cells 0, 1, 2, ... directly|memoria ez da askatu behar: LOAD eta STORE 0, 1, 2, ... gelaxkak zuzenean erabiltzen dituzte|FREE|FREE"
-STORETEXT R1 "BREAKPOINT|BP||0|1|use DUMPSTATE and DUMPREGS to look at a point in the program|erabili DUMPSTATE eta DUMPREGS programaren puntu bat ikusteko|BREAKPOINT|BREAKPOINT"
-STORETEXT R1 "EXITCODE|EXC EX||0|1|use HALT|erabili HALT|EXITCODE|EXITCODE"
-STORETEXT R1 "QUBITS|QUBIT||0|1|use QINIT with the qubit count, e.g. QINIT 25|erabili QINIT qubit-kopuruarekin, adib. QINIT 25|QUBITS|QUBITS"
-STORETEXT R1 "QGATE|||0|1|use GATE name qubit, or the gate's own instruction|erabili GATE izena qubita, edo atearen agindu propioa|QGATE|QGATE"
+STORETEXT R1 "QINIT|QI INITQUBIT IQ QINITQ|i:qubits|0|0|||QINIT qubits|QINIT qubitak|"
+STORETEXT R1 "QMODE|MODES|i:modes i:cutoff?|0|0|||QMODE modes [cutoff]|QMODE moduak [muga]|QO"
+STORETEXT R1 "QREG||w:name i:size i:first?|0|0|||QREG name size [first]|QREG izena size [first]|"
+STORETEXT R1 "CREG||w:name i:size i:first?|0|0|||CREG name size [first]|CREG izena size [first]|"
+STORETEXT R1 "OREG||w:name i:size i:first?|0|0|||OREG name size [first]|OREG izena size [first]|"
+STORETEXT R1 "RREG||w:name i:size i:first?|0|0|||RREG name size [first]|RREG izena size [first]|"
+STORETEXT R1 "CONST||w:name f:value|0|0|||CONST name value|CONST izena balioa|"
+STORETEXT R1 "H|HAD APPLYHADAMARD|q:qubit|1|0|||H qubit|H qubita|"
+STORETEXT R1 "X|APPLYBITFLIP|q:qubit|1|0|||X qubit|X qubita|"
+STORETEXT R1 "Y||q:qubit|1|0|||Y qubit|Y qubita|"
+STORETEXT R1 "Z|APPLYPHASEFLIP|q:qubit|1|0|||Z qubit|Z qubita|"
+STORETEXT R1 "S|APPLYSGATE|q:qubit|1|0|||S qubit|S qubita|"
+STORETEXT R1 "SDG|SDAG|q:qubit|1|0|||SDG qubit|SDG qubita|"
+STORETEXT R1 "T|APPLYTGATE|q:qubit|1|0|||T qubit|T qubita|"
+STORETEXT R1 "TDG|TDAG|q:qubit|1|0|||TDG qubit|TDG qubita|"
+STORETEXT R1 "SX|SQRTX|q:qubit|1|0|||SX qubit|SX qubita|"
+STORETEXT R1 "SXDG|SXDAG|q:qubit|1|0|||SXDG qubit|SXDG qubita|"
+STORETEXT R1 "PHASE|P PHASESHIFT SETPHASE SETP SPH PSE U1|q:qubit f:angle|1|0|||PHASE qubit angle|PHASE qubita angelua|"
+STORETEXT R1 "RX||q:qubit f:angle|1|0|||RX qubit angle|RX qubita angelua|"
+STORETEXT R1 "RY||q:qubit f:angle|1|0|||RY qubit angle|RY qubita angelua|"
+STORETEXT R1 "RZ||q:qubit f:angle|1|0|||RZ qubit angle|RZ qubita angelua|"
+STORETEXT R1 "U|U3|q:qubit f:theta f:phi f:lambda|1|0|||U qubit theta phi lambda|U qubita theta phi lambda|"
+STORETEXT R1 "ROT|APPLYROTATION AR|q:qubit b:axis f:angle|1|0|||ROT qubit axis angle|ROT qubita ardatza angelua|"
+STORETEXT R1 "MROT|APPLYMULTIQUBITROTATION AMQR|b:axis f:angle q:qubits+|0|0|||MROT axis angle qubits...|MROT ardatza angelua qubitak...|"
+STORETEXT R1 "GATE|APPLYGATE AGATE AG|g:name q:qubit|0|0|||GATE name qubit|GATE izena qubita|G"
+STORETEXT R1 "CNOT|CX CONTROLLEDNOT CN ENTANGLE|q:control q:target|0|0|||CNOT control target|CNOT kontrola helburua|"
+STORETEXT R1 "CY||q:control q:target|0|0|||CY control target|CY kontrola helburua|"
+STORETEXT R1 "CZ||q:control q:target|0|0|||CZ control target|CZ kontrola helburua|"
+STORETEXT R1 "CH||q:control q:target|0|0|||CH control target|CH kontrola helburua|"
+STORETEXT R1 "CSX||q:control q:target|0|0|||CSX control target|CSX kontrola helburua|"
+STORETEXT R1 "CU|CU3|q:control q:target f:theta f:phi f:lambda|0|0|||CU control target theta phi lambda|CU kontrola helburua theta phi lambda|"
+STORETEXT R1 "CPHASE|CP CONTROLLEDPHASEROTATION APPLYCPHASE CPR CU1|q:control q:target f:angle|0|0|||CPHASE control target angle|CPHASE kontrola helburua angelua|"
+STORETEXT R1 "CRX||q:control q:target f:angle|0|0|||CRX control target angle|CRX kontrola helburua angelua|"
+STORETEXT R1 "CRY||q:control q:target f:angle|0|0|||CRY control target angle|CRY kontrola helburua angelua|"
+STORETEXT R1 "CRZ||q:control q:target f:angle|0|0|||CRZ control target angle|CRZ kontrola helburua angelua|"
+STORETEXT R1 "SWAP||q:a q:b|0|0|||SWAP a b|SWAP a b|"
+STORETEXT R1 "CSWAP|CONTROLLEDSWAP CS FREDKIN|q:control q:a q:b|0|0|||CSWAP control a b|CSWAP kontrola a b|"
+STORETEXT R1 "CCX|TOFFOLI CCNOT|q:control1 q:control2 q:target|0|0|||CCX control1 control2 target|CCX kontrola1 kontrola2 helburua|"
+STORETEXT R1 "MCX||q:controls+ q:target|0|0|||MCX controls... target|MCX kontrolak... helburua|"
+STORETEXT R1 "MCZ||q:qubits+|0|0|||MCZ qubits...|MCZ qubitak...|"
+STORETEXT R1 "BELL|ENTANGLEBELL EBELL EB|q:a q:b|0|0|||BELL a b|BELL a b|B"
+STORETEXT R1 "GHZ|ENTANGLEMULTI EMULTI EM|q:qubits+|0|0|||GHZ qubits...|GHZ qubitak...|"
+STORETEXT R1 "CLUSTER|ENTANGLECLUSTER ECLUSTER ECR|q:qubits+|0|0|||CLUSTER qubits...|CLUSTER qubitak...|CL"
+STORETEXT R1 "ESWAP|ENTANGLESWAP ESP|q:a q:b q:c q:d|0|0|||ESWAP a b c d|ESWAP a b c d|"
+STORETEXT R1 "MEASURE|MEAS M QMEAS QM APPLYQNDMEASUREMENT AQND AQAD AQNM|q:qubit d:to?|1|0|||MEASURE qubit [-> to]|MEASURE qubita [-> helmuga]|"
+STORETEXT R1 "MEASUREIN|MEASUREINBASIS MEASB MIB|q:qubit b:basis d:to?|0|0|||MEASUREIN qubit basis [-> to]|MEASUREIN qubita oinarria [-> helmuga]|MI"
+STORETEXT R1 "MEASUREALL|MALL||0|0|||MEASUREALL|MEASUREALL|MA"
+STORETEXT R1 "RESET|RST RSTQ QRESET QR|q:qubit|1|0|||RESET qubit|RESET qubita|"
+STORETEXT R1 "RESETALL|RSTALL RSA||0|0|||RESETALL|RESETALL|RA"
+STORETEXT R1 "TOBASIS|APPLYMEASUREMENTBASISCHANGE AMBC|q:qubit b:basis|1|0|||TOBASIS qubit basis|TOBASIS qubita oinarria|TB"
+STORETEXT R1 "DISPLACE|APPLYDISPLACEMENT ADISP AD|o:mode f:re f:im?|0|0|||DISPLACE mode re [im]|DISPLACE modua re [im]|D"
+STORETEXT R1 "DISPLACEREG|APPLYDISPLACEMENTFEEDBACK|o:mode r:alpha|0|0|||DISPLACEREG mode alpha|DISPLACEREG modua alpha|DV"
+STORETEXT R1 "SQUEEZE|APPLYSQUEEZING ASQ AS|o:mode f:r f:phi?|0|0|||SQUEEZE mode r [phi]|SQUEEZE modua r [phi]|SQ"
+STORETEXT R1 "SQUEEZEREG|APPLYSQUEEZINGFEEDBACK ASWF ASF ASFB|o:mode r:r|0|0|||SQUEEZEREG mode r|SQUEEZEREG modua r|SQV"
+STORETEXT R1 "MODEPHASE|DYNAMICPHASECOMPENSATION DPC DPCMP PHASEROT|o:mode f:angle|0|0|||MODEPHASE mode angle|MODEPHASE modua angelua|PH"
+STORETEXT R1 "KERR|APPLYKERRNONLINEARITY AKNL|o:mode f:kappa f:time?|0|0|||KERR mode kappa [time]|KERR modua kappa [denbora]|K"
+STORETEXT R1 "CROSSKERR|CROSSPHASEMODULATION CPM CPMOD|o:a o:b f:kappa|0|0|||CROSSKERR a b kappa|CROSSKERR a b kappa|XK"
+STORETEXT R1 "BS|BEAMSPLITTER|o:a o:b f:theta f:phi?|0|0|||BS a b theta [phi]|BS a b theta [phi]|"
+STORETEXT R1 "MODESWAP|OPTICALROUTING OROUTE OPTR|o:a o:b|0|0|||MODESWAP a b|MODESWAP a b|MS"
+STORETEXT R1 "ADDPHOTON|PHOTONADDITION PADD PA|o:mode|0|0|||ADDPHOTON mode|ADDPHOTON modua|"
+STORETEXT R1 "SUBPHOTON|APPLYPHOTONSUBTRACTION APSUB APS|o:mode|0|0|||SUBPHOTON mode|SUBPHOTON modua|PS"
+STORETEXT R1 "LOSS|PHOTONLOSS PHOTONLOSSSIMULATE PLS PLSIM SETOPTICALATTENUATION SOATT SOA|o:mode f:probability|0|0|||LOSS mode probability|LOSS modua probabilitatea|L"
+STORETEXT R1 "FOCK||o:mode i:photons|0|0|||FOCK mode photons|FOCK modua fotoiak|F"
+STORETEXT R1 "SINGLEPHOTON|SINGLEPHOTONSOURCEON SPSON|o:mode|0|0|||SINGLEPHOTON mode|SINGLEPHOTON modua|SP"
+STORETEXT R1 "COUNT|PHOTONCOUNT PCOUNT PC PHOTONNUMBERRESOLVINGDETECTION PNRD PNR|o:mode d:to?|0|0|||COUNT mode [-> to]|COUNT modua [-> helmuga]|N"
+STORETEXT R1 "DETECT|PHOTONDETECT PDETECT PD|o:mode d:to?|0|0|||DETECT mode [-> to]|DETECT modua [-> helmuga]|"
+STORETEXT R1 "PARITY|MEASUREPARITY MPAR MP|o:mode d:to?|0|0|||PARITY mode [-> to]|PARITY modua [-> helmuga]|"
+STORETEXT R1 "COINCIDENCE|PHOTONDETECTCOINCIDENCE PDCOIN PDC|o:modes+ d:to|0|0|||COINCIDENCE modes... -> to|COINCIDENCE moduak... -> helmuga|CD"
+STORETEXT R1 "EMIT|PHOTONEMIT PEMIT PE ABSORB|q:qubit o:mode|0|0|||EMIT qubit mode|EMIT qubita modua|E"
+STORETEXT R1 "DISPERSIVE||q:qubit o:mode f:angle|0|0|||DISPERSIVE qubit mode angle|DISPERSIVE qubita modua angelua|DSP"
+STORETEXT R1 "DUMPSTATE|DSTATE DS||0|0|||DUMPSTATE|DUMPSTATE|"
+STORETEXT R1 "EXPECT|QUANTUMSTATETOMOGRAPHY QST QSTAT|q:qubit b:basis r:to?|0|0|||EXPECT qubit basis [to]|EXPECT qubita oinarria [helmuga]|EV"
+STORETEXT R1 "BELLCHECK|BELLSTATEVERIFICATION BSV BSTATE|q:a q:b r:to?|0|0|||BELLCHECK a b [to]|BELLCHECK a b [helmuga]|BC"
+STORETEXT R1 "MEANPHOTON|NMEAN|o:mode r:to?|0|0|||MEANPHOTON mode [to]|MEANPHOTON modua [helmuga]|MN"
+STORETEXT R1 "REGSET|SET RSET RGST|r:reg f:value|0|0|||REGSET reg value|REGSET erregistroa balioa|"
+STORETEXT R1 "REGCOPY|MOV RCOPY RC|r:dst x:src|0|0|||REGCOPY dst src|REGCOPY dst src|"
+STORETEXT R1 "ADD|REGADD RADD RGA|r:dst x:a x:b|0|0|||ADD dst a b|ADD dst a b|"
+STORETEXT R1 "SUB|REGSUB RSUB RGS|r:dst x:a x:b|0|0|||SUB dst a b|SUB dst a b|"
+STORETEXT R1 "MUL|REGMUL|r:dst x:a x:b|0|0|||MUL dst a b|MUL dst a b|"
+STORETEXT R1 "DIV|REGDIV|r:dst x:a x:b|0|0|||DIV dst a b|DIV dst a b|"
+STORETEXT R1 "ANDBITS|AND ANDB AB|r:dst x:a x:b|0|0|||ANDBITS dst a b|ANDBITS dst a b|"
+STORETEXT R1 "ORBITS|OR ORB OB|r:dst x:a x:b|0|0|||ORBITS dst a b|ORBITS dst a b|"
+STORETEXT R1 "XORBITS|XOR XORB XB|r:dst x:a x:b|0|0|||XORBITS dst a b|XORBITS dst a b|"
+STORETEXT R1 "NOTBITS|NOTB NB|r:dst x:src|0|0|||NOTBITS dst src|NOTBITS dst src|NOT"
+STORETEXT R1 "SHL||r:dst x:src x:amount|0|0|||SHL dst src amount|SHL dst src kopurua|"
+STORETEXT R1 "SHR||r:dst x:src x:amount|0|0|||SHR dst src amount|SHR dst src kopurua|"
+STORETEXT R1 "SQRT|SR|r:dst x:src|0|0|||SQRT dst src|SQRT dst src|"
+STORETEXT R1 "EXP||r:dst x:src|0|0|||EXP dst src|EXP dst src|"
+STORETEXT R1 "LOG|LN|r:dst x:src|0|0|||LOG dst src|LOG dst src|"
+STORETEXT R1 "SIN||r:dst x:src|0|0|||SIN dst src|SIN dst src|"
+STORETEXT R1 "COS||r:dst x:src|0|0|||COS dst src|COS dst src|"
+STORETEXT R1 "TAN||r:dst x:src|0|0|||TAN dst src|TAN dst src|"
+STORETEXT R1 "POW||r:dst x:a x:b|0|0|||POW dst a b|POW dst a b|"
+STORETEXT R1 "RAND|RN|r:reg|0|0|||RAND reg|RAND erregistroa|"
+STORETEXT R1 "SEEDRNG|SRNG|i:seed|0|0|||SEEDRNG seed|SEEDRNG hazia|"
+STORETEXT R1 "INPUT|INP|r:reg|0|0|||INPUT reg|INPUT erregistroa|"
+STORETEXT R1 "GETTIME|GTIME GT|r:reg|0|0|||GETTIME reg|GETTIME erregistroa|"
+STORETEXT R1 "LOAD|LD|r:dst x:addr|0|0|||LOAD dst addr|LOAD dst addr|"
+STORETEXT R1 "STORE|ST|x:src x:addr|0|0|||STORE src addr|STORE src addr|"
+STORETEXT R1 "STORETEXT|STEXT|r:addr s:text|0|0|||STORETEXT addr text|STORETEXT addr testua|STX"
+STORETEXT R1 "GETC|GETBYTE|r:dst|0|0|||GETC dst|GETC dst|GC"
+STORETEXT R1 "PUTC|PUTBYTE|x:src|0|0|||PUTC src|PUTC src|"
+STORETEXT R1 "STREAM||i:stream|0|0|||STREAM stream|STREAM stream|"
+STORETEXT R1 "ARGC||r:dst|0|0|||ARGC dst|ARGC dst|"
+STORETEXT R1 "ARGBYTE||r:dst x:arg x:index|0|0|||ARGBYTE dst arg index|ARGBYTE dst arg index|"
+STORETEXT R1 "GETLANG||r:dst|0|0|||GETLANG dst|GETLANG dst|"
+STORETEXT R1 "PUSH|PUSHREG|x:reg|0|0|||PUSH reg|PUSH erregistroa|"
+STORETEXT R1 "POP|POPREG|r:reg|0|0|||POP reg|POP erregistroa|"
+STORETEXT R1 "CHARLOAD|CLOAD CLD|r:reg k:char|0|0|||CHARLOAD reg char|CHARLOAD erregistroa karakterea|"
+STORETEXT R1 "PACKBITS||r:dst c:bits+|0|0|||PACKBITS dst bits...|PACKBITS dst bitak...|PB"
+STORETEXT R1 "JUMP|JMP|l:label|0|0|||JUMP label|JUMP etiketa|J"
+STORETEXT R1 "JUMPIFZERO|JIZ JZ|v:value l:label|0|0|||JUMPIFZERO value label|JUMPIFZERO balioa etiketa|"
+STORETEXT R1 "JUMPIFONE|JIO JO|v:value l:label|0|0|||JUMPIFONE value label|JUMPIFONE balioa etiketa|"
+STORETEXT R1 "IFEQ|IEQ|x:a x:b l:label|0|0|||IFEQ a b label|IFEQ a b etiketa|"
+STORETEXT R1 "IFNE|INE|x:a x:b l:label|0|0|||IFNE a b label|IFNE a b etiketa|"
+STORETEXT R1 "IFGT|IGT|x:a x:b l:label|0|0|||IFGT a b label|IFGT a b etiketa|"
+STORETEXT R1 "IFLT|ILT|x:a x:b l:label|0|0|||IFLT a b label|IFLT a b etiketa|"
+STORETEXT R1 "CALL|CALLLABEL|l:label|0|0|||CALL label|CALL etiketa|C"
+STORETEXT R1 "RETSUB|RET RS||0|0|||RETSUB|RETSUB|"
+STORETEXT R1 "LOOPSTART|LOOP LSTART LS|n:count|0|0|||LOOPSTART count|LOOPSTART kopurua|"
+STORETEXT R1 "LOOPEND|ENDLOOP LEND LE||0|0|||LOOPEND|LOOPEND|"
+STORETEXT R1 "HALT|HLT END||0|0|||HALT|HALT|"
+STORETEXT R1 "EXIT||i:status|0|0|||EXIT status|EXIT status|"
+STORETEXT R1 "BARRIER|BR|q:qubits*|0|0|||BARRIER [qubits...]|BARRIER [qubitak...]|"
+STORETEXT R1 "PRINT||s:text|0|0|||PRINT text|PRINT testua|"
+STORETEXT R1 "PRINTLN|PLN|s:text?|0|0|||PRINTLN [text]|PRINTLN [testua]|"
+STORETEXT R1 "PRINTF|PF|s:format r:regs*|0|0|||PRINTF format [regs...]|PRINTF formatua [erregistroak...]|"
+STORETEXT R1 "CHAROUT|COUT CO|x:reg|0|0|||CHAROUT reg|CHAROUT erregistroa|"
+STORETEXT R1 "VERBOSELOG|VLOG VL|q:qubit s:text|0|0|||VERBOSELOG qubit text|VERBOSELOG qubita testua|"
+STORETEXT R1 "DUMPREGS|DREGS DR||0|0|||DUMPREGS|DUMPREGS|"
+STORETEXT R1 "COMMENT|CMT CM||0|0|||COMMENT|COMMENT|"
+STORETEXT R1 "SETPOS|SPOS STP||0|1|position bookkeeping that never affected the quantum state|egoera kuantikoan inoiz eraginik izan ez zuen posizio-erregistroa|SETPOS|SETPOS|"
+STORETEXT R1 "SETWL|SWL SW||0|1|wavelength bookkeeping that never affected the quantum state|egoera kuantikoan inoiz eraginik izan ez zuen uhin-luzera erregistroa|SETWL|SETWL|"
+STORETEXT R1 "WLSHIFT|WLS WLSH||0|1|wavelength bookkeeping that never affected the quantum state|egoera kuantikoan inoiz eraginik izan ez zuen uhin-luzera erregistroa|WLSHIFT|WLSHIFT|"
+STORETEXT R1 "MOVE|MV||0|1|position bookkeeping that never affected the quantum state|egoera kuantikoan inoiz eraginik izan ez zuen posizio-erregistroa|MOVE|MOVE|"
+STORETEXT R1 "MARKOBSERVED|MOBS MO||0|1|it had no effect; a measured qubit is simply measured|ez zuen eraginik; neurtutako qubit bat neurtuta dago, besterik ez|MARKOBSERVED|MARKOBSERVED|"
+STORETEXT R1 "RELEASE|REL RL||0|1|it had no effect; a simulator has nothing to release|ez zuen eraginik; simulagailu batek ez du ezer askatzeko|RELEASE|RELEASE|"
+STORETEXT R1 "DECOHERENCEPROTECT|DPROT DP||0|1|there is no physical model behind it; study decoherence with `qoa run --noise`|ez dago eredu fisikorik atzean; dekoherentzia aztertzeko erabili `qoa run --noise`|DECOHERENCEPROTECT|DECOHERENCEPROTECT|"
+STORETEXT R1 "ENTANGLESWAPMEASURE|ESWAPM ESM||0|1|use ESWAP, then branch on the measured bits with JUMPIFONE|erabili ESWAP, eta gero adarkatu neurtutako bitekin JUMPIFONE bidez|ENTANGLESWAPMEASURE|ENTANGLESWAPMEASURE|"
+STORETEXT R1 "ENTANGLEWITHCLASSICALFEEDBACK|EWCFB ECFB||0|1|use gates plus JUMPIFONE/IFEQ for classical feedback|erabili ateak eta JUMPIFONE/IFEQ atzeraelikadura klasikorako|ENTANGLEWITHCLASSICALFEEDBACK|ENTANGLEWITHCLASSICALFEEDBACK|"
+STORETEXT R1 "ENTANGLEDISTRIBUTED|EDIST ED||0|1|networked entanglement between machines is not modelled|makinen arteko sareko entrelazamendua ez dago modelatuta|ENTANGLEDISTRIBUTED|ENTANGLEDISTRIBUTED|"
+STORETEXT R1 "APPLYNONLINEARPHASESHIFT|ANLPS ANLP ANLPH||0|1|it was never defined; use KERR or CROSSKERR|ez zen inoiz definitu; erabili KERR edo CROSSKERR|APPLYNONLINEARPHASESHIFT|APPLYNONLINEARPHASESHIFT|"
+STORETEXT R1 "APPLYNONLINEARSIGMA|ANLS ANLSI||0|1|it was never defined; use KERR or CROSSKERR|ez zen inoiz definitu; erabili KERR edo CROSSKERR|APPLYNONLINEARSIGMA|APPLYNONLINEARSIGMA|"
+STORETEXT R1 "QUANTUMZENOEFFECT|QZE QZEN||0|1|it needs continuous-time evolution, which QOA does not model; repeated MEASURE in a LOOPSTART shows the freezing|denbora jarraituko bilakaera behar du, eta QOA-k ez du modelatzen; LOOPSTART baten barruko MEASURE errepikatuek izozte bera erakusten dute|QUANTUMZENOEFFECT|QUANTUMZENOEFFECT|"
+STORETEXT R1 "APPLYLINEAROPTICALTRANSFORM|ALOT ALOPT||0|1|build the network from BS and MODEPHASE; every linear optical unitary decomposes into them|eraiki sarea BS eta MODEPHASE erabiliz; unitario optiko lineal oro haietan deskonposatzen da|APPLYLINEAROPTICALTRANSFORM|APPLYLINEAROPTICALTRANSFORM|"
+STORETEXT R1 "ERRORCORRECT|ECORR EC||0|1|no error-correcting code was ever specified; write the correction circuit with gates|ez zen inoiz errore-zuzentzeko koderik zehaztu; idatzi zuzenketa-zirkuitua ateekin|ERRORCORRECT|ERRORCORRECT|"
+STORETEXT R1 "ERRORSYNDROME|ESYN ES||0|1|no code was ever specified; write the syndrome circuit with gates and MEASURE|ez zen inoiz koderik zehaztu; idatzi sindrome-zirkuitua ateekin eta MEASURE-rekin|ERRORSYNDROME|ERRORSYNDROME|"
+STORETEXT R1 "PHOTONROUTE|PROUTE PR||0|1|ports were never defined; use MODESWAP or BS|atakak ez ziren inoiz definitu; erabili MODESWAP edo BS|PHOTONROUTE|PHOTONROUTE|"
+STORETEXT R1 "TIMEDELAY|TDELAY TD||0|1|an ideal delay changes nothing; model a real one with LOSS and MODEPHASE|atzerapen ideal batek ez du ezer aldatzen; benetakoa modelatzeko erabili LOSS eta MODEPHASE|TIMEDELAY|TIMEDELAY|"
+STORETEXT R1 "OPTICALDELAYLINECONTROL|ODLC ODL||0|1|an ideal delay changes nothing; model a real one with LOSS and MODEPHASE|atzerapen ideal batek ez du ezer aldatzen; benetakoa modelatzeko erabili LOSS eta MODEPHASE|OPTICALDELAYLINECONTROL|OPTICALDELAYLINECONTROL|"
+STORETEXT R1 "WAIT|||0|1|an ideal wait changes nothing; use `qoa run --noise` to study idle errors|itxaronaldi ideal batek ez du ezer aldatzen; geldirik dauden erroreak aztertzeko erabili `qoa run --noise`|WAIT|WAIT|"
+STORETEXT R1 "PHOTONBUNCHINGCONTROL|PBUNCH PBC||0|1|bunching comes from interference (see BS), it is not a switch|multzokatzea interferentziatik dator (ikus BS), ez da etengailu bat|PHOTONBUNCHINGCONTROL|PHOTONBUNCHINGCONTROL|"
+STORETEXT R1 "SINGLEPHOTONSOURCEOFF|SPSOFF||0|1|sources are instantaneous (SINGLEPHOTON); there is nothing to switch off|iturriak berehalakoak dira (SINGLEPHOTON); ez dago ezer itzaltzeko|SINGLEPHOTONSOURCEOFF|SINGLEPHOTONSOURCEOFF|"
+STORETEXT R1 "APPLYDISPLACEMENTOPERATOR|ADO ADOP||0|1|use DISPLACE|erabili DISPLACE|APPLYDISPLACEMENTOPERATOR|APPLYDISPLACEMENTOPERATOR|"
+STORETEXT R1 "OPTICALSWITCHCONTROL|OSC OSW||0|1|use MODESWAP to switch|erabili MODESWAP aldatzeko|OPTICALSWITCHCONTROL|OPTICALSWITCHCONTROL|"
+STORETEXT R1 "MEASUREWITHDELAY|MWD MWDEL||0|1|an ideal delay changes nothing; use MEASURE|atzerapen ideal batek ez du ezer aldatzen; erabili MEASURE|MEASUREWITHDELAY|MEASUREWITHDELAY|"
+STORETEXT R1 "PHOTONLOSSCORRECTION|PLC PLCOR||0|1|no loss-correcting code was ever specified|ez zen inoiz galera zuzentzeko koderik zehaztu|PHOTONLOSSCORRECTION|PHOTONLOSSCORRECTION|"
+STORETEXT R1 "PHOTONEMISSIONPATTERN|PEPAT PEP||0|1|it was never defined; use EMIT inside LOOPSTART|ez zen inoiz definitu; erabili EMIT LOOPSTART baten barruan|PHOTONEMISSIONPATTERN|PHOTONEMISSIONPATTERN|"
+STORETEXT R1 "APPLYFEEDFORWARDGATE|AFFG||0|1|use JUMPIFONE or IFEQ to apply gates conditionally|erabili JUMPIFONE edo IFEQ ateak baldintzapean aplikatzeko|APPLYFEEDFORWARDGATE|APPLYFEEDFORWARDGATE|"
+STORETEXT R1 "THERMALAVG|||0|1|not a quantum-circuit operation|ez da zirkuitu kuantikoko eragiketa bat|THERMALAVG|THERMALAVG|"
+STORETEXT R1 "WKBFACTOR|||0|1|not a quantum-circuit operation|ez da zirkuitu kuantikoko eragiketa bat|WKBFACTOR|WKBFACTOR|"
+STORETEXT R1 "CMP|||0|1|IFEQ, IFNE, IFGT and IFLT compare registers directly|IFEQ, IFNE, IFGT eta IFLT aginduek erregistroak zuzenean konparatzen dituzte|CMP|CMP|"
+STORETEXT R1 "JMPABS|JMPA JABS||0|1|byte addresses no longer exist; jump to a label|byte-helbideak jada ez daude; jauzi etiketa batera|JMPABS|JMPABS|"
+STORETEXT R1 "CALLADDR|CADDR CA||0|1|byte addresses no longer exist; CALL a label|byte-helbideak jada ez daude; erabili CALL etiketa batekin|CALLADDR|CALLADDR|"
+STORETEXT R1 "LOADMEM|LMEM LM||0|1|memory is now LOAD dst addr, with the address in a register|memoria orain LOAD helmuga helbidea da, helbidea erregistro batean|LOADMEM|LOADMEM|"
+STORETEXT R1 "STOREMEM|SMEM SM||0|1|memory is now STORE src addr, with the address in a register|memoria orain STORE iturria helbidea da, helbidea erregistro batean|STOREMEM|STOREMEM|"
+STORETEXT R1 "LOADCLASSICAL|LCL LC||0|1|memory is now LOAD dst addr, with the address in a register|memoria orain LOAD helmuga helbidea da, helbidea erregistro batean|LOADCLASSICAL|LOADCLASSICAL|"
+STORETEXT R1 "STORECLASSICAL|SCL SC||0|1|memory is now STORE src addr, with the address in a register|memoria orain STORE iturria helbidea da, helbidea erregistro batean|STORECLASSICAL|STORECLASSICAL|"
+STORETEXT R1 "ALLOC|ALC||0|1|memory needs no allocation: LOAD and STORE use cells 0, 1, 2, ... directly|memoriak ez du esleipenik behar: LOAD eta STORE 0, 1, 2, ... gelaxkak zuzenean erabiltzen dituzte|ALLOC|ALLOC|"
+STORETEXT R1 "FREE|FRE||0|1|memory needs no freeing: LOAD and STORE use cells 0, 1, 2, ... directly|memoria ez da askatu behar: LOAD eta STORE 0, 1, 2, ... gelaxkak zuzenean erabiltzen dituzte|FREE|FREE|"
+STORETEXT R1 "BREAKPOINT|BP||0|1|use DUMPSTATE and DUMPREGS to look at a point in the program|erabili DUMPSTATE eta DUMPREGS programaren puntu bat ikusteko|BREAKPOINT|BREAKPOINT|"
+STORETEXT R1 "EXITCODE|EXC EX||0|1|use HALT|erabili HALT|EXITCODE|EXITCODE|"
+STORETEXT R1 "QUBITS|QUBIT||0|1|use QINIT with the qubit count, e.g. QINIT 25|erabili QINIT qubit-kopuruarekin, adib. QINIT 25|QUBITS|QUBITS|"
+STORETEXT R1 "QGATE|||0|1|use GATE name qubit, or the gate's own instruction|erabili GATE izena qubita, edo atearen agindu propioa|QGATE|QGATE|"
 ; @isa-end
 STORETEXT R1 ""
 STORE R1 R0
@@ -1847,6 +2246,12 @@ STORE R1 R5
 ADD R5 R5 R31
 REGCOPY R12 R2
 LOOPEND
+; 9 izen labur leuna (0.4.5): agindu-lekuan bakarrik, izen-taulan zehaztapena negatiboan
+REGCOPY R0 R12
+CALL field
+PUSH R0
+PUSH R1
+REGCOPY R12 R2
 ; hurrengo erregistroa: 0aren ondoren
 isaload.skip:
 LOAD R0 R12
@@ -1865,6 +2270,12 @@ REGCOPY R0 R13
 REGCOPY R1 R14
 REGCOPY R2 R11
 CALL aliases
+POP R1
+POP R0
+IFEQ R1 R30 isaload.nosoft
+SUB R2 R30 R11
+CALL mnput
+isaload.nosoft:
 ADD R9 R9 R31
 JUMP isaload.rec
 isaload.end:
@@ -2065,7 +2476,25 @@ RETSUB
 
 ; lookup: R0, R1 = mnemonikoa (kode-puntuak) -> R0 = zehaztapena, edo 0 ez badago (maiuskula/minuskula
 ; berdin). aldatzen ditu R0-R7
+; lookup: R0, R1 = izena -> R0 = zehaztapena (edo 0), izen labur leunak barne. aldatzen ditu R0-R7
 lookup:
+CALL lookupraw
+IFGT R0 R29 lookup.pos
+SUB R0 R30 R0
+lookup.pos:
+RETSUB
+
+; reserved: R0, R1 = izena -> R0 = zehaztapena 0.4.4-ko izen edo ezizen bat bada (izen labur leunak ez dira
+; erreserbatzen: asm.rs-eko isa::reserved bezala), bestela 0. aldatzen ditu R0-R7
+reserved:
+CALL lookupraw
+IFGT R0 R29 reserved.done
+REGSET R0 0
+reserved.done:
+RETSUB
+
+; lookupraw: lookup bezala, baina izen labur leunen zehaztapena negatiboan
+lookupraw:
 PUSH R8
 REGCOPY R8 R1
 REGSET R2 42
@@ -2079,11 +2508,11 @@ REGCOPY R2 R8
 REGSET R3 2047
 CALL htfind
 REGCOPY R0 R1
-IFEQ R0 R30 lookup.done
+IFEQ R0 R30 lookupraw.done
 ADD R0 R0 R31
 ADD R0 R0 R31
 LOAD R0 R0
-lookup.done:
+lookupraw.done:
 POP R8
 RETSUB
 
@@ -3279,7 +3708,7 @@ CALL fname
 IFNE R0 R30 regname.no
 REGCOPY R0 R8
 REGCOPY R1 R9
-CALL lookup
+CALL reserved
 IFNE R0 R30 regname.no
 REGSET R0 1
 JUMP regname.done
@@ -7942,10 +8371,7 @@ REGSET R1 0
 CALL oflt
 JUMP b.done
 b.kerr:
-REGSET R0 23
-CALL opnew
-REGSET R0 0
-CALL oidx
+; kappa eta denbora finituak dira, baina haien biderkadura gainezka daiteke
 REGSET R0 1
 REGSET R1 0
 CALL vflt
@@ -7955,7 +8381,21 @@ REGSET R1 1
 CALL vflt
 POP R1
 MUL R0 R1 R0
+IFGT R0 (1.7976931348623157e308) b.kerr.inf
+IFLT R0 (-1.7976931348623157e308) b.kerr.inf
+PUSH R0
+REGSET R0 23
+CALL opnew
+REGSET R0 0
+CALL oidx
+POP R0
 CALL of64
+JUMP b.done
+b.kerr.inf:
+REGSET R0 2
+CALL vtok
+REGSET R1 77
+CALL diagtok
 JUMP b.done
 b.mode2:
 REGSET R0 0
@@ -10604,6 +11044,15 @@ REGSET R1 75
 IFEQ R5 R1 message.75
 REGSET R1 76
 IFEQ R5 R1 message.76
+REGSET R1 77
+IFEQ R5 R1 message.77
+RETSUB
+message.77:
+IFEQ R28 R31 message.77.eu
+PRINT "kappa × time is not a finite number"
+RETSUB
+message.77.eu:
+PRINT "kappa × denbora ez da zenbaki finitu bat"
 RETSUB
 message.75:
 IFEQ R28 R31 message.75.eu

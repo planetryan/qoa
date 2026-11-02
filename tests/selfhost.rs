@@ -14,7 +14,7 @@ use std::sync::OnceLock;
 
 const ASM: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tools/asm.qoa");
 
-// isatext-en erregistroak: izena|ezizenak|eragigaiak|hedapena|kendua|arrazoia en|eu|erabilera en|eu
+// isatext-en erregistroak: izena|ezizenak|eragigaiak|hedapena|kendua|arrazoia en|eu|erabilera en|eu|izen labur leuna
 fn isa_block() -> String {
     let mut out = String::new();
     for s in SPECS {
@@ -32,6 +32,7 @@ fn isa_block() -> String {
             eu.to_string(),
             s.usage_in(false),
             s.usage_in(true),
+            qoa::isa::soft_alias(s).unwrap_or("").to_string(),
         ];
         for f in &fields {
             // STORETEXT-en testu soil gisa idazten dira: ez komatxorik, ez alderantzizko barrarik, ez '|'
@@ -470,10 +471,15 @@ fn instruction(rng: &mut StdRng) -> String {
     if !spec.aliases.is_empty() && rng.random_bool(0.3) {
         name = spec.aliases[rng.random_range(0..spec.aliases.len())].to_string();
     }
+    // 0.4.5: izen laburra (leunak barne)
+    if rng.random_bool(0.3) {
+        name = qoa::isa::short(spec).to_string();
+    }
     if rng.random_bool(0.2) {
         name = name.to_lowercase();
     }
     let mut out = name;
+    let mut first = true;
     for op in spec.operand_specs() {
         if op.optional && rng.random_bool(0.4) {
             continue;
@@ -483,8 +489,18 @@ fn instruction(rng: &mut StdRng) -> String {
             _ => rng.random_range(if op.optional { 0 } else { 1 }..4),
         };
         for _ in 0..reps {
-            out.push(if rng.random_bool(0.1) { ',' } else { ' ' });
-            out.push_str(&operand(rng, op.kind));
+            let text = operand(rng, op.kind);
+            // 0.4.5: lehen eragigaia aginduari itsatsita (`Hq0`), eta `->` ordez `.` (`M q0.c0`)
+            if first && rng.random_bool(0.25) {
+            } else if op.kind == 'd' && text.starts_with("-> ") && rng.random_bool(0.5) {
+                out.push('.');
+                out.push_str(&text[3..]);
+                continue;
+            } else {
+                out.push(if rng.random_bool(0.1) { ',' } else { ' ' });
+            }
+            out.push_str(&text);
+            first = false;
         }
     }
     if rng.random_bool(0.03) {
@@ -492,6 +508,9 @@ fn instruction(rng: &mut StdRng) -> String {
     }
     if rng.random_bool(0.02) {
         out.push_str(" -> ->");
+    }
+    if rng.random_bool(0.02) {
+        out.push_str(".c1");
     }
     out
 }

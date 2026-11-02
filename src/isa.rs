@@ -1489,10 +1489,91 @@ pub static SPECS: &[Spec] = &[
     ),
 ];
 
-// izen edo ezizen batetik (maiuskula/minuskula berdin) agindu-zehaztapenera
-pub fn lookup(mnemonic: &str) -> Option<&'static Spec> {
+// 0.4.5: agindu bakoitzaren izen laburra, hobetsia (`qoa isa`-k erakusten du eta esportazioek idazten dute).
+// zerrendan ez dagoenaren izen laburra bere izena da. lehendik ezizen ez zirenak "leunak" dira: agindu-lekuan
+// bakarrik dabiltza eta ez dute izenik erreserbatzen, 0.4.4-ko programek `OREG L 2` edo glifoetan `~L{2}`
+// erabil baititzakete
+pub const SHORT: &[(&str, &str)] = &[
+    ("QINIT", "QI"),
+    ("QMODE", "QO"),
+    ("PHASE", "P"),
+    ("GATE", "G"),
+    ("CNOT", "CX"),
+    ("CPHASE", "CP"),
+    ("CSWAP", "CS"),
+    ("BELL", "B"),
+    ("CLUSTER", "CL"),
+    ("ESWAP", "ESP"),
+    ("MEASURE", "M"),
+    ("MEASUREIN", "MI"),
+    ("MEASUREALL", "MA"),
+    ("RESET", "RST"),
+    ("RESETALL", "RA"),
+    ("TOBASIS", "TB"),
+    ("DISPLACE", "D"),
+    ("DISPLACEREG", "DV"),
+    ("SQUEEZE", "SQ"),
+    ("SQUEEZEREG", "SQV"),
+    ("MODEPHASE", "PH"),
+    ("KERR", "K"),
+    ("CROSSKERR", "XK"),
+    ("MODESWAP", "MS"),
+    ("ADDPHOTON", "PA"),
+    ("SUBPHOTON", "PS"),
+    ("LOSS", "L"),
+    ("FOCK", "F"),
+    ("SINGLEPHOTON", "SP"),
+    ("COUNT", "N"),
+    ("DETECT", "PD"),
+    ("PARITY", "MP"),
+    ("COINCIDENCE", "CD"),
+    ("EMIT", "E"),
+    ("DISPERSIVE", "DSP"),
+    ("DUMPSTATE", "DS"),
+    ("EXPECT", "EV"),
+    ("BELLCHECK", "BC"),
+    ("MEANPHOTON", "MN"),
+    ("REGSET", "SET"),
+    ("REGCOPY", "RC"),
+    ("ANDBITS", "AND"),
+    ("ORBITS", "OR"),
+    ("XORBITS", "XOR"),
+    ("NOTBITS", "NOT"),
+    ("LOG", "LN"),
+    ("RAND", "RN"),
+    ("SEEDRNG", "SRNG"),
+    ("INPUT", "INP"),
+    ("GETTIME", "GT"),
+    ("CHARLOAD", "CLD"),
+    ("PACKBITS", "PB"),
+    ("LOAD", "LD"),
+    ("STORE", "ST"),
+    ("STORETEXT", "STX"),
+    ("GETC", "GC"),
+    ("JUMP", "J"),
+    ("JUMPIFZERO", "JZ"),
+    ("JUMPIFONE", "JO"),
+    ("IFEQ", "IEQ"),
+    ("IFNE", "INE"),
+    ("IFGT", "IGT"),
+    ("IFLT", "ILT"),
+    ("CALL", "C"),
+    ("RETSUB", "RET"),
+    ("LOOPSTART", "LS"),
+    ("LOOPEND", "LE"),
+    ("HALT", "END"),
+    ("BARRIER", "BR"),
+    ("PRINTLN", "PLN"),
+    ("PRINTF", "PF"),
+    ("CHAROUT", "CO"),
+    ("VERBOSELOG", "VL"),
+    ("DUMPREGS", "DR"),
+    ("COMMENT", "CM"),
+];
+
+fn index() -> &'static HashMap<String, usize> {
     static INDEX: OnceLock<HashMap<String, usize>> = OnceLock::new();
-    let index = INDEX.get_or_init(|| {
+    INDEX.get_or_init(|| {
         let mut m = HashMap::new();
         for (i, s) in SPECS.iter().enumerate() {
             m.insert(s.name.to_string(), i);
@@ -1501,10 +1582,49 @@ pub fn lookup(mnemonic: &str) -> Option<&'static Spec> {
             }
         }
         m
-    });
-    index
-        .get(&mnemonic.to_ascii_uppercase())
+    })
+}
+
+// izen labur leunak: (izen laburra -> zehaztapena), lehendik ezizen ez direnak
+fn soft_index() -> &'static HashMap<&'static str, usize> {
+    static SOFT: OnceLock<HashMap<&'static str, usize>> = OnceLock::new();
+    SOFT.get_or_init(|| {
+        let mut m = HashMap::new();
+        for (name, short) in SHORT {
+            if !index().contains_key(*short) {
+                m.insert(*short, index()[*name]);
+            }
+        }
+        m
+    })
+}
+
+// izen edo ezizen batetik (maiuskula/minuskula berdin) agindu-zehaztapenera; izen labur leunak barne
+pub fn lookup(mnemonic: &str) -> Option<&'static Spec> {
+    let up = mnemonic.to_ascii_uppercase();
+    index()
+        .get(&up)
+        .or_else(|| soft_index().get(up.as_str()))
         .map(|&i| &SPECS[i])
+}
+
+// izen bat agindu-izen edo ezizen erreserbatua den (0.4.4-n bezala): izen labur leunak ez dira erreserbatzen
+pub fn reserved(name: &str) -> bool {
+    index().contains_key(&name.to_ascii_uppercase())
+}
+
+// zehaztapen baten izen laburra (hobetsia)
+pub fn short(s: &Spec) -> &'static str {
+    SHORT
+        .iter()
+        .find(|(n, _)| *n == s.name)
+        .map_or(s.name, |(_, sh)| *sh)
+}
+
+// zehaztapen baten izen labur leuna, lehendik ezizen ez bada
+pub fn soft_alias(s: &Spec) -> Option<&'static str> {
+    let sh = short(s);
+    (sh != s.name && !s.aliases.contains(&sh)).then_some(sh)
 }
 
 // eragigai-zehaztapen bakarra, `operands` katetik aterata
@@ -1810,6 +1930,32 @@ mod tests {
             for a in s.aliases {
                 assert!(seen.insert(a), "ezizen bikoiztua: {} ({}-n)", a, s.name);
             }
+        }
+    }
+
+    #[test]
+    fn short_names_are_unique_and_point_at_live_instructions() {
+        let mut seen = std::collections::HashSet::new();
+        for (name, short) in SHORT {
+            let s = lookup(name).unwrap_or_else(|| panic!("{} ez dago", name));
+            assert_eq!(s.name, *name, "{} ez da izen nagusia", name);
+            assert!(!s.is_removed(), "{} kendua da", name);
+            assert!(seen.insert(*short), "izen labur bikoiztua: {}", short);
+            // izen laburrak bere aginduari begiratzen dio, inoiz beste bati
+            assert_eq!(lookup(short).map(|x| x.name), Some(*name), "{}", short);
+            assert!(short.len() <= name.len(), "{} ez da laburragoa", short);
+            assert!(
+                short
+                    .chars()
+                    .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
+            );
+        }
+        // leunek ez dute izenik erreserbatzen: 0.4.4-ko programek erabil ditzakete
+        for name in [
+            "L", "C", "D", "B", "N", "E", "F", "K", "J", "G", "QO", "MA", "MI",
+        ] {
+            assert!(!reserved(name), "{}", name);
+            assert!(lookup(name).is_some(), "{}", name);
         }
     }
 

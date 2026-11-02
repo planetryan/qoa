@@ -1,0 +1,4 @@
+; nahita huts egiten duen proba: kappa eta denbora finituak, baina haien biderkadura ez
+; expect-error: kappa × time is not a finite number
+QMODE 1
+KERR o0 1e200 1e200
