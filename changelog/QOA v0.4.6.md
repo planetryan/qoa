@@ -1,6 +1,9 @@
 # QOA v0.4.6 Release Notes
 
-**Status:** in progress, not released yet (euskaraz behean)
+**Status:** released 2026-11-02 (euskaraz behean)
+
+Builds on [0.4.5](<QOA v0.4.5.md>): glyphs as dense as they can be, with optional `;` and bracket-free bit
+indices, a `--dense` export that writes any program that way, and three fixes found by the new checks.
 
 ## Added
 
@@ -34,7 +37,11 @@
 
 # QOA v0.4.6 bertsio-oharrak
 
-**Egoera:** lanean, oraindik argitaratu gabe
+**Egoera:** 2026-11-02an argitaratua
+
+[0.4.5](<QOA v0.4.5.md>)-ren gainean: glifoak ahalik eta trinkoenak, `;` aukerakoarekin eta kortxeterik gabeko
+bit-indizeekin, edozein programa horrela idazten duen `--dense` esportazio bat, eta egiaztapen berriek
+aurkitutako hiru konponketa.
 
 ## Gehitua
 

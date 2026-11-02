@@ -118,4 +118,5 @@ prozesu eta nodoen artean, egoera bakar bat prozesu askotan banatuta, eta OpenCL
 ([self-hosting.eu.md](self-hosting.eu.md)). 0.4.4-n: glifo-sintaxia egonkortuta, zenbakiak eta konstante
 izendunak QOA arruntean, MPI ezer eraiki gabe, eta QOA edozein sarrerarekin seguru
 ([safety.eu.md](safety.eu.md)). 0.4.5-n: SHA-256 bat fitxategi konpilatu bakoitzean eta iturburu zigilatuak,
-agindu guztientzako forma laburrak, eta glifo trinkoagoak ([glyph.eu.md](glyph.eu.md)).
+agindu guztientzako forma laburrak, eta glifo trinkoagoak ([glyph.eu.md](glyph.eu.md)). 0.4.6-n: glifoak
+ahalik eta trinkoenak (`qoa export --to glyph --dense`).
