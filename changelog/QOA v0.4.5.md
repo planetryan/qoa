@@ -36,6 +36,13 @@
   full ones (it now works for all three). Every export is still reassembled and compared before it is written.
 * Every example, every test program and the assembler written in QOA are now written in the short forms,
   each checked to compile to exactly the same bytes as before (the assembler's source is 13% smaller).
+* **Dense glyphs.** `??x{ ... }` runs a block if x is 1 and `!!x{ ... }` if it is 0; `#2<=#1+#3`,
+  `#2<=2*pi/3`, `#2<=sqrt(#1)` and `#2<=#C` set a register with one operation (`+ - * / ^ & | << >>`) or
+  function; `#2_+1` adds and `#2-=>1` subtracts; `LXP@(address)`, the large expandable pointer, reads or
+  writes the memory cell at an address (`#2<=LXP@(100)`, `LXP@(#1)<=#2`); `name::{ ... }` names a block
+  that `::name` writes out where it is used; and `""` repeats the previous instruction with new operands
+  (`HQ[0]; ""Q[1];`). Each turns into ordinary QOA instructions (`qoa import` shows them), and each was an
+  error before. The full rules are in docs/glyph.md.
 
 ## Fixed
 
@@ -101,6 +108,14 @@
   idatzi aurretik, lehen bezala.
 * Adibide guztiak, proba-programa guztiak eta QOAn idatzitako mihiztatzailea forma laburretan daude orain,
   bakoitza lehengo byte berberetara konpilatzen dela egiaztatuta (mihiztatzailearen iturburua %13 txikiagoa da).
+* **Glifo trinkoak.** `??x{ ... }`-k bloke bat exekutatzen du x 1 bada eta `!!x{ ... }`-k 0 bada; `#2<=#1+#3`,
+  `#2<=2*pi/3`, `#2<=sqrt(#1)` eta `#2<=#C`-k erregistro bati eragiketa (`+ - * / ^ & | << >>`) edo funtzio
+  bakar batekin ematen diote balioa; `#2_+1`-ek gehitu eta `#2-=>1`-ek kentzen du; `LXP@(helbidea)`-k,
+  erakusle handi hedagarriak, helbide bateko memoria-gelaxka irakurri edo idazten du (`#2<=LXP@(100)`,
+  `LXP@(#1)<=#2`); `izena::{ ... }`-k `::izena`-k erabiltzen den lekuan idazten duen bloke bati izena ematen
+  dio; eta `""`-k aurreko agindua errepikatzen du eragigai berriekin (`HQ[0]; ""Q[1];`). Bakoitza QOA agindu
+  arrunt bihurtzen da (`qoa import`-ek erakusten ditu), eta bakoitza errore bat zen lehen. Arau osoak
+  docs/glyph.eu.md-n daude.
 
 ## Konpondua
 

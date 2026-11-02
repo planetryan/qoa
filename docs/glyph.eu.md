@@ -156,6 +156,34 @@ beraz RESET Q-n `RST/Q` idazten da. Parametroek eta testuek beren lekua gordetze
 `PF"x"%#1`). Forma labur guztiak errore bat ziren 0.4.5 aurretik, beraz ez du programa batek ere esanahia
 aldatzen.
 
+### Forma trinkoak
+
+0.4.5etik ere, glifo batzuek gauza ohikoak karaktere gutxiagorekin esaten dituzte. Bakoitza QOA agindu arrunt
+bihurtzen da, eta `qoa import`-ek erakusten ditu:
+
+| glifoa | esanahia | QOA arrunta |
+|---|---|---|
+| `??x{ ... };` | blokea exekutatu x bita edo erregistroa 1 bada | `JUMPIFZERO c0 amaiera` ... `amaiera:` (bit batentzat) |
+| `!!x{ ... };` | blokea exekutatu x 0 bada | `JUMPIFONE c0 amaiera` ... `amaiera:` |
+| `#2<=5;`, `#2<=2*pi/3;` | erregistro bati zenbaki bat edo adierazpen konstante bat eman | `REGSET R2 2*pi/3` |
+| `#2<=#1;` | erregistro bat kopiatu | `REGCOPY R2 R1` |
+| `#2<=#C;`, `#2<=#C[0];` | bitak zenbaki oso gisa | `PACKBITS R2 c0 c1` |
+| `#3<=#1+#2;` | eragiketa bat: `+ - * / ^ & \| << >>` (`^` berretura da) | `ADD R3 R1 R2` |
+| `#3<=sqrt(#1);` | funtzio bat: `sqrt exp ln sin cos tan not` | `SQRT R3 R1` |
+| `#2_+1;`, `#2-=>1;` | erregistro bati gehitu, kendu | `ADD R2 R2 (1)`, `SUB R2 R2 (1)` |
+| `#2<=LXP@(100);`, `LXP@(#1)<=#2;` | LXP, erakusle handi hedagarria: helbide bateko memoria-gelaxka (zenbaki, adierazpen edo erregistro bat; 2^32 - 1 arte) | `LOAD R2 (100)`, `STORE R2 R1` |
+| `izena::{ ... };` eta gero `::izena;` | adierazpenen bloke izendun bat, erabiltzen den lekuan idatzia | adierazpenak, aldi bakoitzean |
+| `"";` | aurreko agindua berriz, eragigai berriekin: `HQ[0]; ""Q[1];`, `RZ(pi/4)/Q[0]; ""/Q[1];` | `H q0`, `H q1` |
+
+Esleipen batek eragile edo funtzio bakarra hartzen du; `#1<=#2*2+1` errore bat da, banatzeko esaten duena.
+Esleipen bateko zenbakiak zorrotz irakurtzen dira, beraz `2+1` bi zenbaki eta eragile bat da, inoiz ez zenbaki
+bat. Eragiketa batean erabilitako bitak R31-en (gero R30-en) biltzen dira lehenik, `PF`-k bezala. Bloke
+izendun batek goian definitutako blokeak erabil ditzake, inoiz ez bere burua; bloke izendun baten barruko
+etiketa bat behin bakarrik erabil daiteke, erabilera bakoitzak blokea berriz idazten baitu (barruko `??` eta
+`!!`-ek beren etiketak dituzte aldi bakoitzean). Idatzitako programa milioi bat adierazpenera mugatuta dago,
+beraz bakoitzak aurrekoa bi aldiz erabiltzen duen bloke-kate bat errore batekin gelditzen da, mugarik gabe
+hazi beharrean.
+
 ### Dei klasikoak (CC)
 
 `CC`-k programa kuantikoaren balioak errutina klasiko bati ematen dizkio eta bat itzultzen du, dei-
@@ -199,6 +227,12 @@ adierazpena  = adierazpen-erregistroa
              | "^"                                    (* itzuli *)
              | "<<>>" | "<<#>>"                       (* egoera / erregistroak erakutsi *)
              | "CC" helburua { "%" balioa } [ "$>" helmuga ]
+             | ( "??" | "!!" ) balioa "{" { adierazpena ";" } "}"  (* exekutatu 1 bada / 0 bada *)
+             | "#" digituak ( "<=" iturria | "_+" balioa | "-=>" balioa )  (* esleipena *)
+             | "LXP@(" helbidea ")" "<=" balioa       (* memorian gorde *)
+             | izena "::" "{" { adierazpena ";" } "}" (* bloke izendun bat *)
+             | "::" izena                             (* bloke izendun bat erabili *)
+             | '""' [ ( "/" | itsatsia ) eragigaia { "," eragigaia } ] { "%" balioa } [ ( "$>" | "." ) helmuga ]
              | "`" qoa-arrunta "`" ;                  (* QOA arrunta, bere horretan *)
 adierazpen-erregistroa = [ "#" | "~" ] izena "{" zenbakia "}" [ "[" zenbakia "]" ] [ "%" zenbakia ] ;
 agindua      = izena [ "(" adierazpen-zenb { "," adierazpen-zenb } ")" ] { testua }
@@ -213,6 +247,10 @@ helmuga      = erregistroa ;
 helburua     = "[" zenbakia "]" | testua ;
 kopurua      = digituak | "#" digituak ;
 etiketa      = izena | zenbakia ;                     (* 0x10: helbide-etiketa bat da *)
+iturria      = balioa [ eragilea balioa ] | funtzioa "(" balioa ")" | "LXP@(" helbidea ")" ;
+eragilea     = "+" | "-" | "*" | "/" | "^" | "&" | "|" | "<<" | ">>" ;
+funtzioa     = "sqrt" | "exp" | "ln" | "sin" | "cos" | "tan" | "not" ;
+helbidea     = zenbakia | adierazpena | "#" digituak ;
 zenbakia     = digituak | "0x" digitu-hamaseitarrak ;
 izena        = ( letra | "_" ) { letra | digitua | "_" } ;
 testua       = '"' { karakterea | ihesa } '"' ;        (* \n, \t, \", \\ QOA arruntean bezala *)

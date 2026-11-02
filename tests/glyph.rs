@@ -144,7 +144,7 @@ fn errors_point_at_the_glyph_source() {
     let e = errors("Q{1}; *2{ H/Q;");
     assert!(e[0].2.contains("never closed"), "{:?}", e);
     let e = errors("Q{1}; H/Q; }");
-    assert!(e[0].2.contains("closes no loop"), "{:?}", e);
+    assert!(e[0].2.contains("closes no block"), "{:?}", e);
     // ixten ez diren testua eta parentesia
     let e = errors("PF\"kaixo;\n");
     assert!(e[0].2.contains("never closed"), "{:?}", e);
@@ -277,4 +277,86 @@ fn short_forms_expand_like_the_long_ones() {
     // ezezaguna lehen bezala
     let e = errors("Q{1}; HELLO;");
     assert!(e[0].2.contains("HELLO"), "{:?}", e);
+}
+
+#[test]
+fn dense_forms_expand_to_plain_qoa() {
+    // 0.4.5: ??/!! blokeak, esleipenak, _+ eta -=>, LXP@ memoria, `""` errepikapena, izena:: blokeak
+    let cases: &[(&str, &str)] = &[
+        (
+            "#C{1}; ??#C[0]{ X/q0; };",
+            "JUMPIFZERO c0 glyph.if1.end\nX q0\nglyph.if1.end:\n",
+        ),
+        (
+            "#C{1}; !!#C[0]{ X/q0; };",
+            "JUMPIFONE c0 glyph.if1.end\nX q0\nglyph.if1.end:\n",
+        ),
+        (
+            "??#1{ X/q0; };",
+            "JUMPIFONE R1 glyph.if1.run\nJUMP glyph.if1.end\nglyph.if1.run:\nX q0\nglyph.if1.end:\n",
+        ),
+        ("#1<=5;", "REGSET R1 5\n"),
+        ("#1<=2*pi/3;", "REGSET R1 2*pi/3\n"),
+        ("#1<=#2;", "REGCOPY R1 R2\n"),
+        ("#3<=#1+#2;", "ADD R3 R1 R2\n"),
+        ("#3<=#1*2;", "MUL R3 R1 (2)\n"),
+        ("#3<=#1^0.5;", "POW R3 R1 (0.5)\n"),
+        ("#3<=#1<<2;", "SHL R3 R1 (2)\n"),
+        ("#3<=sqrt(#1);", "SQRT R3 R1\n"),
+        ("#1_+1;", "ADD R1 R1 (1)\n"),
+        ("#1-=>2;", "SUB R1 R1 (2)\n"),
+        ("#C{3}; #4<=#C;", "PACKBITS R4 c0 c1 c2\n"),
+        ("LXP@(100)<=#2;", "STORE R2 (100)\n"),
+        ("#5<=LXP@(#1);", "LOAD R5 R1\n"),
+        ("Q{2}; HQ[0]; \"\"Q[1];", "QINIT 2\nH q0\nH q1\n"),
+        (
+            "Q{2}; RZ(pi/4)/Q[0]; \"\"/Q[1];",
+            "QINIT 2\nRZ q0 pi/4\nRZ q1 pi/4\n",
+        ),
+        (
+            "Q{2}; b::{ HQ[0]; CXQ[0],Q[1]; }; ::b; ::b;",
+            "QINIT 2\nH q0\nCNOT q0 q1\nH q0\nCNOT q0 q1\n",
+        ),
+        // bloke izendun baten barruko ?? bakoitzak bere etiketak ditu
+        (
+            "#C{1}; f::{ ??#C[0]{ X/q0; }; }; ::f; ::f;",
+            "JUMPIFZERO c0 glyph.if1.end\nX q0\nglyph.if1.end:\nJUMPIFZERO c0 glyph.if2.end\nX q0\nglyph.if2.end:\n",
+        ),
+    ];
+    for (src, want) in cases {
+        let got = expand(src);
+        let got = got
+            .lines()
+            .filter(|l| !l.starts_with("QINIT") || want.starts_with("QINIT"))
+            .collect::<Vec<_>>()
+            .join("\n")
+            + "\n";
+        assert_eq!(&got, want, "sarrera: {}", src);
+    }
+    // akatsak, argi
+    for (src, want) in [
+        ("#3<=#1*2+1;", "one operator"),
+        ("::nope;", "not defined above"),
+        ("\"\"/q0;", "repeats the instruction before it"),
+        ("#1>=2;", "expected <="),
+        ("??#1 X/q0;", "expected {"),
+        ("a::{ X/q0;", "never closed"),
+        ("a::{ X/q0; }; a::{ Y/q0; };", "defined twice"),
+        ("LXP@100<=#1;", "LXP@(address)"),
+    ] {
+        let e = errors(src);
+        assert!(e.iter().any(|d| d.2.contains(want)), "{}: {:?}", src, e);
+    }
+    // bloke izendunen hedapen esponentziala mugatuta dago
+    let mut src = String::from("a0::{ X/q0; };");
+    for k in 1..30 {
+        src.push_str(&format!(" a{}::{{ ::a{}; ::a{}; }};", k, k - 1, k - 1));
+    }
+    src.push_str(" ::a29;");
+    let e = errors(&src);
+    assert!(
+        e.iter().any(|d| d.2.contains("expand to more than")),
+        "{:?}",
+        e
+    );
 }

@@ -113,7 +113,7 @@ enum Operand {
     Value(String),
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 enum Stmt {
     // agindu bat: izena, testuak, eragigaiak, parametroak, % argumentuak, $> helburuak
     Op {
@@ -141,7 +141,18 @@ enum Stmt {
     },
     Return,
     LoopStart(String),
+    // `}`: begizta, baldintzazko bloke edo bloke izendun baten amaiera
     LoopEnd,
+    // 0.4.5: `??x{ ... }` (x 1 bada) eta `!!x{ ... }` (x 0 bada)
+    IfStart {
+        one: bool,
+        value: Operand,
+    },
+    // 0.4.5: `izena::{ ... }` bloke izendun bat, eta `::izena` haren lekuan
+    Define(String),
+    Use(String),
+    // adierazpen batek sortzen dituen hainbat agindu, ordenan
+    Many(Vec<Stmt>),
     Verbatim(String),
     // erregistro-adierazpen hutsa (ez du QOA lerrorik sortzen)
     Nothing,
@@ -157,6 +168,8 @@ struct Parser {
     counts: [usize; 3],
     cutoff: Option<(usize, Pos)>,
     diags: Vec<Diagnostic>,
+    // `""`-k errepikatzen duen azken agindua: izena, parametroak, testuak
+    last_op: Option<(String, Vec<String>, Vec<String>)>,
 }
 
 fn diag(pos: Pos, len: u32, message: String) -> Diagnostic {
@@ -177,6 +190,7 @@ impl Parser {
             line: 1,
             col: 1,
             regs: HashMap::new(),
+            last_op: None,
             order: Vec::new(),
             counts: [0; 3],
             cutoff: None,
@@ -804,6 +818,72 @@ impl Parser {
                 self.bump();
                 Some(Stmt::Jump(self.label_name()?))
             }
+            '?' | '!' if self.peek_at(1) == self.peek() => {
+                // 0.4.5: `??x{ ... }` x 1 bada, `!!x{ ... }` x 0 bada
+                let one = self.bump() == Some('?');
+                self.bump();
+                let value = self.operand()?;
+                self.skip_spaces();
+                if self.peek() != Some('{') {
+                    let p = self.pos();
+                    self.error(
+                        p,
+                        1,
+                        ts!(
+                            "expected { and the statements to run",
+                            "{ eta exekutatzeko adierazpenak espero ziren"
+                        )
+                        .into(),
+                    );
+                    return None;
+                }
+                self.bump();
+                Some(Stmt::IfStart { one, value })
+            }
+            '#' if self.peek_at(1).is_some_and(|c| c.is_ascii_digit()) => self.assignment(),
+            ':' if self.peek_at(1) == Some(':') => {
+                self.bump();
+                self.bump();
+                let Some(name) = self.ident() else {
+                    self.error(
+                        pos,
+                        2,
+                        ts!(
+                            "expected the name of a block after ::",
+                            "bloke baten izena espero zen :: ondoren"
+                        )
+                        .into(),
+                    );
+                    return None;
+                };
+                Some(Stmt::Use(name))
+            }
+            '"' if self.peek_at(1) == Some('"') => {
+                // 0.4.5: `""` aurreko agindua berriz, eragigai berriekin
+                self.bump();
+                self.bump();
+                let Some((name, params, texts)) = self.last_op.clone() else {
+                    self.error(
+                        pos,
+                        2,
+                        ts!(
+                            "\"\" repeats the instruction before it, and there is none",
+                            "\"\"-k aurreko agindua errepikatzen du, eta ez dago bat ere"
+                        )
+                        .into(),
+                    );
+                    return None;
+                };
+                let glued = match self.peek() {
+                    Some(c) if c.is_ascii_alphabetic() || c == '_' => {
+                        let at = self.pos();
+                        let reg = self.ident()?;
+                        Some(self.named(reg, None, at))
+                    }
+                    _ => None,
+                };
+                self.op_tail(name, params, texts, glued)
+            }
             '?' | '!' => {
                 let one = self.bump() == Some('?');
                 let value = self.operand()?;
@@ -887,7 +967,7 @@ impl Parser {
     fn op_or_label(&mut self, pos: Pos) -> Option<Stmt> {
         let name = self.ident()?;
         match self.peek() {
-            Some(':') => {
+            Some(':') if self.peek_at(1) != Some(':') => {
                 self.bump();
                 return Some(Stmt::Label(name));
             }
@@ -902,6 +982,49 @@ impl Parser {
         if name == "CC" {
             return self.classical_call();
         }
+        if self.starts_with("::") {
+            // 0.4.5: `izena::{ ... }` bloke izendun bat
+            self.bump();
+            self.bump();
+            self.skip_spaces();
+            if self.peek() != Some('{') {
+                let p = self.pos();
+                self.error(
+                    p,
+                    1,
+                    ts!(
+                        "expected { and the statements of the block",
+                        "{ eta blokearen adierazpenak espero ziren"
+                    )
+                    .into(),
+                );
+                return None;
+            }
+            self.bump();
+            return Some(Stmt::Define(name));
+        }
+        if name == "LXP" && self.peek() == Some('@') {
+            // 0.4.5: `LXP@(helbidea)<=balioa`: memoria-gelaxka batean idatzi
+            let addr = self.pointer()?;
+            self.skip_spaces();
+            if !self.starts_with("<=") {
+                let p = self.pos();
+                self.error(
+                    p,
+                    1,
+                    ts!(
+                        "expected <= and the value to store",
+                        "<= eta gordetzeko balioa espero ziren"
+                    )
+                    .into(),
+                );
+                return None;
+            }
+            self.bump();
+            self.bump();
+            let value = self.operand()?;
+            return Some(Self::op("STORE", vec![value, addr]));
+        }
         // 0.4.5: agindua bere lehen eragigaiari itsatsita (`HQ`, `CXA,B`, `Mq0`)
         let (name, glued) = self.unglue(name, pos);
         let mut params = Vec::new();
@@ -913,6 +1036,17 @@ impl Parser {
         while glued.is_none() && self.peek() == Some('"') {
             texts.push(self.string()?);
         }
+        self.op_tail(name, params, texts, glued)
+    }
+
+    // agindu baten gainerakoa, izena, parametroak eta testuak irakurrita: eragigaiak, % argumentuak eta helburua
+    fn op_tail(
+        &mut self,
+        name: String,
+        params: Vec<String>,
+        texts: Vec<String>,
+        glued: Option<Option<Operand>>,
+    ) -> Option<Stmt> {
         let mut operands = Vec::new();
         self.skip_spaces();
         if let Some(first) = glued {
@@ -946,13 +1080,328 @@ impl Parser {
                 break;
             }
         }
+        let name = name.to_ascii_uppercase();
+        self.last_op = Some((name.clone(), params.clone(), texts.clone()));
         Some(Stmt::Op {
-            name: name.to_ascii_uppercase(),
+            name,
             texts,
             operands,
             params,
             args,
             dests,
+        })
+    }
+
+    // esleipen baten eragigaia: zenbakiak zorrotz irakurrita (`2+1` ez da zenbaki bat: 2 eta gero + eragilea),
+    // gainerakoa operand() bezala
+    fn assign_operand(&mut self) -> Option<Operand> {
+        self.skip_spaces();
+        let starts_number = match self.peek() {
+            Some(c) if c.is_ascii_digit() || c == '.' => true,
+            Some('-') => self
+                .peek_at(1)
+                .is_some_and(|c| c.is_ascii_digit() || c == '.'),
+            _ => false,
+        };
+        if !starts_number {
+            return self.operand();
+        }
+        let mut t = String::new();
+        if self.peek() == Some('-') {
+            t.push('-');
+            self.bump();
+        }
+        if self.starts_with("0x") || self.starts_with("0X") {
+            t.push_str("0x");
+            self.bump();
+            self.bump();
+            let pos = self.pos();
+            let mut digits = String::new();
+            while let Some(c) = self.peek().filter(|c| c.is_ascii_hexdigit()) {
+                digits.push(c);
+                self.bump();
+            }
+            // QOA arruntaren adierazpenek hamartarra irakurtzen dute
+            let Ok(v) = u64::from_str_radix(&digits, 16) else {
+                self.error(
+                    pos,
+                    1,
+                    ts!(
+                        "expected a hexadecimal number after 0x",
+                        "zenbaki hamaseitar bat espero zen 0x ondoren"
+                    )
+                    .into(),
+                );
+                return None;
+            };
+            let neg = t.starts_with('-');
+            return Some(Operand::Raw(format!("{}{}", if neg { "-" } else { "" }, v)));
+        }
+        while let Some(c) = self.peek().filter(|c| c.is_ascii_digit() || *c == '.') {
+            t.push(c);
+            self.bump();
+        }
+        if matches!(self.peek(), Some('e' | 'E')) {
+            let sign = matches!(self.peek_at(1), Some('+' | '-'));
+            let digit_at = if sign { 2 } else { 1 };
+            if self.peek_at(digit_at).is_some_and(|c| c.is_ascii_digit()) {
+                for _ in 0..digit_at {
+                    t.push(self.bump().expect("e"));
+                }
+                while let Some(c) = self.peek().filter(|c| c.is_ascii_digit()) {
+                    t.push(c);
+                    self.bump();
+                }
+            }
+        }
+        Some(Operand::Raw(t))
+    }
+
+    // esleipen baten eragigaiak: bitak (`#C[0]`, `#C`, `c0`) zenbaki bihurtzen dira aldi baterako erregistro batean
+    // (R31, gero R30), PF-k bezala; gainerakoak bere horretan
+    fn computed(&mut self, name: &str, d: Operand, srcs: Vec<Operand>) -> Option<Stmt> {
+        let mut before = Vec::new();
+        let mut ops = vec![d];
+        let mut scratch = 31;
+        for a in srcs {
+            let bits = matches!(&a, Operand::Named { .. })
+                || matches!(&a, Operand::Raw(r) if r.len() > 1 && r.starts_with(['c', 'C']) && r[1..].bytes().all(|b| b.is_ascii_digit()));
+            if bits {
+                match elements(&self.regs, &a) {
+                    Ok(els) => {
+                        before.push(Stmt::Verbatim(format!(
+                            "PACKBITS R{} {}",
+                            scratch,
+                            els.join(" ")
+                        )));
+                        ops.push(Operand::Reg(scratch));
+                        scratch -= 1;
+                    }
+                    Err(e) => {
+                        self.diags.push(e);
+                        return None;
+                    }
+                }
+            } else {
+                ops.push(a);
+            }
+        }
+        let op = Self::op(name, ops);
+        Some(if before.is_empty() {
+            op
+        } else {
+            before.push(op);
+            Stmt::Many(before)
+        })
+    }
+
+    fn op(name: &str, operands: Vec<Operand>) -> Stmt {
+        Stmt::Op {
+            name: name.into(),
+            texts: vec![],
+            operands,
+            params: vec![],
+            args: vec![],
+            dests: vec![],
+        }
+    }
+
+    // `@(helbidea)`: memoria-gelaxka baten helbidea (zenbaki, adierazpen edo erregistro bat)
+    fn pointer(&mut self) -> Option<Operand> {
+        let pos = self.pos();
+        self.bump();
+        if self.peek() != Some('(') {
+            self.error(
+                pos,
+                1,
+                ts!(
+                    "a memory cell is written LXP@(address), like LXP@(100) or LXP@(#2)",
+                    "memoria-gelaxka bat LXP@(helbidea) idazten da, LXP@(100) edo LXP@(#2) bezala"
+                )
+                .into(),
+            );
+            return None;
+        }
+        let inner = self.paren()?;
+        let inner = inner.trim();
+        // erregistro bat: #2 edo R2
+        if let Some(k) = inner
+            .strip_prefix('#')
+            .or_else(|| inner.strip_prefix(['R', 'r']))
+            .and_then(|d| d.parse::<usize>().ok())
+        {
+            return Some(Operand::Reg(k));
+        }
+        Some(Operand::Value(inner.to_string()))
+    }
+
+    // 0.4.5: `#2<=balioa`, `#2<=a+b` (+ - * / ^ & | << >>), `#2<=sqrt(a)` (sqrt exp ln sin cos tan not),
+    // `#2<=LXP@(helbidea)`, `#2_+a` (gehitu) eta `#2-=>a` (kendu)
+    fn assignment(&mut self) -> Option<Stmt> {
+        self.bump();
+        let dst = self.number()?;
+        let d = Operand::Reg(dst);
+        self.skip_spaces();
+        if self.starts_with("_+") || self.starts_with("-=>") {
+            let add = self.starts_with("_+");
+            let n = if add { 2 } else { 3 };
+            (0..n).for_each(|_| {
+                self.bump();
+            });
+            let v = self.assign_operand()?;
+            return self.computed(if add { "ADD" } else { "SUB" }, d.clone(), vec![d, v]);
+        }
+        if !self.starts_with("<=") {
+            let p = self.pos();
+            self.error(
+                p,
+                1,
+                ts!(
+                    "after a register, expected <= (set it), _+ (add to it) or -=> (subtract from it)",
+                    "erregistro baten ondoren, <= (ezarri), _+ (gehitu) edo -=> (kendu) espero zen"
+                )
+                .into(),
+            );
+            return None;
+        }
+        self.bump();
+        self.bump();
+        self.skip_spaces();
+        // erregistrorik ez duen eskuin aldea adierazpen konstante oso bat da: `#7<=2*pi/3` -> REGSET R7 2*pi/3
+        let rest: String = {
+            let mut depth = 0i32;
+            self.chars[self.i..]
+                .iter()
+                .take_while(|&&c| {
+                    match c {
+                        '(' => depth += 1,
+                        ')' => depth -= 1,
+                        _ => {}
+                    }
+                    !(depth == 0 && (c == ';' || c == '\n'))
+                })
+                .collect()
+        };
+        let register_like = rest
+            .split(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+            .any(|w| {
+                w.len() > 1
+                    && w.starts_with(['R', 'r', 'c', 'C'])
+                    && w[1..].bytes().all(|b| b.is_ascii_digit())
+            });
+        let constant = !rest.trim().is_empty()
+            && !rest.contains(['#', '@', '~', '"'])
+            && !register_like
+            && !self.regs.keys().any(|k| {
+                rest.split(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+                    .any(|w| w == k)
+            });
+        if constant {
+            let n = rest.chars().count();
+            (0..n).for_each(|_| {
+                self.bump();
+            });
+            return Some(Self::op(
+                "REGSET",
+                vec![d, Operand::Value(rest.trim().to_string())],
+            ));
+        }
+        // LXP@(helbidea)
+        if self.starts_with("LXP@") {
+            (0..3).for_each(|_| {
+                self.bump();
+            });
+            let addr = self.pointer()?;
+            return Some(Self::op("LOAD", vec![d, addr]));
+        }
+        // funtzio bat: sqrt(a)
+        for (f, op) in [
+            ("sqrt", "SQRT"),
+            ("exp", "EXP"),
+            ("ln", "LOG"),
+            ("sin", "SIN"),
+            ("cos", "COS"),
+            ("tan", "TAN"),
+            ("not", "NOTBITS"),
+        ] {
+            let call = format!("{}(", f);
+            if self.starts_with(&call) {
+                (0..f.len()).for_each(|_| {
+                    self.bump();
+                });
+                let inner = self.paren()?;
+                let inner = inner.trim();
+                // erregistro bat edo balio bat; adierazpen konstante osoa (sqrt(2)) balio bat da
+                let v = match inner
+                    .strip_prefix('#')
+                    .or_else(|| inner.strip_prefix(['R', 'r']))
+                    .and_then(|d| d.parse::<usize>().ok())
+                {
+                    Some(k) => Operand::Reg(k),
+                    None => Operand::Value(inner.to_string()),
+                };
+                return Some(Self::op(op, vec![d, v]));
+            }
+        }
+        let a = self.assign_operand()?;
+        self.skip_spaces();
+        let ops: [(&str, &str); 9] = [
+            ("<<", "SHL"),
+            (">>", "SHR"),
+            ("+", "ADD"),
+            ("-", "SUB"),
+            ("*", "MUL"),
+            ("/", "DIV"),
+            ("^", "POW"),
+            ("&", "ANDBITS"),
+            ("|", "ORBITS"),
+        ];
+        for (sym, op) in ops {
+            if self.starts_with(sym) {
+                (0..sym.len()).for_each(|_| {
+                    self.bump();
+                });
+                let b = self.assign_operand()?;
+                self.skip_spaces();
+                if self.peek().is_some_and(|c| "+-*/^&|<>".contains(c)) {
+                    let p = self.pos();
+                    self.error(
+                        p,
+                        1,
+                        ts!(
+                            "an assignment takes one operator; split it, like #1<=#2*2; #1<=#1+#3;",
+                            "esleipen batek eragile bakarra hartzen du; banatu, #1<=#2*2; #1<=#1+#3; bezala"
+                        )
+                        .into(),
+                    );
+                    return None;
+                }
+                return self.computed(op, d, vec![a, b]);
+            }
+        }
+        // balio bakarra: erregistroa kopiatu, bitak zenbaki gisa, edo zenbaki bat
+        Some(match &a {
+            Operand::Reg(_) => Self::op("REGCOPY", vec![d, a]),
+            Operand::Raw(r)
+                if r.len() > 1
+                    && r.starts_with(['R', 'r'])
+                    && r[1..].bytes().all(|b| b.is_ascii_digit()) =>
+            {
+                Self::op("REGCOPY", vec![d, a])
+            }
+            Operand::Named { .. } | Operand::Raw(_)
+                if matches!(&a, Operand::Named { .. })
+                    || matches!(&a, Operand::Raw(r) if r.starts_with(['c', 'C']) && r[1..].bytes().all(|b| b.is_ascii_digit()) && r.len() > 1) =>
+            {
+                match elements(&self.regs, &a) {
+                    Ok(els) => Stmt::Verbatim(format!("PACKBITS R{} {}", dst, els.join(" "))),
+                    Err(e) => {
+                        self.diags.push(e);
+                        return None;
+                    }
+                }
+            }
+            _ => Self::op("REGSET", vec![d, a]),
         })
     }
 
@@ -1050,7 +1499,14 @@ impl Parser {
                             out.push((stmt, pos, len));
                         }
                         // bloke baten amaiera `}` ondoren `;` gabe ere onartzen da
-                        _ if matches!(stmt, Stmt::LoopStart(_) | Stmt::LoopEnd) => {
+                        _ if matches!(
+                            stmt,
+                            Stmt::LoopStart(_)
+                                | Stmt::LoopEnd
+                                | Stmt::IfStart { .. }
+                                | Stmt::Define(_)
+                        ) =>
+                        {
                             out.push((stmt, pos, len))
                         }
                         _ => {
@@ -1225,7 +1681,6 @@ pub fn expand(src: &str) -> Result<Expanded, Vec<Diagnostic>> {
         return Err(p.diags);
     }
     let mut lines: Vec<(String, Origin)> = Vec::new();
-    let mut diags = Vec::new();
     let head = Origin {
         pos: Pos { line: 1, col: 1 },
         len: 1,
@@ -1240,78 +1695,28 @@ pub fn expand(src: &str) -> Result<Expanded, Vec<Diagnostic>> {
             head,
         ));
     }
-    let mut depth = 0usize;
-    for (stmt, pos, len) in stmts {
-        let origin = Origin { pos, len };
-        let mut emit = |s: String| lines.push((s, origin));
-        match stmt {
-            Stmt::Nothing => {}
-            Stmt::Label(l) => emit(format!("{}:", l)),
-            Stmt::Jump(l) => emit(format!("JUMP {}", l)),
-            Stmt::Call(l) => emit(format!("CALL {}", l)),
-            Stmt::ClassicalCall { target, args, dest } => {
-                for a in args.iter().rev() {
-                    match push_lines(&p.regs, a, pos, len) {
-                        Ok(v) => v.into_iter().for_each(&mut emit),
-                        Err(d) => diags.push(d),
-                    }
-                }
-                emit(format!("CALL {}", target));
-                match dest {
-                    None => {}
-                    Some(Operand::Reg(k)) => emit(format!("POP R{}", k)),
-                    Some(Operand::Raw(r)) if r.starts_with(['R', 'r']) && r[1..].parse::<usize>().is_ok() => {
-                        emit(format!("POP {}", r))
-                    }
-                    Some(_) => diags.push(diag(
-                        pos,
-                        len,
-                        ts!(
-                            "the result of CC goes to a register, like $>#2",
-                            "CC-ren emaitza erregistro batera doa, $>#2 bezala"
-                        )
-                        .into(),
-                    )),
-                }
-            }
-            Stmt::Return => emit("RETSUB".into()),
-            Stmt::Verbatim(s) => emit(s),
-            Stmt::LoopStart(n) => {
-                depth += 1;
-                emit(format!("LOOPSTART {}", n))
-            }
-            Stmt::LoopEnd => {
-                if depth == 0 {
-                    diags.push(diag(pos, 1, ts!("this } closes no loop", "} honek ez du begiztarik ixten").into()));
-                } else {
-                    depth -= 1;
-                    emit("LOOPEND".into())
-                }
-            }
-            Stmt::JumpIf { one, value, label } => match elements(&p.regs, &value) {
-                Ok(v) if v.len() == 1 => emit(format!("{} {} {}", if one { "JUMPIFONE" } else { "JUMPIFZERO" }, v[0], label)),
-                Ok(_) => diags.push(diag(pos, len, ts!("a jump tests one bit or register, not a whole register", "jauzi batek bit edo erregistro bakarra egiaztatzen du, ez erregistro oso bat").into())),
-                Err(d) => diags.push(d),
-            },
-            Stmt::Op { name, texts, operands, params, args, dests } => {
-                match op_lines(&p.regs, &name, &texts, &operands, &params, &args, &dests, pos, len) {
-                    Ok(v) => v.into_iter().for_each(emit),
-                    Err(d) => diags.push(d),
-                }
-            }
-        }
-    }
-    if depth > 0 {
-        diags.push(diag(
+    let mut cx = Emit {
+        regs: &p.regs,
+        lines,
+        diags: Vec::new(),
+        blocks: Vec::new(),
+        defined: HashMap::new(),
+        ifs: 0,
+        budget: MAX_EXPANSION,
+    };
+    cx.stmts(&stmts);
+    if !cx.blocks.is_empty() {
+        cx.diags.push(diag(
             Pos { line: 1, col: 1 },
             1,
             ts!(
-                "a loop { is never closed with }",
-                "begizta baten { ez da inoiz }-rekin ixten"
+                "a block { is never closed with }",
+                "bloke baten { ez da inoiz }-rekin ixten"
             )
             .into(),
         ));
     }
+    let (lines, diags) = (cx.lines, cx.diags);
     if !diags.is_empty() {
         return Err(diags);
     }
@@ -1325,6 +1730,229 @@ pub fn expand(src: &str) -> Result<Expanded, Vec<Diagnostic>> {
         source,
         origins: lines.into_iter().map(|(_, o)| o).collect(),
     })
+}
+
+// bloke izendunen hedapenaren muga (adierazpenak guztira): bloke batek beste bat bi aldiz erabiltzen badu,
+// eta horrek beste bat..., hedapena esponentziala izan daiteke
+const MAX_EXPANSION: usize = 1_000_000;
+
+#[derive(Clone)]
+enum Block {
+    Loop,
+    // baldintzazko blokea: amaierako etiketa
+    If(String),
+}
+
+// adierazpenak QOA lerro bihurtzea
+struct Emit<'a> {
+    regs: &'a HashMap<String, Register>,
+    lines: Vec<(String, Origin)>,
+    diags: Vec<Diagnostic>,
+    blocks: Vec<Block>,
+    defined: HashMap<String, Vec<(Stmt, Pos, u32)>>,
+    // ??/!! blokeen kontagailua, etiketa bakarretarako
+    ifs: usize,
+    budget: usize,
+}
+
+impl Emit<'_> {
+    fn stmts(&mut self, stmts: &[(Stmt, Pos, u32)]) {
+        let mut k = 0;
+        while k < stmts.len() {
+            let (stmt, pos, len) = &stmts[k];
+            k += 1;
+            if self.budget == 0 {
+                self.diags.push(diag(
+                    *pos,
+                    *len,
+                    t!(
+                        "the named blocks expand to more than {} statements",
+                        "bloke izendunak {} adierazpen baino gehiagotan hedatzen dira",
+                        MAX_EXPANSION
+                    ),
+                ));
+                return;
+            }
+            self.budget -= 1;
+            if let Stmt::Define(name) = stmt {
+                // blokearen gorputza: dagokion `}` arte, barruko blokeak kontuan hartuta
+                let mut depth = 1usize;
+                let start = k;
+                while k < stmts.len() {
+                    match stmts[k].0 {
+                        Stmt::LoopStart(_) | Stmt::IfStart { .. } | Stmt::Define(_) => depth += 1,
+                        Stmt::LoopEnd => depth -= 1,
+                        _ => {}
+                    }
+                    k += 1;
+                    if depth == 0 {
+                        break;
+                    }
+                }
+                if depth > 0 {
+                    self.diags.push(diag(
+                        *pos,
+                        *len,
+                        t!(
+                            "the block {}:: is never closed with }}",
+                            "{}:: blokea ez da inoiz }}-rekin ixten",
+                            name
+                        ),
+                    ));
+                    return;
+                }
+                if self.defined.contains_key(name) {
+                    self.diags.push(diag(
+                        *pos,
+                        *len,
+                        t!(
+                            "the block {} is defined twice",
+                            "{} blokea bi aldiz definituta dago",
+                            name
+                        ),
+                    ));
+                }
+                self.defined
+                    .insert(name.clone(), stmts[start..k - 1].to_vec());
+                continue;
+            }
+            self.stmt(stmt, *pos, *len);
+        }
+    }
+
+    fn stmt(&mut self, stmt: &Stmt, pos: Pos, len: u32) {
+        let origin = Origin { pos, len };
+        let regs = self.regs;
+        let lines = &mut self.lines;
+        let mut emit = |s: String| lines.push((s, origin));
+        match stmt {
+            Stmt::Nothing | Stmt::Define(_) => {}
+            Stmt::Label(l) => emit(format!("{}:", l)),
+            Stmt::Jump(l) => emit(format!("JUMP {}", l)),
+            Stmt::Call(l) => emit(format!("CALL {}", l)),
+            Stmt::ClassicalCall { target, args, dest } => {
+                for a in args.iter().rev() {
+                    match push_lines(regs, a, pos, len) {
+                        Ok(v) => v.into_iter().for_each(&mut emit),
+                        Err(d) => self.diags.push(d),
+                    }
+                }
+                emit(format!("CALL {}", target));
+                match dest {
+                    None => {}
+                    Some(Operand::Reg(k)) => emit(format!("POP R{}", k)),
+                    Some(Operand::Raw(r))
+                        if r.starts_with(['R', 'r']) && r[1..].parse::<usize>().is_ok() =>
+                    {
+                        emit(format!("POP {}", r))
+                    }
+                    Some(_) => self.diags.push(diag(
+                        pos,
+                        len,
+                        ts!(
+                            "the result of CC goes to a register, like $>#2",
+                            "CC-ren emaitza erregistro batera doa, $>#2 bezala"
+                        )
+                        .into(),
+                    )),
+                }
+            }
+            Stmt::Return => emit("RETSUB".into()),
+            Stmt::Verbatim(s) => emit(s.clone()),
+            Stmt::Many(v) => {
+                for st in v {
+                    self.stmt(st, pos, len);
+                }
+            }
+            Stmt::LoopStart(n) => {
+                self.blocks.push(Block::Loop);
+                emit(format!("LOOPSTART {}", n))
+            }
+            Stmt::IfStart { one, value } => match elements(regs, value) {
+                Ok(v) if v.len() == 1 => {
+                    self.ifs += 1;
+                    let (run, end) = (
+                        format!("glyph.if{}.run", self.ifs),
+                        format!("glyph.if{}.end", self.ifs),
+                    );
+                    if v[0].starts_with(['c', 'C']) {
+                        // bit bat 0 edo 1 da: jauzi bakarra
+                        let skip = if *one { "JUMPIFZERO" } else { "JUMPIFONE" };
+                        emit(format!("{} {} {}", skip, v[0], end));
+                    } else {
+                        let run_if = if *one { "JUMPIFONE" } else { "JUMPIFZERO" };
+                        emit(format!("{} {} {}", run_if, v[0], run));
+                        emit(format!("JUMP {}", end));
+                        emit(format!("{}:", run));
+                    }
+                    self.blocks.push(Block::If(end));
+                }
+                Ok(_) => self.diags.push(diag(
+                    pos,
+                    len,
+                    ts!(
+                        "?? and !! test one bit or register, not a whole register",
+                        "??-k eta !!-k bit edo erregistro bakarra egiaztatzen dute, ez erregistro oso bat"
+                    )
+                    .into(),
+                )),
+                Err(d) => self.diags.push(d),
+            },
+            Stmt::LoopEnd => match self.blocks.pop() {
+                None => self.diags.push(diag(
+                    pos,
+                    1,
+                    ts!("this } closes no block", "} honek ez du blokerik ixten").into(),
+                )),
+                Some(Block::Loop) => emit("LOOPEND".into()),
+                Some(Block::If(end)) => emit(format!("{}:", end)),
+            },
+            Stmt::Use(name) => match self.defined.get(name).cloned() {
+                Some(body) => self.stmts(&body),
+                None => self.diags.push(diag(
+                    pos,
+                    len,
+                    t!(
+                        "::{} uses a block that is not defined above (write {}::{{ ... }} first)",
+                        "::{}-k goian definituta ez dagoen bloke bat erabiltzen du (idatzi {}::{{ ... }} lehenik)",
+                        name,
+                        name
+                    ),
+                )),
+            },
+            Stmt::JumpIf { one, value, label } => match elements(regs, value) {
+                Ok(v) if v.len() == 1 => emit(format!(
+                    "{} {} {}",
+                    if *one { "JUMPIFONE" } else { "JUMPIFZERO" },
+                    v[0],
+                    label
+                )),
+                Ok(_) => self.diags.push(diag(
+                    pos,
+                    len,
+                    ts!(
+                        "a jump tests one bit or register, not a whole register",
+                        "jauzi batek bit edo erregistro bakarra egiaztatzen du, ez erregistro oso bat"
+                    )
+                    .into(),
+                )),
+                Err(d) => self.diags.push(d),
+            },
+            Stmt::Op {
+                name,
+                texts,
+                operands,
+                params,
+                args,
+                dests,
+            } => match op_lines(
+                regs, name, texts, operands, params, args, dests, pos, len,
+            ) {
+                Ok(v) => v.into_iter().for_each(emit),
+                Err(d) => self.diags.push(d),
+            },
+        }
+    }
 }
 
 // eragigai baten QOA elementuak: erregistro osoa -> elementu bakoitza

@@ -150,6 +150,33 @@ that is itself an instruction or alias is that instruction: `RSTQ` is the alias 
 reset), so RESET on Q is written `RST/Q`. Parameters and texts keep their place (`RZ(pi/4)/Q[0]`,
 `PF"x"%#1`). Every short form was an error before 0.4.5, so no program changes meaning.
 
+### Dense forms
+
+Also from 0.4.5, a few glyphs say common things in fewer characters. Each one turns into ordinary QOA
+instructions, which `qoa import` shows:
+
+| glyph | meaning | plain QOA |
+|---|---|---|
+| `??x{ ... };` | run the block if bit or register x is 1 | `JUMPIFZERO c0 end` ... `end:` (for a bit) |
+| `!!x{ ... };` | run the block if x is 0 | `JUMPIFONE c0 end` ... `end:` |
+| `#2<=5;`, `#2<=2*pi/3;` | set a register to a number or a constant expression | `REGSET R2 2*pi/3` |
+| `#2<=#1;` | copy a register | `REGCOPY R2 R1` |
+| `#2<=#C;`, `#2<=#C[0];` | bits as a whole number | `PACKBITS R2 c0 c1` |
+| `#3<=#1+#2;` | one operation: `+ - * / ^ & \| << >>` (`^` is power) | `ADD R3 R1 R2` |
+| `#3<=sqrt(#1);` | one function: `sqrt exp ln sin cos tan not` | `SQRT R3 R1` |
+| `#2_+1;`, `#2-=>1;` | add to a register, subtract from it | `ADD R2 R2 (1)`, `SUB R2 R2 (1)` |
+| `#2<=LXP@(100);`, `LXP@(#1)<=#2;` | LXP, the large expandable pointer: the memory cell at an address (a number, an expression or a register; up to 2^32 - 1) | `LOAD R2 (100)`, `STORE R2 R1` |
+| `name::{ ... };` then `::name;` | a named block of statements, written out where it is used | the statements, each time |
+| `"";` | the previous instruction again, with new operands: `HQ[0]; ""Q[1];`, `RZ(pi/4)/Q[0]; ""/Q[1];` | `H q0`, `H q1` |
+
+An assignment takes one operator or function; `#1<=#2*2+1` is an error that says to split it. Numbers in an
+assignment are read strictly, so `2+1` is two numbers and an operator, never one number. Bits used in an
+operation are packed into R31 (then R30) first, like `PF` does. A named block can use the blocks defined
+above it, never itself; a label inside a named block can only be used once, since every use writes the
+block out again (the `??` and `!!` inside it get their own labels each time). The written-out program is
+limited to a million statements, so a chain of blocks that each use the one before twice stops with an
+error instead of growing without end.
+
 ### Classical calls (CC)
 
 `CC` hands values from the quantum program to a classical routine and gets one back, through a small
@@ -191,6 +218,12 @@ statement    = declaration
              | "^"                                (* return *)
              | "<<>>" | "<<#>>"                   (* show the state / the registers *)
              | "CC" target { "%" value } [ "$>" destination ]
+             | ( "??" | "!!" ) value "{" { statement ";" } "}"  (* run if 1 / if 0 *)
+             | "#" digits ( "<=" source | "_+" value | "-=>" value )  (* assignment *)
+             | "LXP@(" address ")" "<=" value         (* store into memory *)
+             | name "::" "{" { statement ";" } "}"    (* a named block *)
+             | "::" name                              (* use a named block *)
+             | '""' [ ( "/" | glued ) operand { "," operand } ] { "%" value } [ ( "$>" | "." ) destination ]
              | "`" plain-qoa "`" ;                (* plain QOA, used as it is *)
 declaration  = [ "#" | "~" ] name "{" number "}" [ "[" number "]" ] [ "%" number ] ;
 instruction  = name [ "(" expression { "," expression } ")" ] { string }
@@ -204,6 +237,10 @@ destination  = register ;
 target       = "[" number "]" | string ;
 count        = digits | "#" digits ;
 label        = name | number ;                    (* 0x10: is an address label *)
+source       = value [ operator value ] | function "(" value ")" | "LXP@(" address ")" ;
+operator     = "+" | "-" | "*" | "/" | "^" | "&" | "|" | "<<" | ">>" ;
+function     = "sqrt" | "exp" | "ln" | "sin" | "cos" | "tan" | "not" ;
+address      = number | expression | "#" digits ;
 number       = digits | "0x" hex-digits ;
 name         = ( letter | "_" ) { letter | digit | "_" } ;
 string       = '"' { character | escape } '"' ;    (* \n, \t, \", \\ as in plain QOA *)
