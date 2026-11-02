@@ -129,26 +129,27 @@ mod tests {
         if !o.status.success() {
             return;
         }
-        let dir = std::env::temp_dir().join(format!("qoa-sha-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
+        // datuak sarrera estandarretik: fitxategi-izenik ez (windows-eko sha256sum-ek `\` jartzen du laburpenaren
+        // aurrean izenak alderantzizko barrak dituenean)
         for n in [
             0usize, 1, 55, 56, 57, 63, 64, 65, 119, 120, 127, 128, 129, 1000,
         ] {
+            use std::io::Write;
             let data: Vec<u8> = (0..n).map(|i| (i * 131 + 7) as u8).collect();
-            let f = dir.join(format!("{}", n));
-            std::fs::write(&f, &data).unwrap();
-            let out = std::process::Command::new("sha256sum")
-                .arg(&f)
-                .output()
+            let mut child = std::process::Command::new("sha256sum")
+                .stdin(std::process::Stdio::piped())
+                .stdout(std::process::Stdio::piped())
+                .spawn()
                 .unwrap();
+            child.stdin.take().unwrap().write_all(&data).unwrap();
+            let out = child.wait_with_output().unwrap();
             let want = String::from_utf8(out.stdout).unwrap();
-            assert_eq!(
-                want.split_whitespace().next().unwrap(),
-                hex(&digest(&data)),
-                "{} byte",
-                n
-            );
+            let want = want
+                .split_whitespace()
+                .next()
+                .unwrap()
+                .trim_start_matches('\\');
+            assert_eq!(want, hex(&digest(&data)), "{} byte", n);
         }
-        let _ = std::fs::remove_dir_all(&dir);
     }
 }
