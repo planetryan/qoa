@@ -7,3 +7,6 @@
 *.png binary
 *.xcf binary
 *.svg binary
+*.qx binary
+# zigilatutako proba bat windows lerro-amaierekin: byteak bere horretan, bestela zigilua ez dator bat
+tests/programs/sanity/sealed-crlf.qoa -text
