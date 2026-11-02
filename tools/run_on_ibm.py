@@ -179,6 +179,53 @@ def device_model(backend, used):
             "qubits": qubits, "gates": gates}
 
 
+# esportatutako testua qiskit zirkuitu bihurtu: OpenQASM 2.0 edo 3 (3-n `for` begiztak zabalduta, IBM-ren gailuek ez
+# baitituzte onartzen)
+def load_circuit(text):
+    if any(line.strip().startswith("OPENQASM 3") for line in text.splitlines()):
+        from qiskit import qasm3
+        from qiskit.transpiler import PassManager
+        from qiskit.transpiler.passes import UnrollForLoops
+
+        return PassManager([UnrollForLoops()]).run(qasm3.loads(text))
+    from qiskit import qasm2
+
+    return qasm2.loads(text, custom_instructions=qasm2.LEGACY_CUSTOM_INSTRUCTIONS)
+
+
+# IBM-ren gailuek gaur egun onartzen ez dutena (IBM-ren dokumentazioa, 2025eko ekaina: `while`, `for` eta `switch`
+# zaharkituta, eta kontrol-fluxua beste baten barruan ere bai). abisuak, ez erroreak: IBM-k alda dezake
+def ibm_unsupported(circuit):
+    found = set()
+
+    def walk(c, depth):
+        for inst in c.data:
+            op = inst.operation
+            if op.name == "while_loop":
+                found.add("while")
+            if hasattr(op, "blocks"):
+                if depth > 0:
+                    found.add("nested")
+                for b in op.blocks:
+                    walk(b, depth + 1)
+
+    walk(circuit, 0)
+    out = []
+    if "while" in found:
+        out.append(t("warning: the program repeats until a measurement succeeds (an OpenQASM 3 `while` loop); IBM's "
+                     "current devices do not run `while` loops, so the device will likely refuse the job",
+                     "abisua: programak neurketa batek arrakasta izan arte errepikatzen du (OpenQASM 3-ren `while` "
+                     "begizta); IBM-ren gaurko gailuek ez dute `while` begiztarik exekutatzen, beraz gailuak lana "
+                     "ukatuko du ziurrenik"))
+    if "nested" in found:
+        out.append(t("warning: the program has a block inside another block (an `if` inside an `if` or a loop); "
+                     "IBM's current devices do not run nested blocks, so the device will likely refuse the job",
+                     "abisua: programak bloke bat beste baten barruan du (`if` bat `if` edo begizta baten barruan); "
+                     "IBM-ren gaurko gailuek ez dute bloke habiaraturik exekutatzen, beraz gailuak lana ukatuko du "
+                     "ziurrenik"))
+    return out
+
+
 # QOA-ren aurreikuspena gailurako: zirkuitu trinkotua gailu-ereduarekin
 def model_counts(circuit, model, shots, keep=None):
     from qiskit import qasm2
@@ -334,7 +381,7 @@ def main():
             die(t(f"job {args.job} is not in {JOBS}", f"{args.job} lana ez dago {JOBS}-n"))
         job = service(args).job(args.job)
         print(t(f"job {args.job}: {job.status()}", f"{args.job} lana: {job.status()}"))
-        circuit = qasm2.loads(entry["qasm"], custom_instructions=qasm2.LEGACY_CUSTOM_INSTRUCTIONS)
+        circuit = load_circuit(entry["qasm"])
         measured = hardware_counts(job.result()[0], circuit)
         text = report(entry["program"], entry["backend"], entry["shots"], entry["ideal"], measured, None, usage_seconds(job),
                       entry.get("predicted"), entry.get("model_note"))
@@ -346,12 +393,18 @@ def main():
 
     if not args.program:
         ap.error(t("give a program, or --job", "eman programa bat, edo --job"))
+    # lehenik OpenQASM 2.0 (begiztak zabalduta); ezin bada, OpenQASM 3 (if/else, while)
     try:
         qasm = qoa("export", "--to", "qasm", args.program)
-    except RuntimeError as e:
-        die(t(f"this program cannot run on a qubit device as it is:\n{e}",
-              f"programa hau ezin da qubit-gailu batean exekutatu dagoen bezala:\n{e}"), 2)
-    circuit = qasm2.loads(qasm, custom_instructions=qasm2.LEGACY_CUSTOM_INSTRUCTIONS)
+    except RuntimeError:
+        try:
+            qasm = qoa("export", "--to", "qasm3", args.program)
+        except RuntimeError as e:
+            die(t(f"this program cannot run on a qubit device as it is:\n{e}",
+                  f"programa hau ezin da qubit-gailu batean exekutatu dagoen bezala:\n{e}"), 2)
+    circuit = load_circuit(qasm)
+    for reason in ibm_unsupported(circuit):
+        print(reason)
     if circuit.num_clbits == 0:
         die(t("the program measures nothing, so a device would return nothing", "programak ez du ezer neurtzen, beraz gailu batek ez luke ezer itzuliko"), 2)
     ideal = qoa_counts(args.program, args.shots)
@@ -374,7 +427,10 @@ def main():
         label = backend.name
 
     pm = generate_preset_pass_manager(optimization_level=3, backend=backend, seed_transpiler=1)
-    isa = pm.run(circuit)
+    try:
+        isa = pm.run(circuit)
+    except Exception as e:  # noqa: BLE001 (TranspilerError: gailuak ez du eragiketa hori onartzen)
+        die(t(f"{label} cannot run this circuit: {e}", f"{label}-k ezin du zirkuitu hau exekutatu: {e}"), 2)
     two = sum(v for k, v in isa.count_ops().items() if k in ("cz", "ecr", "cx", "rzz"))
     print(t(f"{args.program} on {label}: {two} two-qubit gates, depth {isa.depth()}, {args.shots} shots",
             f"{args.program} {label}-n: {two} bi qubiteko ate, sakonera {isa.depth()}, {args.shots} shot"))
@@ -391,7 +447,7 @@ def main():
         if args.save_model:
             print(t(f"saved {args.save_model}.json and {args.save_model}.qasm: qoa run {args.save_model}.qasm --noise-model {args.save_model}.json",
                     f"gordeta {args.save_model}.json eta {args.save_model}.qasm: qoa run {args.save_model}.qasm --noise-model {args.save_model}.json"))
-    except (ValueError, RuntimeError) as e:
+    except Exception as e:  # noqa: BLE001 (qiskit-ek ezin du kontrol-fluxua OpenQASM 2.0 gisa idatzi, adibidez)
         model_note = t(f"no device-model prediction: {e}", f"gailu-ereduaren aurreikuspenik ez: {e}")
 
     if not args.dry_run and not args.yes:

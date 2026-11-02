@@ -2,8 +2,9 @@
 # fitxategi honek erantzuten du: QOA programak benetako ordenagailu kuantiko batean exekuta litezke? kredentzialik
 # gabe egin daitekeen guztia egiten du, eta txosten bat idazten du (markdown).
 #
-#   1. qubitak: `qoa export --to qasm` -> qiskit. QOA-ren emaitzak eta qiskit aer-enak konparatzen dira (shot
-#      berdinekin, bariazio-distantzia osoa), beraz esportazioak programa bera ematen du.
+#   1. qubitak: `qoa export --to qasm` -> qiskit (eta if/else edo while dituztenak `--to qasm3`-rekin). QOA-ren
+#      emaitzak eta qiskit aer-enak konparatzen dira (shot berdinekin, bariazio-distantzia osoa), beraz esportazioak
+#      programa bera ematen du.
 #   2. hardwarea: zirkuitua IBM gailu errealen modeloetarako transpilatzen da (fake_torino: Heron, 133 qubit;
 #      fake_sherbrooke: Eagle, 127 qubit; haien kalibrazio errealekin), eta gailu horien zarata-ereduarekin
 #      simulatzen da: zenbat bizirik irauten duen emaitza zuzenak gaurko hardwarean.
@@ -11,7 +12,7 @@
 #      zirkuitu bihurtzen dira (Quandela-ren hardware fotonikoaren softwarea): QOA-k fotoi bakar baten
 #      transferentzia-matrizea ematen du, eta bi simulagailuen fotoi anitzeko banaketak konparatzen dira.
 #
-#   python3 tools/hardware_check.py [--out txostena.md]
+#   python3 tools/hardware_check.py [--out txostena.md] [--only qubits|qasm3|photons]
 #
 # behar ditu: qiskit, qiskit-aer, qiskit-ibm-runtime (gailu-modeloak), perceval-quandela. falta den zatia
 # saltatu egiten da, eta txostenak hala esaten du. QOA lehenago konpilatu: cargo build --release.
@@ -34,6 +35,13 @@ QUBIT_PROGRAMS = [
     "examples/grover.qoa",
     "examples/grover-key.qoa",
     "examples/bell.qg",
+]
+
+# OpenQASM 3 bakarrik: if/else eta arrakasta arte errepikatzea (`while`) bit neurtu batekin
+QASM3_PROGRAMS = [
+    "examples/teleport.qoa",
+    "examples/until.qoa",
+    "tests/programs/sanity/qasm3-blocks.qasm",
 ]
 
 SHOTS = 20000
@@ -107,7 +115,7 @@ def qubit_section(lines):
         try:
             text = qoa("export", "--to", "qasm", path)
         except RuntimeError as e:
-            lines.append(f"| `{path}` | export refused: {e.splitlines()[-1].strip()} |")
+            lines.append(f"| `{path}` | export refused: {str(e).splitlines()[-1].strip()} |")
             continue
         qc = qasm2.loads(text, custom_instructions=qasm2.LEGACY_CUSTOM_INSTRUCTIONS)
         width = qc.num_clbits
@@ -131,6 +139,54 @@ def qubit_section(lines):
         lines.append(row)
     if not backends:
         lines.append("\nqiskit-ibm-runtime is not installed: device models skipped.")
+    lines.append("")
+
+
+# OpenQASM 3: `qoa export --to qasm3` -> qiskit.qasm3 -> aer, eta IBM gailu baten modeloak onartzen duen
+def qasm3_section(lines):
+    try:
+        from qiskit import qasm3, transpile
+        from qiskit_aer import AerSimulator
+    except ImportError as e:
+        lines.append(f"Qiskit is not installed ({e}); OpenQASM 3 checks skipped.\n")
+        return
+    try:
+        from qiskit_ibm_runtime.fake_provider import FakeTorino
+
+        device = FakeTorino()
+    except ImportError:
+        device = None
+    lines.append("## OpenQASM 3: blocks and repeat-until-success\n")
+    lines.append(
+        f"Each program is exported with `qoa export --to qasm3` (a `.qasm` file is imported by QOA and exported "
+        f"again), loaded by `qiskit.qasm3`, and run on Qiskit Aer ({SHOTS} shots). The last column says "
+        f"whether Qiskit compiles the circuit for the model of IBM's Torino device, which carries IBM's current "
+        f"list of supported control flow.\n"
+    )
+    lines.append("| program | blocks | TVD QOA vs Aer | IBM Torino model |")
+    lines.append("|---|---|---|---|")
+    sim = AerSimulator()
+    for path in QASM3_PROGRAMS:
+        try:
+            text = qoa("export", "--to", "qasm3", path)
+        except RuntimeError as e:
+            lines.append(f"| `{path}` | export refused: {str(e).splitlines()[-1].strip()} | | |")
+            continue
+        qc = qasm3.loads(text)
+        blocks = sorted({w for w in ("if", "else", "while", "for") if any(
+            ln.strip().startswith(w + " ") or ln.strip().startswith("} " + w) for ln in text.splitlines())})
+        ours = qoa_counts(path, SHOTS)
+        width = max(qc.num_clbits, max(len(k) for k in ours))
+        aer = norm_keys(sim.run(transpile(qc, sim), shots=SHOTS, seed_simulator=1).result().get_counts(), width)
+        if device is None:
+            verdict = "qiskit-ibm-runtime not installed"
+        else:
+            try:
+                transpile(qc, backend=device, optimization_level=1, seed_transpiler=1)
+                verdict = "compiles"
+            except Exception as e:  # noqa: BLE001
+                verdict = "refused: " + str(e).strip().strip('"').splitlines()[0]
+        lines.append(f"| `{path}` | {', '.join(blocks) or 'none'} | {tvd(ours, aer):.4f} | {verdict} |")
     lines.append("")
 
 
@@ -208,13 +264,18 @@ def photonic_section(lines):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", help="write the report here (default: print it)")
+    ap.add_argument("--only", choices=["qubits", "qasm3", "photons"], help="run one section only")
     args = ap.parse_args()
     if not os.path.exists(QOA):
         sys.exit("build QOA first: cargo build --release")
     lines = ["# Would QOA run on a real quantum computer? Measurements\n"]
     lines.append(f"Generated by `tools/hardware_check.py` with {qoa('--version').strip()}.\n")
-    qubit_section(lines)
-    photonic_section(lines)
+    if args.only in (None, "qubits"):
+        qubit_section(lines)
+    if args.only in (None, "qasm3"):
+        qasm3_section(lines)
+    if args.only in (None, "photons"):
+        photonic_section(lines)
     text = "\n".join(lines) + "\n"
     if args.out:
         with open(args.out, "w") as f:

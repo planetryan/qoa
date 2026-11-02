@@ -79,6 +79,7 @@ fn exercise(p: &Program) {
     };
     let _ = qoa::disasm::to_glyph(p, &dense);
     let _ = qoa::qasm::from_program(p);
+    let _ = qoa::qasm::from_program_v3(p);
     let _ = qoa::ionq::from_program(p, 2);
     // mihiztatzaileak onartzen duen programa orok bere .qx-tik kargatu behar du (bestela `qoa compile`-k
     // `qoa run`-ek hondatutzat joko lukeen fitxategi bat idatziko luke)

@@ -1,0 +1,12 @@
+; errepikatu arrakasta lortu arte, erregistrorik gabe: bit neurtu bat bakarrik erabiltzen duenez,
+; OpenQASM 3-ra `while` begizta gisa esportatzen da (qoa export --to qasm3).
+; RY(pi/3)-k 1 ematen du % 25ean; 0 bada, qubita berrabiarazi eta berriz saiatu. gero q1-era kopiatu.
+; expect-only: 11
+QI 2
+saiatu:
+RSTq0
+RYq0 pi/3
+Mq0.c0
+JZc0 saiatu             ; 0 bada, berriz saiatu
+CXq0 q1
+Mq1.c1

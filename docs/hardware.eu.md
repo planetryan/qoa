@@ -2,7 +2,7 @@
 
 [In English: hardware.md](hardware.md)
 
-**Erantzun laburra: qubit-zatia, bai, OpenQASM 2.0 edo IonQ-ren JSON bidez; optika linealeko zatia, bai
+**Erantzun laburra: qubit-zatia, bai, OpenQASM 2.0, OpenQASM 3 edo IonQ-ren JSON bidez; optika linealeko zatia, bai
 printzipioz, prozesadore fotonikoetan (Quandela-renak, adibidez); qubit-fotoi akoplamendua eta optika
 ez-lineala, ez gaur alokatu daitekeen inolako makinatan.** Orrialde honetarako ez da programarik hardware
 errealera bidali, hornitzaile batean kontu bat behar delako. Hori baino lehenagoko guztia egin eta neurtu da,
@@ -40,10 +40,56 @@ Honek esaten duena:
   ate behar ditu, eta zaratak gako zuzena shot-en % 30ean uzten du Heron-en eta % 9.6an Eagle-n, asmatzeak
   % 6.25 emango lukeen lekuan. Hau gaurko makinen benetako muga da, ez QOA-rena: erroreak arintzeak zerbait
   laguntzen du, erroreen zuzenketak konpontzen du.
+
+## OpenQASM 3
+
+`qoa export --to qasm3`-k OpenQASM 3.0 idazten du, ate-liburutegi estandarrarekin (`stdgates.inc`).
+OpenQASM 2.0 esportazioak estaltzen duena estaltzen du, eta hiru kontrol-fluxu forma bloke gisa gordetzen
+ditu, zabaldu edo baztertu beharrean:
+
+- kopuru finkoko begiztak, `for uint i in [0:n-1] { ... }` gisa;
+- neurtutako bit baten araberako aurrerako jauzi bat, `if (c[k] == v) { ... }` gisa, eta bigarren bloke
+  baten gainetik `JUMP` batekin, `if (...) { ... } else { ... }` gisa;
+- errepikatu arrakasta lortu arte (neurtutako bit baten araberako atzerako jauzi bat, edo proba bat goian
+  eta atzerako jauzi bat), `while (c[0] == false) { ... }` gisa.
+
+`stdgates.inc`-n izenik ez duten ateek modifikatzaileak edo baliokideak erabiltzen dituzte: `inv @ sx`,
+`ctrl @ sx`, `ctrl(3) @ x`, `ctrl(4) @ x`, `cp` `cu1`-en ordez, eta `cu(θ,φ,λ,0)` `cu3`-ren ordez. `qoa run`-ek
+eta `qoa import`-ek azpimultzo bera irakurtzen dute (bitak, `if`/`else`, `while`, `for`, eta `inv`, `ctrl` eta
+`pow` modifikatzaileak), beraz esportatutako fitxategi bat QOA-n bertan ere exekutatzen da; proba batek
+egiaztatzen du QOA -> OpenQASM 3 -> QOA joan-etorriak kopuru berak ematen dituela, shot-ez shot, eta
+OpenQASM 3 -> QOA -> OpenQASM 3-k blokeak gordetzen dituela.
+
+Qiskit 2.5.2 eta Aer 0.17.2-rekin egiaztatua (`python3 tools/hardware_check.py --only qasm3`):
+
+| programa | blokeak | QOA = Qiskit? (TVD) | IBM Torino modeloa |
+|---|---|---|---|
+| teleportazioa | `if` | bai (0.003) | konpilatzen da |
+| `examples/until.qoa`, errepikatu qubit batek 1 eman arte | `while` | bai (0.000) | ukatua: `while_loop` ez da onartzen |
+| `tests/programs/sanity/qasm3-blocks.qasm`, bloke mota guztiak | `while`, `for`, `if`, `else` | bai (0.000) | ukatua: `while_loop` ez da onartzen |
+
+**Zer non dabilen.** Esportatutako fitxategiak OpenQASM 3 baliodunak dira, eta qiskit-ek guztiak kargatu
+eta simulatzen ditu. IBM-ren gailuek gutxiago hartzen dute: IBM-ren zirkuitu dinamikoek `if`/`else`
+exekutatzen dute bit neurtuekin, baina IBM-k `while`, `for` eta `switch` zaharkitutzat jo zituen, baita
+beste blokeen barruko blokeak ere, 2025ean zirkuitu dinamiko berriak zabaldu zituenean ([IBM: aurrera-elikadura klasikoa eta kontrol-fluxua](https://docs.quantum.ibm.com/build/classical-feedforward-and-control-flow),
+[IBM: zirkuitu dinamikoak exekutatu](https://quantum.cloud.ibm.com/docs/en/guides/execute-dynamic-circuits),
+[IBM-ren zerbitzu-abisua, 2025eko uztaila](https://quantum.cloud.ibm.com/announcements/en/service-alerts/2025-07-07-dynamic-circuits-update)).
+qiskit-ibm-runtime 0.51-eko IBM Torino gailuaren modeloa bat dator: teleportazioa konpilatzen du eta
+`while_loop` ukatzen du. IBM-k alda dezake, beraz egiaztatu haren dokumentazioa horretan oinarritu aurretik.
+Hau idaztean:
+
+- **`if`/`else` bit neurtu batekin** (teleportazioa, aurrera-elikadura): IBM-n dabil, OpenQASM 2.0 edo
+  3-tik.
+- **Kopuru finkoko begiztak:** `tools/run_on_ibm.py`-k zabaldu egiten ditu bidali aurretik.
+- **Errepikatu arrakasta lortu arte:** OpenQASM 3 baliozkoa da eta qiskit-en simulagailuetan dabil, baina
+  IBM-ren gaurko gailuek ukatu egiten dute; `tools/run_on_ibm.py`-k hala esaten du QPU denbora gastatu
+  aurretik.
 - **Oraindik esportatu ezin dena:** erregistroekin kalkulatzen duten programak (shor-en zati klasikoa,
-  kontagailuak), kopurua erregistro batean duten begiztak, eta arrakasta lortu arteko begiztak (atzerako
-  jauziak). OpenQASM 3-k hirurak adieraz ditzake (`while`, `if/else`, aldagai klasikoak); OpenQASM 3
-  esportatzaile bat da hurrengo urratsa.
+  kontagailuak, erregistro batek zenbatutako begiztak, `examples/retry.qoa`-ren saiakera-kontagailua).
+  OpenQASM 3-k aldagai osoak ditu, baina qiskit-en OpenQASM 3 inportatzaileak ez ditu irakurtzen (qiskit
+  2.5.2-k `uint` deklarazioak baztertzen ditu) eta IBM-ren gailuek ez dituzte exekutatzen, beraz
+  esportatzaileak programa horiek baztertu egiten ditu, lerro bakoitza eta zergatia esanda, ezerk exekutatu
+  ezin duen fitxategi bat idatzi beharrean.
 
 ## Programa optikoak
 
@@ -96,9 +142,10 @@ qubiteko ate behar dituen esaten du, galdetu egiten du QPU denbora gastatu aurre
 ondoan inprimatzen ditu, QOA-k aurreikusten dituen emaitzetako shot-en zatiarekin, bi banaketen arteko
 distantziarekin eta lanak erabilitako QPU segundoekin. `--dry-run`-ekin bide bera IBM gailu baten modelo
 lokalean exekutatzen da, bere zarata neurtuarekin, eta horrela egin dira goiko zenbakiak: bell % 97.8,
-teleportazioa % 97.4, grover % 81.8 shot-ak erantzun zuzenetan, Torino modeloan. Esportatzaileak baztertzen
-dituen programak (erregistro-aritmetika, erregistro batek zenbatutako begiztak, atzerako jauziak) ezin dira
-oraindik bidali; script-ak zein lerro eta zergatik esaten du.
+teleportazioa % 97.4, grover % 81.8 shot-ak erantzun zuzenetan, Torino modeloan. OpenQASM 2.0 bidaltzen du
+programa hartan sartzen denean, eta bestela OpenQASM 3 (kopuru finkoko begiztak zabalduta). Erregistro-
+aritmetika edo erregistro batek zenbatutako begiztak dituzten programak ezin dira bidali, eta IBM-ren gaurko
+gailuek arrakasta lortu arteko begizta bat ukatzen dute; script-ak zein lerro eta zergatik esaten du.
 
 Exekuzio bakoitzak hirugarren zutabe bat ere erakusten du, "QOA + eredua": QOA-ren beraren aurreikuspena
 gailu horretarako, gailuaren kalibrazioarekin simulatuta (ate-erroreak, T1/T2, irakurketa-erroreak), ikus

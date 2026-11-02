@@ -176,8 +176,8 @@ enum Command {
         #[arg(help = ts!("program file", "programa-fitxategia"))]
         file: PathBuf,
         #[arg(long, value_enum, required_unless_present = "to_glyph", help = ts!(
-            "target: qasm (OpenQASM 2.0), ionq (IonQ JSON), glyph (glyph syntax), qoa (canonical plain QOA, also from a .qx binary), listing (qoa with each operation's address and source line), json (the program as data), dot (control-flow graph for Graphviz)",
-            "helburua: qasm (OpenQASM 2.0), ionq (IonQ JSON), glyph (glifo-sintaxia), qoa (QOA arrunt kanonikoa, .qx bitar batetik ere), listing (qoa eragiketa bakoitzaren helbide eta iturburu-lerroarekin), json (programa datu gisa), dot (kontrol-fluxuaren grafoa graphviz-erako)"
+            "target: qasm (OpenQASM 2.0), qasm3 (OpenQASM 3: for, if/else and while blocks on measured bits), ionq (IonQ JSON), glyph (glyph syntax), qoa (canonical plain QOA, also from a .qx binary), listing (qoa with each operation's address and source line), json (the program as data), dot (control-flow graph for Graphviz)",
+            "helburua: qasm (OpenQASM 2.0), qasm3 (OpenQASM 3: for, if/else eta while blokeak bit neurtuekin), ionq (IonQ JSON), glyph (glifo-sintaxia), qoa (QOA arrunt kanonikoa, .qx bitar batetik ere), listing (qoa eragiketa bakoitzaren helbide eta iturburu-lerroarekin), json (programa datu gisa), dot (kontrol-fluxuaren grafoa graphviz-erako)"
         ))]
         to: Option<ExportFormat>,
         #[arg(long, conflicts_with = "to", help = ts!("same as --to glyph", "--to glyph-en berdina"))]
@@ -223,8 +223,8 @@ enum Command {
         keep_source: bool,
     },
     #[command(about = ts!(
-        "Convert an OpenQASM 2.0 file (.qasm) or a glyph-syntax file (.qg) into plain QOA source",
-        "OpenQASM 2.0 fitxategi bat (.qasm) edo glifo-sintaxiko bat (.qg) QOA iturburu arrunt bihurtu"
+        "Convert an OpenQASM file (.qasm: all of 2.0; of 3, bits, if/else, while, for and gate modifiers) or a glyph-syntax file (.qg) into plain QOA source",
+        "OpenQASM fitxategi bat (.qasm: 2.0 osoa; 3-tik, bitak, if/else, while, for eta ate-modifikatzaileak) edo glifo-sintaxiko bat (.qg) QOA iturburu arrunt bihurtu"
     ))]
     Import {
         #[arg(help = ts!(".qasm or .qg file", ".qasm edo .qg fitxategia"))]
@@ -371,6 +371,8 @@ enum DetectArg {
 enum ExportFormat {
     // openqasm 2.0 (qubit-zatia)
     Qasm,
+    // openqasm 3.0: begiztak, if blokeak eta while begiztak bit neurtuen arabera
+    Qasm3,
     // ionq-ren json formatua
     Ionq,
     // glifo-sintaxia
@@ -1286,6 +1288,7 @@ fn cmd_export(
     let local = |r: Result<String, String>| r.map_err(|e| format!("{}: {}", p.name, e));
     let result = match to {
         ExportFormat::Qasm => qoa::qasm::from_program(&p),
+        ExportFormat::Qasm3 => qoa::qasm::from_program_v3(&p),
         ExportFormat::Ionq => qoa::ionq::from_program(&p, shots),
         ExportFormat::Glyph => {
             return write_or_print(output, &local(qoa::disasm::to_glyph(&p, glyph))?);
@@ -1314,6 +1317,7 @@ fn cmd_export(
         Err(errors) => {
             let target = match to {
                 ExportFormat::Qasm => "OpenQASM 2.0",
+                ExportFormat::Qasm3 => "OpenQASM 3",
                 _ => "IonQ",
             };
             let mut msg = t!(

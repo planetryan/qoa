@@ -28,9 +28,10 @@ tresna bat da, ez ordenagailu kuantiko bat.
   Hori da kabitate-QED-aren eta sare kuantikoen tresna-kutxa: entrelazamendu iragarria, Schrödinger-en katu
   egoerak, qubit-fotoi entrelazamendua.
 - **Kontrol klasikoa**: 32 erregistro, aritmetika, begiztak, azpierrutinak, neurketen araberako adarkatzea.
-- **OpenQASM 2.0**: `qoa run zirkuitua.qasm`-k OpenQASM zuzenean exekutatzen du (lengoaia osoa, `gate`
-  definizioak eta `if` barne), eta `qoa export --to qasm`-k programaren qubit-zatia OpenQASM 2.0 gisa
-  idazten du. `--to ionq`-k IonQ-ren JSON formatua idazten du.
+- **OpenQASM 2.0 eta 3**: `qoa run zirkuitua.qasm`-k OpenQASM zuzenean exekutatzen du (2.0 osoa, `gate`
+  definizioak eta `if` barne; OpenQASM 3-tik, bitak, `if`/`else`, `while`, `for` eta ate-modifikatzaileak), eta
+  `qoa export --to qasm`-k edo `--to qasm3`-k programaren qubit-zatia OpenQASM 2.0 edo 3 gisa idazten du.
+  `--to ionq`-k IonQ-ren JSON formatua idazten du.
 - **Bi hizkuntza**: mezu, errore eta laguntza-testu guztiak euskaraz eta ingelesez daude. `QOA_LANG=eu` edo
   `QOA_LANG=en` aukeratzeko; bestela sistemaren hizkuntzak erabakitzen du.
 
@@ -163,7 +164,7 @@ konpilatutako `.qx` batetik:
 | `json` | programa datu gisa: baliabideak, eta eragiketa bakoitzaren helbidea, lerroa, testua eta egitura |
 | `dot` | kontrol-fluxuaren grafoa (oinarrizko blokeak, jauziak, begiztak, deiak) graphviz-erako: `qoa export --to dot f.qoa \| dot -Tsvg > f.svg` |
 | `glyph` | glifo-sintaxia (`--width`, `--names`, `--long-names`, `--no-ranges`, `--hex`) |
-| `qasm`, `ionq` | hardware errealerako: [docs/hardware.eu.md](docs/hardware.eu.md) |
+| `qasm`, `qasm3`, `ionq` | hardware errealerako: [docs/hardware.eu.md](docs/hardware.eu.md) |
 
 Testu-esportazio bakoitza berriz mihiztatu eta jatorrizkoarekin konparatzen da idatzi aurretik, beraz
 esportazio oker bat errore bat da, inoiz ez isilean desberdina den programa bat.
@@ -254,6 +255,7 @@ egiaztatua bere iruzkinek diotenaren aurka:
 | `emitter`, `cat` | qubit-fotoi entrelazamendua; qubit batekin egindako Schrödinger-en katua |
 | `heralded-entanglement` | urrutiko bi igorle entrelazatu haien fotoiak interferentzian jarriz |
 | `retry`, `sweep` | errepikatu arrakasta lortu arte; neurketa kuantiko baten inguruko begizta klasikoa |
+| `until` | errepikatu arrakasta lortu arte bit neurtu bakar batekin; OpenQASM 3-ra `while` begizta gisa esportatzen da |
 | `bell.qasm` | OpenQASM zuzenean exekutatuta |
 | `bell-torino.qasm` | Bell IBM Torino-rako transpilatua; exekutatu gailu horren zaratarekin: `--noise-model examples/bell-torino.json` |
 | `*.qg` | glifo-sintaxia: lerro bakarreko jatorrizko zirriborroa, bell, teleportazioa, HOM igorleekin, errepikatzea, eta errutina klasiko bat deitzen duen (`CC`) errepikapen-kode baten deskodetzailea |

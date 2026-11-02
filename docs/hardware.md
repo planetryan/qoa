@@ -2,7 +2,7 @@
 
 [Euskaraz: hardware.eu.md](hardware.eu.md)
 
-**Short answer: the qubit part, yes, through OpenQASM 2.0 or IonQ's JSON; the linear-optics part, yes in
+**Short answer: the qubit part, yes, through OpenQASM 2.0, OpenQASM 3 or IonQ's JSON; the linear-optics part, yes in
 principle, on photonic processors such as Quandela's; the qubit-photon coupling and the nonlinear optics,
 not on any machine you can rent today.** No program was sent to real hardware for this page, because that
 needs an account with a provider. Everything short of that was done and measured, and
@@ -38,9 +38,51 @@ What this says:
   needs 354 two-qubit gates, and the noise leaves the right key in 30% of shots on Heron and 9.6% on Eagle,
   where guessing would give 6.25%. This is the real limit of current machines, not of QOA: error
   mitigation helps somewhat, error correction is what fixes it.
-- **Not exportable yet:** programs that compute with registers (Shor's classical part, counters), loops
-  whose count is in a register, and repeat-until-success loops (backward jumps). OpenQASM 3 can express
-  all three (`while`, `if/else`, classical variables); an OpenQASM 3 exporter is the next step.
+
+## OpenQASM 3
+
+`qoa export --to qasm3` writes OpenQASM 3.0 with the standard gate library (`stdgates.inc`). It covers
+what the OpenQASM 2.0 export covers, and keeps three control-flow shapes as blocks instead of unrolling or
+refusing them:
+
+- counted loops, as `for uint i in [0:n-1] { ... }`;
+- a forward jump on a measured bit, as `if (c[k] == v) { ... }`, and with a `JUMP` over a second block, as
+  `if (...) { ... } else { ... }`;
+- repeat-until-success (a backward jump on a measured bit, or a test at the top and a jump back), as
+  `while (c[0] == false) { ... }`.
+
+Gates that have no name in `stdgates.inc` use modifiers or equivalents: `inv @ sx`, `ctrl @ sx`,
+`ctrl(3) @ x`, `ctrl(4) @ x`, `cp` for `cu1`, and `cu(θ,φ,λ,0)` for `cu3`. `qoa run` and `qoa import` read the
+same subset back (bits, `if`/`else`, `while`, `for`, and the `inv`, `ctrl` and `pow` modifiers), so an
+exported file also runs in QOA itself; a test checks that QOA -> OpenQASM 3 -> QOA gives the same counts,
+shot for shot, and that OpenQASM 3 -> QOA -> OpenQASM 3 keeps the blocks.
+
+Checked against Qiskit 2.5.2 and Aer 0.17.2 (`python3 tools/hardware_check.py --only qasm3`):
+
+| program | blocks | QOA = Qiskit? (TVD) | IBM Torino model |
+|---|---|---|---|
+| teleportation | `if` | yes (0.003) | compiles |
+| `examples/until.qoa`, repeat until a qubit reads 1 | `while` | yes (0.000) | refused: `while_loop` is not supported |
+| `tests/programs/sanity/qasm3-blocks.qasm`, every block kind | `while`, `for`, `if`, `else` | yes (0.000) | refused: `while_loop` is not supported |
+
+**What runs where.** The exported files are valid OpenQASM 3, and Qiskit loads and simulates every one.
+IBM's devices take less: IBM's dynamic circuits run `if`/`else` on measured bits, but IBM deprecated
+`while`, `for` and `switch`, and blocks nested inside other blocks, when it rolled out its new dynamic
+circuits in 2025 ([IBM: classical feedforward and control flow](https://docs.quantum.ibm.com/build/classical-feedforward-and-control-flow),
+[IBM: execute dynamic circuits](https://quantum.cloud.ibm.com/docs/en/guides/execute-dynamic-circuits),
+[IBM service alert, July 2025](https://quantum.cloud.ibm.com/announcements/en/service-alerts/2025-07-07-dynamic-circuits-update)). The
+model of IBM's Torino device in qiskit-ibm-runtime 0.51 agrees: it compiles teleportation and refuses
+`while_loop`. IBM may change this, so check its documentation before relying on it. As of this writing:
+
+- **`if`/`else` on a measured bit** (teleportation, feed-forward): runs on IBM, from OpenQASM 2.0 or 3.
+- **Counted loops:** `tools/run_on_ibm.py` unrolls them before sending.
+- **Repeat-until-success:** valid OpenQASM 3 and runs in Qiskit's simulators, but IBM's current devices
+  refuse it; `tools/run_on_ibm.py` says so before spending QPU time.
+- **Still not exportable:** programs that compute with registers (Shor's classical part, counters, loops
+  counted by a register, the attempt counter in `examples/retry.qoa`). OpenQASM 3 has integer variables,
+  but Qiskit's OpenQASM 3 importer does not read them (Qiskit 2.5.2 rejects `uint` declarations) and IBM's
+  devices do not run them, so the exporter refuses these programs, naming each line and why, instead of
+  writing a file that nothing downstream can run.
 
 ## Optical programs
 
@@ -91,8 +133,9 @@ device answers prints its counts next to QOA's exact simulation, with the share 
 predicts, the distance between the two distributions, and the QPU seconds the job used. With `--dry-run`
 the same path runs on a local model of an IBM device with its measured noise, which is how the numbers
 above were made: Bell 97.8%, teleportation 97.4%, Grover 81.8% of shots on the right answers on the Torino
-model. Programs the exporter refuses (register arithmetic, loops counted by a register, backward jumps)
-cannot go yet; the script says which lines and why.
+model. It sends OpenQASM 2.0 when the program fits it and OpenQASM 3 otherwise (with counted loops
+unrolled). Programs with register arithmetic or loops counted by a register cannot go, and a
+repeat-until-success loop is refused by IBM's current devices; the script says which lines and why.
 
 Every run also shows a third column, "QOA + model": QOA's own prediction for that device, simulated with
 the device's calibration (gate errors, T1/T2, readout errors), as described in [noise.md](noise.md). On a

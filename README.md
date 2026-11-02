@@ -26,8 +26,9 @@ not a quantum computer.
   dispersive coupling (`DISPERSIVE`) lets a qubit control a mode's phase. This is the cavity-QED and
   quantum-network toolbox: heralded entanglement, Schrodinger cat states, qubit-photon entanglement.
 - **Classical control**: 32 registers, arithmetic, loops, subroutines, branches on measurement results.
-- **OpenQASM 2.0**: `qoa run circuit.qasm` runs OpenQASM directly (the whole language, including gate
-  definitions and `if`), and `qoa export --to qasm` writes the qubit part of a program as OpenQASM 2.0.
+- **OpenQASM 2.0 and 3**: `qoa run circuit.qasm` runs OpenQASM directly (all of 2.0, including gate
+  definitions and `if`; of OpenQASM 3, bits, `if`/`else`, `while`, `for` and gate modifiers), and
+  `qoa export --to qasm` or `--to qasm3` writes the qubit part of a program as OpenQASM 2.0 or 3.
   `--to ionq` writes IonQ's JSON format.
 - **Two languages**: every message, error and help text is in English and Basque. `QOA_LANG=eu` or
   `QOA_LANG=en` chooses; otherwise the system locale decides.
@@ -158,7 +159,7 @@ see [docs/glyph.md](docs/glyph.md).
 | `json` | the program as data: resources, and each operation's address, line, text and structure |
 | `dot` | the control-flow graph (basic blocks, jumps, loops, calls) for Graphviz: `qoa export --to dot f.qoa \| dot -Tsvg > f.svg` |
 | `glyph` | glyph syntax (`--width`, `--names`, `--long-names`, `--no-ranges`, `--hex`) |
-| `qasm`, `ionq` | for real hardware: [docs/hardware.md](docs/hardware.md) |
+| `qasm`, `qasm3`, `ionq` | for real hardware: [docs/hardware.md](docs/hardware.md) |
 
 Every text export is reassembled and compared with the original before it is written, so a wrong export
 is an error, never a silently different program.
@@ -244,6 +245,7 @@ suite against what its comments claim:
 | `emitter`, `cat` | qubit-photon entanglement; a Schrodinger cat state made with a qubit |
 | `heralded-entanglement` | entangling two distant emitters by interfering their photons |
 | `retry`, `sweep` | repeat-until-success; a classical loop around a quantum measurement |
+| `until` | repeat-until-success on a measured bit alone, which exports to OpenQASM 3 as a `while` loop |
 | `bell.qasm` | OpenQASM run directly |
 | `bell-torino.qasm` | Bell transpiled for IBM Torino; run it with that device's noise: `--noise-model examples/bell-torino.json` |
 | `*.qg` | the glyph syntax: the original one-line sketch, Bell, teleportation, HOM with emitters, retry, and a repetition-code decoder that calls a classical routine (`CC`) |

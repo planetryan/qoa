@@ -389,7 +389,39 @@ fn import_errors_say_what_is_wrong() {
         ),
         (
             "OPENQASM 3;\nqubit[1] q;\nctrl @ x q[0], q[0];\n",
-            "gate modifiers",
+            "cx uses qubit 0 twice",
+        ),
+        (
+            "OPENQASM 3;\nqubit[2] q;\nnegctrl @ x q[0], q[1];\n",
+            "gate modifier 'negctrl' is not supported",
+        ),
+        (
+            "OPENQASM 3;\nqubit[1] q;\nctrl @ s q[0], q[1];\n",
+            "no controlled form of 's'",
+        ),
+        (
+            "OPENQASM 3;\nqubit[1] q;\npow(0.5) @ x q[0];\n",
+            "only whole-number powers",
+        ),
+        (
+            "OPENQASM 3;\nqubit[1] q;\nfor uint i in [0:3] { rx(i) q[0]; }\n",
+            "loop variable 'i' is used inside the loop",
+        ),
+        (
+            "OPENQASM 3;\nqubit[1] q;\nbit[1] c;\nelse { x q[0]; }\n",
+            "else without an if",
+        ),
+        (
+            "OPENQASM 3;\nqubit[1] q;\nbit[1] c;\nif (c[0] == maybe) { x q[0]; }\n",
+            "found 'maybe'",
+        ),
+        (
+            "OPENQASM 3;\nqubit[1] q;\nbit[1] c;\nwhile (c[0]) {\n  x q[0];\n  y q[7];\n}\n",
+            "line 6",
+        ),
+        (
+            "OPENQASM 3;\nqubit[1] q;\nuint[4] n;\n",
+            "'uint' is an OpenQASM 3 feature",
         ),
         (
             "OPENQASM 2.0;\nqreg q[1];\ncreg c[1];\nif (c > 1) x q[0];\n",
@@ -607,5 +639,236 @@ fn exported_control_flow_runs_the_same_after_import() {
                 .collect()
         };
         assert_eq!(trim(ka), trim(kb), "{}", name);
+    }
+}
+
+#[test]
+fn openqasm_3_export_keeps_loops_ifs_and_repeat_until_success() {
+    lang::set(Lang::En);
+    let v3 = |src: &str| {
+        let prog = qoa::asm::assemble(src, "t")
+            .unwrap_or_else(|d| panic!("{}", qoa::asm::render(&d, src, "t")));
+        qoa::qasm::from_program_v3(&prog).unwrap_or_else(|e| panic!("{:?}\n{}", e, src))
+    };
+    // literal begiztak `for` gisa, zabaldu gabe
+    let text = v3("QINIT 2\nLOOPSTART 3\nH q0\nLOOPSTART 2\nX q1\nLOOPEND\nLOOPEND\nMEASUREALL\n");
+    assert!(
+        text.starts_with("// exported")
+            && text.contains("OPENQASM 3.0;\ninclude \"stdgates.inc\";\nqubit[2] q;\nbit[2] c;\n"),
+        "{}",
+        text
+    );
+    assert!(
+        text.contains(
+            "for uint i0 in [0:2] {\n  h q[0];\n  for uint i1 in [0:1] {\n    x q[1];\n  }\n}\n"
+        ),
+        "{}",
+        text
+    );
+    // arrakasta arte errepikatu: gorputza behin, gero `while`
+    let text = v3(
+        "QINIT 1\nberriz:\nRESET q0\nRY q0 1.0471975511965976\nMEASURE q0 -> c0\nJUMPIFZERO c0 berriz\n",
+    );
+    assert!(text.contains("reset q[0];\nry(1.0471975511965976) q[0];\nmeasure q[0] -> c[0];\nwhile (c[0] == false) {\n  reset q[0];\n  ry(1.0471975511965976) q[0];\n  measure q[0] -> c[0];\n}\n"), "{}", text);
+    // aurrerako jauzia `if` bihurtzen da, eta JUMP batekin amaitutakoa if/else
+    let text =
+        v3("QINIT 2\nH q0\nMEASURE q0 -> c0\nJUMPIFZERO c0 gabe\nX q1\ngabe:\nMEASURE q1 -> c1\n");
+    assert!(
+        text.contains("if (c[0] == true) {\n  x q[1];\n}\n"),
+        "{}",
+        text
+    );
+    let text = v3(
+        "QINIT 3\nH q0\nMEASURE q0 -> c0\nJUMPIFONE c0 bestela\nX q1\nJUMP eginda\nbestela:\nX q2\neginda:\nMEASUREALL\n",
+    );
+    assert!(
+        text.contains("if (c[0] == false) {\n  x q[1];\n}\nelse {\n  x q[2];\n}\n"),
+        "{}",
+        text
+    );
+    // qelib1-eko izenak stdgates.inc-n ez daudenean, aldatzaileak edo baliokideak
+    let text = v3(
+        "QINIT 5\nSXDG q0\nCSX q0 q1\nCU1 q0 q1 0.5\nCU3 q0 q1 0.1 0.2 0.3\nMCX q0 q1 q2 q3\nMCX q0 q1 q2 q3 q4\n",
+    );
+    for want in [
+        "inv @ sx q[0];",
+        "ctrl @ sx q[0],q[1];",
+        "cp(0.5) q[0],q[1];",
+        "cu(0.1,0.2,0.3,0) q[0],q[1];",
+        "ctrl(3) @ x q[0],q[1],q[2],q[3];",
+        "ctrl(4) @ x q[0],q[1],q[2],q[3],q[4];",
+    ] {
+        assert!(text.contains(want), "{} not in\n{}", want, text);
+    }
+}
+
+#[test]
+fn openqasm_3_export_refuses_what_it_cannot_say() {
+    lang::set(Lang::En);
+    let cases = [
+        ("QMODE 1\nDISPLACE o0 1\n", "OpenQASM has no optical modes"),
+        // erregistro bateko kopurua: qiskit-ek eta IBM-k ez dute aldagai klasikorik onartzen
+        (
+            "QINIT 1\nREGSET R1 2\nLOOPSTART R1\nH q0\nLOOPEND\n",
+            "OpenQASM 3",
+        ),
+        // atzerako jauzi bat begizta itxi baten barrutik kanpora
+        (
+            "QINIT 2\nhasi:\nH q0\nMEASURE q0 -> c0\nJUMPIFONE c0 kanpo\nJUMPIFZERO c0 hasi\nkanpo:\nH q1\n",
+            "OpenQASM 3",
+        ),
+        ("QINIT 1\nMEASURE q0 -> R0\n", "measurement into a register"),
+    ];
+    for (src, want) in cases {
+        let prog = qoa::asm::assemble(src, "t").unwrap();
+        let errs = qoa::qasm::from_program_v3(&prog).unwrap_err();
+        let text: Vec<String> = errs.iter().map(|e| e.to_string()).collect();
+        assert!(
+            text.iter().any(|t| t.contains(want)),
+            "expected {:?} in {:?}",
+            want,
+            text
+        );
+    }
+}
+
+// openqasm 3 -> qoa: blokeak eta ate-modifikatzaileak
+#[test]
+fn openqasm_3_blocks_and_modifiers_import() {
+    lang::set(Lang::En);
+    // modifikatzaileak: G eta gero inv @ G = ezer ez; pow(2) @ s = z; ctrl(2) @ x = ccx
+    let mut rng = StdRng::seed_from_u64(17);
+    let n = 3;
+    for (a, b) in [
+        ("u(0.3,0.4,0.5) q[0]; inv @ u(0.3,0.4,0.5) q[0];", ""),
+        ("u2(0.3,0.4) q[1]; inv @ u2(0.3,0.4) q[1];", ""),
+        (
+            "cu(0.3,0.4,0.5,0.6) q[0],q[1]; inv @ cu(0.3,0.4,0.5,0.6) q[0],q[1];",
+            "",
+        ),
+        ("sx q[0]; inv @ sx q[0];", ""),
+        ("rxx(0.7) q[0],q[2]; inv @ rxx(0.7) q[0],q[2];", ""),
+        ("inv @ s q[0];", "sdg q[0];"),
+        ("inv @ t q[2];", "tdg q[2];"),
+        ("pow(2) @ s q[1];", "z q[1];"),
+        ("pow(-1) @ t q[1];", "tdg q[1];"),
+        ("ctrl(2) @ x q[0],q[1],q[2];", "ccx q[0],q[1],q[2];"),
+        ("ctrl @ ctrl @ x q[2],q[0],q[1];", "ccx q[2],q[0],q[1];"),
+        ("ctrl @ rx(0.4) q[1],q[0];", "crx(0.4) q[1],q[0];"),
+        ("inv @ ctrl @ rx(0.4) q[1],q[0];", "crx(-0.4) q[1],q[0];"),
+        ("ctrl @ inv @ p(0.4) q[1],q[0];", "cp(-0.4) q[1],q[0];"),
+        ("ctrl @ sx q[0],q[1];", "csx q[0],q[1];"),
+    ] {
+        let pre = format!("OPENQASM 3.0;\nqubit[{}] q;\n{}", n, scramble(&mut rng, n));
+        let x = state_of_qasm(&format!("{}{}\n", pre, a));
+        let y = state_of_qasm(&format!("{}{}\n", pre, b));
+        assert!(fidelity(&x, &y) > 1.0 - 1e-12, "{} vs {}", a, b);
+    }
+    // blokeak, iruzkinekin eta lerro askotan
+    let src = "OPENQASM 3.0;
+include \"stdgates.inc\";
+qubit[3] q;
+bit[3] c;
+// arrakasta arte
+reset q[0];
+h q[0];
+c[0] = measure q[0];
+while (!c[0]) {
+  reset q[0];
+  h q[0];
+  c[0] = measure q[0];
+}
+for uint k in [0:2:5] {  // hiru aldiz
+  x q[1];
+}
+if (c[0] == false) {
+  x q[2];
+} else if (c[1]) {
+  h q[2];
+  h q[2];
+} else {
+  x q[2];
+  x q[2];
+}
+c[1] = measure q[1];
+c[2] = measure q[2];
+";
+    let qoa_src = qoa::qasm::to_qoa(src, "t.qasm").unwrap_or_else(|e| panic!("{}", e));
+    let prog = qoa::asm::assemble(&qoa_src, "t")
+        .unwrap_or_else(|d| panic!("{}\n{}", qoa::asm::render(&d, &qoa_src, "t"), qoa_src));
+    let out = vm::run(
+        &prog,
+        &RunConfig {
+            shots: 200,
+            seed: 4,
+            ..RunConfig::default()
+        },
+        &mut std::io::sink(),
+    )
+    .unwrap();
+    // c0 = 1 beti (begizta), c1 = 1 (hiru X), c2 = 0 (else if: h h)
+    let keys: Vec<String> = out
+        .counts
+        .iter()
+        .map(|(r, _)| qoa::report::bits_string(r))
+        .collect();
+    assert_eq!(keys, vec!["011".to_string()], "{}", qoa_src);
+    // sakonera mugatua: 100 bloke habiaratuta errore bat da, ez pila-gainezkatze bat
+    let deep = format!(
+        "OPENQASM 3.0;\nqubit[1] q;\nbit[1] c;\n{}x q[0];{}\n",
+        "if (c[0]) {".repeat(100),
+        "}".repeat(100)
+    );
+    let e = qoa::qasm::to_qoa(&deep, "t.qasm").unwrap_err();
+    assert!(e.to_string().contains("nested more than 64 deep"), "{}", e);
+}
+
+// QOA -> OpenQASM 3 -> QOA: kopuru berdin-berdinak (hazi berarekin), begizta, if/else eta while barne
+#[test]
+fn openqasm_3_export_then_import_gives_the_same_counts() {
+    lang::set(Lang::En);
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let mut sources: Vec<(String, String)> = [
+        "examples/until.qoa",
+        "examples/teleport.qoa",
+        "examples/grover.qoa",
+        "examples/grover-key.qoa",
+        "examples/qpe.qoa",
+    ]
+    .iter()
+    .map(|n| {
+        (
+            n.to_string(),
+            std::fs::read_to_string(root.join(n)).unwrap(),
+        )
+    })
+    .collect();
+    sources.push((
+        "if/else".into(),
+        "QINIT 3\nH q0\nMEASURE q0 -> c0\nJUMPIFONE c0 bestela\nX q1\nJUMP eginda\nbestela:\nH q2\nT q2\neginda:\nLOOPSTART 3\nRY q1 0.3\nLOOPEND\nSXDG q2\nCSX q2 q1\nMEASUREALL\n".into(),
+    ));
+    for (name, src) in sources {
+        let prog = qoa::asm::assemble(&src, &name).unwrap();
+        let text = qoa::qasm::from_program_v3(&prog).unwrap_or_else(|e| panic!("{:?}", e));
+        let back_src =
+            qoa::qasm::to_qoa(&text, &name).unwrap_or_else(|e| panic!("{}\n{}", e, text));
+        let back = qoa::asm::assemble(&back_src, &name).unwrap();
+        let cfg = RunConfig {
+            shots: 3000,
+            seed: 9,
+            ..RunConfig::default()
+        };
+        let a = vm::run(&prog, &cfg, &mut std::io::sink()).unwrap();
+        let b = vm::run(&back, &cfg, &mut std::io::sink()).unwrap();
+        let bits = |o: &vm::RunOutput| {
+            let mut v: Vec<(String, u64)> = o
+                .counts
+                .iter()
+                .map(|(r, n)| (qoa::report::bits_string(r).replace('-', "0"), *n))
+                .collect();
+            v.sort();
+            v
+        };
+        assert_eq!(bits(&a), bits(&b), "{}\n{}", name, text);
     }
 }
