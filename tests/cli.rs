@@ -193,86 +193,111 @@ fn quiet_runs_are_tools_with_input_arguments_and_exit_status() {
 }
 
 #[test]
-fn new_instructions_need_a_newer_format_and_others_stay_readable_by_0_4_2() {
-    let plain = scratch("plain.qx");
+fn compiled_files_carry_a_sha256_and_older_formats_still_load() {
+    let out = scratch("plain.qx");
     let o = qoa(
         "en",
-        &[
-            "compile",
-            "examples/bell.qoa",
-            "-o",
-            plain.to_str().unwrap(),
-        ],
+        &["compile", "examples/bell.qoa", "-o", out.to_str().unwrap()],
     );
     assert!(o.status.success(), "{}", stderr(&o));
-    assert_eq!(&std::fs::read(&plain).unwrap()[..6], b"QOAX\x01\x00");
-    let src = scratch("v2.qoa");
-    std::fs::write(&src, "REGSET R1 2\nPOW R0 R1 R1\n").unwrap();
-    let v2 = scratch("v2.qx");
-    let o = qoa(
-        "en",
-        &["compile", src.to_str().unwrap(), "-o", v2.to_str().unwrap()],
-    );
+    let bytes = std::fs::read(&out).unwrap();
+    assert_eq!(&bytes[..6], b"QOAX\x04\x00");
+    let (head, sum) = bytes.split_at(bytes.len() - 32);
+    assert_eq!(sum, qoa::sha256::digest(head));
+    let o = qoa("en", &["run", out.to_str().unwrap(), "--shots", "10"]);
     assert!(o.status.success(), "{}", stderr(&o));
-    let bytes = std::fs::read(&v2).unwrap();
-    assert_eq!(&bytes[..6], b"QOAX\x02\x00");
-    // 1. bertsioa idatzita baina 0.4.3-ko aginduekin: hondatua
-    let mut fake = bytes.clone();
-    fake[4] = 1;
-    std::fs::write(&v2, &fake).unwrap();
-    let o = qoa("en", &["run", v2.to_str().unwrap()]);
+    // byte bat aldatuta (angelu bat, izena, edozer): ez da exekutatzen
+    let mut bad = bytes.clone();
+    bad[20] ^= 0x04;
+    std::fs::write(&out, &bad).unwrap();
+    let o = qoa("en", &["run", out.to_str().unwrap()]);
     assert!(!o.status.success());
+    assert!(
+        stderr(&o).contains("SHA-256 checksum does not match"),
+        "{}",
+        stderr(&o)
+    );
+    // etorkizuneko bertsio bat: argi
+    let mut future = bytes.clone();
+    future[4] = 5;
+    std::fs::write(&out, &future).unwrap();
+    let o = qoa("en", &["run", out.to_str().unwrap()]);
+    assert!(
+        stderr(&o).contains("reads versions 1 to 4"),
+        "{}",
+        stderr(&o)
+    );
+    // laburpenik gabeko bertsio zaharrak (0.4.2 - 0.4.4) irakurtzen dira, eta haien egiaztapenak ere bai
+    let old = |src: &str, version: u8| {
+        let p = qoa::asm::assemble(src, "old.qoa").unwrap();
+        let mut b = b"QOAX".to_vec();
+        b.extend_from_slice(&[version, 0]);
+        b.extend(qoa::qx::body(&p));
+        let f = scratch(&format!("old{}.qx", version));
+        std::fs::write(&f, &b).unwrap();
+        qoa("en", &["run", f.to_str().unwrap(), "--shots", "4"])
+    };
+    assert!(old("H q0\nMEASURE q0\n", 1).status.success());
+    assert!(old("REGSET R1 2\nPOW R0 R1 R1\n", 2).status.success());
+    assert!(old("REGSET R1 2\nADD R0 R1 (1)\n", 3).status.success());
+    // bertsio zahar batek ezin ditu berriagoen aginduak izan: hondatua
+    let o = old("REGSET R1 2\nPOW R0 R1 R1\n", 1);
     assert!(
         stderr(&o).contains("cannot hold QOA 0.4.3"),
         "{}",
         stderr(&o)
     );
-    fake[4] = 4;
-    std::fs::write(&v2, &fake).unwrap();
-    let o = qoa("en", &["run", v2.to_str().unwrap()]);
-    assert!(
-        stderr(&o).contains("reads versions 1 to 3"),
-        "{}",
-        stderr(&o)
-    );
-    // (zenbaki) eragigaiak 0.4.4-koak dira: 3. bertsioa, QOA 0.4.3-k irakurri ezin duela argi esan dezan
-    std::fs::write(
-        &src,
-        "REGSET R1 2
-ADD R0 R1 (1)
-",
-    )
-    .unwrap();
-    let v3 = scratch("v3.qx");
-    let o = qoa(
-        "en",
-        &["compile", src.to_str().unwrap(), "-o", v3.to_str().unwrap()],
-    );
-    assert!(o.status.success(), "{}", stderr(&o));
-    let mut bytes = std::fs::read(&v3).unwrap();
-    assert_eq!(&bytes[..6], b"QOAX\x03\x00");
-    bytes[4] = 2;
-    std::fs::write(&v3, &bytes).unwrap();
-    let o = qoa("en", &["run", v3.to_str().unwrap()]);
+    let o = old("REGSET R1 2\nADD R0 R1 (1)\n", 2);
     assert!(
         stderr(&o).contains("cannot hold QOA 0.4.4"),
         "{}",
         stderr(&o)
     );
-    // erregistro arruntekin, ADD-ek 1. bertsioan jarraitzen du
-    std::fs::write(
-        &src,
-        "REGSET R1 2
-ADD R0 R1 R1
-",
-    )
-    .unwrap();
-    let o = qoa(
-        "en",
-        &["compile", src.to_str().unwrap(), "-o", v3.to_str().unwrap()],
-    );
-    assert!(o.status.success(), "{}", stderr(&o));
-    assert_eq!(&std::fs::read(&v3).unwrap()[..6], b"QOAX\x01\x00");
+}
+
+#[test]
+fn sealed_sources_refuse_changes() {
+    for (src, ext) in [
+        ("examples/bell.qoa", "qoa"),
+        ("examples/bell.qg", "qg"),
+        ("examples/bell.qasm", "qasm"),
+    ] {
+        let f = scratch(&format!("sealed.{}", ext));
+        std::fs::copy(src, &f).unwrap();
+        let o = qoa("en", &["seal", f.to_str().unwrap()]);
+        assert!(o.status.success(), "{}", stderr(&o));
+        assert!(stdout(&o).contains("SEAL sha256:"), "{}", stdout(&o));
+        let o = qoa("en", &["run", f.to_str().unwrap(), "--shots", "8"]);
+        assert!(o.status.success(), "{}", stderr(&o));
+        // aldaketa bat: geldituta, eta nola konpondu esanda
+        let text = std::fs::read_to_string(&f).unwrap();
+        std::fs::write(&f, text.replacen("1", "0", 1)).unwrap();
+        let o = qoa("en", &["run", f.to_str().unwrap()]);
+        assert!(!o.status.success());
+        assert!(
+            stderr(&o).contains("was changed after it was sealed"),
+            "{}",
+            stderr(&o)
+        );
+        // berriz zigilatuta: badoa
+        let o = qoa("en", &["seal", f.to_str().unwrap()]);
+        assert!(o.status.success(), "{}", stderr(&o));
+        let o = qoa("en", &["check", f.to_str().unwrap()]);
+        assert!(o.status.success(), "{}", stderr(&o));
+    }
+    // QOA_REQUIRE_SEAL: zigilurik gabeak ez
+    let o = Command::new(env!("CARGO_BIN_EXE_qoa"))
+        .args(["run", "examples/bell.qoa"])
+        .env("QOA_LANG", "en")
+        .env("QOA_REQUIRE_SEAL", "1")
+        .output()
+        .unwrap();
+    assert!(!o.status.success());
+    assert!(stderr(&o).contains("is not sealed"), "{}", stderr(&o));
+    // .qx batek bere laburpena du jada
+    let o = qoa("en", &["seal", "tests/data/bell-0.4.4.qx"]);
+    assert!(!o.status.success());
+    assert!(stderr(&o).contains("its own SHA-256"), "{}", stderr(&o));
 }
 
 #[test]

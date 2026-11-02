@@ -84,7 +84,7 @@ impl Expanded {
 }
 
 pub fn assemble(src: &str, name: &str) -> Result<Program, Vec<Diagnostic>> {
-    let ex = expand(src)?;
+    let ex = expand_file(src, name)?;
     let mut prog = asm::assemble(&ex.source, name)
         .map_err(|ds| ds.into_iter().map(|d| ex.remap(d)).collect::<Vec<_>>())?;
     // exekuzio-garaiko mezuek (erroreak, DUMPSTATE) glifo-iturburuko lerroa aipa dezaten
@@ -1125,6 +1125,11 @@ fn mnemonic(name: &str) -> &str {
         "CX" => "CNOT",
         _ => name,
     }
+}
+
+// fitxategi oso bat: zigilua (badago) egiaztatu eta haren gainekoa hedatu
+pub fn expand_file(src: &str, name: &str) -> Result<Expanded, Vec<Diagnostic>> {
+    expand(asm::unseal(src, name, crate::seal::Style::Plain)?)
 }
 
 pub fn expand(src: &str) -> Result<Expanded, Vec<Diagnostic>> {

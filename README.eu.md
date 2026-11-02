@@ -174,8 +174,9 @@ berdina da.
 qoa compile --assembler tools/asm.qoa programa.qoa
 ```
 
-Rust-en mihiztatzailea baino 17 aldiz motelagoa da gutxi gorabehera (segundoko 27.000 lerro 470.000-ren
-ordez), eta hala ere segundo erdi baino gutxiago behar du bere 11.000 lerroetarako. Behar izan zituen aginduak
+Rust-en mihiztatzailea baino 30 aldiz motelagoa da gutxi gorabehera (segundoko 13.000 lerro 400.000-ren
+ordez), segundo bat inguru bere 12.000 lerroetarako, idazten duen `.qx` bakoitzerako QOAn kalkulatzen duen
+SHA-256-a barne. Behar izan zituen aginduak
 (memoria `LOAD`/`STORE`-rekin, byteak `GETC`/`PUTC`-rekin, argumentuak, errore-irteera, irteera-egoera)
 edozein QOA programatan dabiltza, eta `qoa run --quiet`-ek programa bat tresna gisa exekutatzen du. Zer
 dagoen QOAn, zer geratzen den rust-en eta zergatik: [docs/self-hosting.eu.md](docs/self-hosting.eu.md).
@@ -214,9 +215,11 @@ banatzen du. QOA-k egiaztatzen du egoera bat erabil dezakeen memorian sartzen de
 ### Seguru edozein sarrerarekin
 
 QOA-ri ematen diozuna edozein dela ere, exekutatu egiten du edo mezu argi batekin gelditzen da: ez da
-erortzen, ez da mugarik gabe geratzen, ez du memoria betetzen. `.qx` fitxategi hondatuak exekutatu aurretik
-baztertzen dira, programa batek eskatzen duen baliabide bakoitza lehenik egiaztatzen da, eta eraikitze
-bakoitzak milaka programa hondatu eta nahasi ematen dizkio QOA-ri hori frogatzeko. Rust-en `unsafe` modulu
+erortzen, ez da mugarik gabe geratzen, ez du memoria betetzen. `.qx` bakoitza bere buruaren SHA-256 batekin
+amaitzen da, beraz fitxategi hondatu edo aldatu bat exekutatu aurretik baztertzen da; `qoa seal programa.qoa`-k
+iturburu bat modu berean zigilatzen du, eta ondoren aldatutako fitxategi zigilatu bat ere baztertzen da.
+Programa batek eskatzen duen baliabide bakoitza lehenik egiaztatzen da, fitxategiak osorik idazten dira edo
+batere ez, eta eraikitze bakoitzak milaka programa hondatu eta nahasi ematen dizkio QOA-ri hori frogatzeko. Rust-en `unsafe` modulu
 gutxi batzuetara mugatuta dago (bektore-kernelak, GPU eta MPI liburutegiak), bakoitzak zergatik esanda.
 Mugak, probak eta arrazoiak: [docs/safety.eu.md](docs/safety.eu.md).
 

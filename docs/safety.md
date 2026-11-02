@@ -14,14 +14,37 @@ memory until the system kills it. This covers:
 
 - **Sources**: `.qoa`, `.qg` (glyph syntax) and `.qasm` (OpenQASM), including invalid UTF-8, random bytes,
   absurd numbers and nesting thousands of levels deep.
-- **Compiled files** (`.qx`): a loaded program must be exactly what the assembler builds from its own text,
-  checked operation by operation. A damaged or hand-edited file that names a register, qubit, mode, bit or
-  jump target that does not exist, breaks a loop, or claims an absurd size is refused as corrupt, so the
-  machine never sees it.
+- **Compiled files** (`.qx`): every file ends with the SHA-256 of all its other bytes, so a single changed bit
+  anywhere is refused before anything is read (see [File integrity](#file-integrity)). Beyond that, a loaded
+  program must be exactly what the assembler builds from its own text, checked operation by operation: a file
+  that names a register, qubit, mode, bit or jump target that does not exist, breaks a loop, or claims an
+  absurd size is refused as corrupt, so the machine never sees it.
 - **Running programs**: every resource a program can ask for is checked before it is used (see the limits
   below), and numbers that are not finite stop the program instead of quietly turning the state into NaN.
 - **Output**: if the output cannot be written (a full disk), QOA stops and says so instead of losing it
   silently; if the reader goes away (`qoa ... | head`), QOA ends quietly like any command-line tool.
+
+## File integrity
+
+A program is only as trustworthy as the file it comes from. QOA checks its files at every step:
+
+- **Compiled files carry a checksum.** From 0.4.5 every `.qx` ends with the SHA-256 of all the bytes before
+  it. Before reading anything, QOA recomputes it; if a disk error, a cut download or a hand edit changed even
+  one bit (an angle in a gate, a qubit number, the program's name), the file is refused with a message that
+  says so. Without the checksum such a change could still be a valid program that quietly computes something
+  else. Anyone can check a `.qx` with ordinary tools: `head -c -32 f.qx | sha256sum` gives the same digits as
+  `tail -c 32 f.qx | od -An -tx1`. Files written by QOA 0.4.2 to 0.4.4 (no checksum) still load.
+- **Sources can be sealed.** `qoa seal program.qoa` adds a last line, `SEAL sha256:...`, with the SHA-256 of
+  every line above it (for `.qasm` it is a comment, `// SEAL sha256:...`, so other tools still read the file).
+  From then on QOA refuses to run, check or compile the file if anything above the seal changed, and says how
+  to seal it again if the change is yours. Sealing works for `.qoa`, `.qg` and `.qasm`, is checked by both
+  assemblers (the one in Rust and the one written in QOA), and is optional: unsealed files work as before.
+- **Requiring seals.** A seal line that is lost entirely (a file cut just above it) leaves an unsealed file.
+  Where only sealed sources should ever run, set `QOA_REQUIRE_SEAL=1`: QOA then refuses every source without
+  a seal.
+- **Files are written whole or not at all.** `qoa compile`, `qoa export -o`, `qoa import -o` and `qoa seal`
+  write to a new file next to the target, flush it to the disk, and only then put it in place. A full disk, a
+  crash or a power cut leaves the previous file as it was, never half written.
 
 ## What a program can reach
 
@@ -74,7 +97,8 @@ outcomes needs a few kilobytes for its counts.
 ## How it is tested
 
 - `tests/hostile.rs` runs on every build: 20,000 damaged `.qx` files (bit flips, cut files, huge lengths and
-  indices, NaN and infinity in place of numbers), 10,000 garbled `.qoa`, `.qg` and `.qasm` programs, and
+  indices, NaN and infinity in place of numbers; a third with the checksum recomputed after the damage, and a
+  third in the older format without one, so the reader itself is tested too), 10,000 garbled `.qoa`, `.qg` and `.qasm` programs, and
   programs nested 200,000 levels deep. Each one goes through loading, assembling, running (with small limits)
   and every export (QOA text, listing, json, dot, glyph, OpenQASM, IonQ). Any panic, abort or hang fails the
   test. Searching with other seeds (`QOA_HOSTILE_SEED`) found and fixed the problems listed in the 0.4.4
@@ -110,7 +134,9 @@ bounds-checked slices, with bit-for-bit the same results and the same speed.
   Guard.
 - **Pinned build steps.** Every GitHub Action in CI and in the release workflow is pinned to an exact
   commit, so a moved or hijacked tag cannot change what builds QOA. Cargo builds use `--locked`.
-- **Dependencies.** CI checks every dependency's exact version against the RustSec advisory database.
+- **Dependencies.** CI checks every dependency's exact version against the RustSec advisory database. QOA
+  reads and writes its own `.qx` format and computes SHA-256 itself (checked against the NIST examples and
+  `sha256sum`), so the file format depends on no outside library.
 - **Continuous checks.** Besides the hostile-input test on every build, a nightly job runs it with 64 more
   seeds, and CI runs the whole suite with integer-overflow checks and debug assertions.
 

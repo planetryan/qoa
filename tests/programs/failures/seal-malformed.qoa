@@ -1,0 +1,5 @@
+; nahita huts egiten duen proba: zigilu baten forma okerra (laburpena laburregia)
+; expect-error: a seal is SEAL sha256: followed by 64 hexadecimal digits
+QINIT 1
+H q0
+  SEAL sha256:0123abcd

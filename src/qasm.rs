@@ -164,6 +164,17 @@ struct Importer {
 
 // openqasm testua qoa testu bihurtzen du
 pub fn to_qoa(src: &str, name: &str) -> Result<String, QasmError> {
+    // `// SEAL sha256:...` azken lerroa bada, egiaztatu
+    let src = match crate::seal::check(src.as_bytes(), crate::seal::Style::Comment, name) {
+        Ok(Some(start)) => &src[..start],
+        Ok(None) => src,
+        Err(b) => {
+            return Err(QasmError {
+                line: b.line,
+                message: b.message,
+            });
+        }
+    };
     let clean = strip_comments(src);
     let mut imp = Importer {
         qregs: HashMap::new(),

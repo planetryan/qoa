@@ -62,21 +62,22 @@ QOA is possible future work.
 
 ## How it compares with Rust
 
-Measured on the assembler's own source (11,000 lines) on a 4-core cloud machine:
+Measured on the assembler's own source (12,000 lines) on a 4-core cloud machine, best of five runs:
 
 | | Rust (`src/asm.rs`) | QOA (`tools/asm.qoa`) |
 |---|---|---|
 | output | reference | identical bytes, identical messages |
-| time | 23 ms | 405 ms (about 17 times slower) |
-| speed | about 470,000 lines per second | about 27,000 lines per second |
-| size | about 2,700 lines for the assembler and expressions, plus the instruction table | about 10,700 lines, plus about 300 lines of tables generated from Rust |
+| time | 30 ms | 0.95 s (about 30 times slower), of which about 0.35 s computes the SHA-256 of the 234 KB it writes |
+| speed | about 400,000 lines per second | about 13,000 lines per second |
+| size | about 3,000 lines for the assembler, expressions, the `.qx` writer, SHA-256 and seals, plus the instruction table | about 11,900 lines, plus about 300 lines of tables generated from Rust |
 
-So Rust is about 17 times faster and about 4 times shorter for the same logic. That is the cost of
+So Rust is about 30 times faster and about 4 times shorter for the same logic. (Before 0.4.5, without the
+checksum, the QOA assembler took about 0.6 s on the same machine.) That is the cost of
 assembly-style code on an interpreter: QOA has 32 number registers, numbered memory cells and jumps, and no
 types, structures or strings. Every field access, comparison and constant is a separate instruction. In
 return, the whole assembler is a QOA program, and anything that runs QOA can rebuild QOA's programs. A
-27,000-lines-per-second assembler is still fast enough for any real QOA program: the largest program in the
-repository is the assembler itself, and it builds in under half a second.
+13,000-lines-per-second assembler is still fast enough for any real QOA program: the largest program in the
+repository is the assembler itself, and it builds in about a second.
 
 ## Why the two agree
 
@@ -87,6 +88,10 @@ repository is the assembler itself, and it builds in under half a second.
   3,000 random decimal numbers (long ones, tiny ones, halfway cases, subnormals) that test correct rounding;
   plus 165 programs full of mistakes that reach more than 50 different error messages, invalid UTF-8, Windows
   and old Mac line endings, and more than 30 errors at once.
+- **Seals and checksums**: sealed programs of every length from 0 to 130 bytes (so every SHA-256 block
+  boundary), with text outside ASCII, some changed after sealing and some with malformed seals. Every `.qx`
+  either assembler writes ends with a SHA-256, so every comparison above also compares the two SHA-256
+  implementations.
 - **The fixed point** above.
 - **The tables cannot drift**: the instruction table (names, aliases, operands, usage lines, the reasons for
   removed instructions) and the Unicode letter ranges inside `tools/asm.qoa` are generated from `src/isa.rs`
@@ -119,10 +124,13 @@ program that works as a tool:
 | `EXIT n` | stop with an exit status |
 | `SIN`, `COS`, `TAN`, `POW` | the remaining functions expressions use |
 
-A program that uses any of them is written as `.qx` format version 2; all other programs stay version 1,
-which QOA 0.4.2 still reads. QOA 0.4.4 added numbers in parentheses (`ADD R1 R1 (1)`), `CONST` and `RREG`,
-which the assembler written in QOA understands and uses too; a program with a number in parentheses is
-format version 3. [ISA.md](ISA.md) describes them all.
+QOA 0.4.4 added numbers in parentheses (`ADD R1 R1 (1)`), `CONST` and `RREG`, which the assembler written in
+QOA understands and uses too. [ISA.md](ISA.md) describes them all.
+
+From 0.4.5 both assemblers write `.qx` format version 4, which ends with the SHA-256 of everything before it
+(see [safety.md](safety.md#file-integrity)). The assembler written in QOA computes that SHA-256 itself, in QOA,
+with the bit operations above, and checks `SEAL` lines on sealed sources the same way. Files in the older
+formats (1 for 0.4.2, 2 with the 0.4.3 instructions, 3 with numbers in parentheses) still load.
 
 ## Limits
 

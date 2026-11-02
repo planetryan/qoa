@@ -222,6 +222,14 @@ enum Command {
         #[arg(short, long, help = ts!("output file (default: print to the terminal)", "irteera-fitxategia (lehenetsia: terminalean inprimatu)"))]
         output: Option<PathBuf>,
     },
+    #[command(about = ts!(
+        "Seal source files: add a last line with the SHA-256 of the lines above it, so QOA refuses to run a sealed file that was changed or damaged afterwards. Sealing again after an edit updates it",
+        "Iturburu-fitxategiak zigilatu: azken lerro bat gehitu haren gaineko lerroen SHA-256-arekin, QOA-k ondoren aldatu edo hondatutako fitxategi zigilatu bat exekuta ez dezan. aldaketa baten ondoren berriz zigilatzeak eguneratzen du"
+    ))]
+    Seal {
+        #[arg(required = true, help = ts!(".qoa, .qg or .qasm files", ".qoa, .qg edo .qasm fitxategiak"))]
+        files: Vec<PathBuf>,
+    },
     #[command(about = ts!("Show the instruction reference, or one instruction in detail", "Aginduen erreferentzia erakutsi, edo agindu bat zehatz"))]
     Isa {
         #[arg(help = ts!("instruction or alias to look up", "bilatu beharreko agindua edo ezizena"))]
@@ -592,6 +600,7 @@ fn main() -> ExitCode {
         }
         Command::Import { file, output } => cmd_import(&file, output),
         Command::Isa { name, markdown } => cmd_isa(name, markdown),
+        Command::Seal { files } => files.iter().try_for_each(|f| cmd_seal(f)),
         Command::Visual {
             input,
             output,
@@ -726,25 +735,47 @@ fn load(path: &Path) -> Result<Program, String> {
             let data = qoa::state::read_file(path).map_err(read_err)?;
             Program::from_bytes(&data).map_err(|e| format!("{}: {}", name, e))
         }
-        "qg" => {
+        _ => {
             let src = qoa::state::read_text(path).map_err(read_err)?;
-            qoa::glyph::assemble(&src, &name).map_err(|d| {
-                format!(
-                    "{}{}\n",
-                    asm::render(&d, &src, &name),
-                    t!(
-                        "{} error(s) in {}",
-                        "{} errore {} fitxategian",
-                        d.len(),
-                        name
-                    )
-                )
-            })
+            load_source(&ext, &src, &name)
         }
+    }
+}
+
+// QOA_REQUIRE_SEAL=1: zigilurik gabeko iturburuak ez dira onartzen (zigilu-lerro osoa galdu edo hondatu bada ere)
+fn require_seal(src: &[u8], name: &str) -> Result<(), String> {
+    if std::env::var_os("QOA_REQUIRE_SEAL").is_some_and(|v| !v.is_empty() && v != "0")
+        && qoa::seal::find(src, qoa::seal::Style::for_name(name)).is_none()
+    {
+        return Err(t!(
+            "{} is not sealed, and QOA_REQUIRE_SEAL is set: only sealed sources run here (`qoa seal {}` seals it)",
+            "{} ez dago zigilatuta, eta QOA_REQUIRE_SEAL ezarrita dago: hemen iturburu zigilatuak bakarrik exekutatzen dira (`qoa seal {}`-k zigilatzen du)",
+            name,
+            name
+        ));
+    }
+    Ok(())
+}
+
+// iturburu bat programa bihurtu, luzapenaren arabera (qg, qasm, edo QOA arrunta)
+fn load_source(ext: &str, src: &str, name: &str) -> Result<Program, String> {
+    require_seal(src.as_bytes(), name)?;
+    match ext {
+        "qg" => qoa::glyph::assemble(src, name).map_err(|d| {
+            format!(
+                "{}{}\n",
+                asm::render(&d, src, name),
+                t!(
+                    "{} error(s) in {}",
+                    "{} errore {} fitxategian",
+                    d.len(),
+                    name
+                )
+            )
+        }),
         "qasm" => {
-            let src = qoa::state::read_text(path).map_err(read_err)?;
-            let qoa_src = qoa::qasm::to_qoa(&src, &name).map_err(|e| format!("{}: {}", name, e))?;
-            asm::assemble(&qoa_src, &name).map_err(|d| {
+            let qoa_src = qoa::qasm::to_qoa(src, name).map_err(|e| format!("{}: {}", name, e))?;
+            asm::assemble(&qoa_src, name).map_err(|d| {
                 t!(
                     "{}: the imported program did not assemble (this is a QOA bug, please report it):\n{}",
                     "{}: inportatutako programa ez da mihiztatu (QOA-ren akats bat da, jakinarazi mesedez):\n{}",
@@ -753,21 +784,18 @@ fn load(path: &Path) -> Result<Program, String> {
                 )
             })
         }
-        _ => {
-            let src = qoa::state::read_text(path).map_err(read_err)?;
-            asm::assemble(&src, &name).map_err(|d| {
-                format!(
-                    "{}{}\n",
-                    asm::render(&d, &src, &name),
-                    t!(
-                        "{} error(s) in {}",
-                        "{} errore {} fitxategian",
-                        d.len(),
-                        name
-                    )
+        _ => asm::assemble(src, name).map_err(|d| {
+            format!(
+                "{}{}\n",
+                asm::render(&d, src, name),
+                t!(
+                    "{} error(s) in {}",
+                    "{} errore {} fitxategian",
+                    d.len(),
+                    name
                 )
-            })
-        }
+            )
+        }),
     }
 }
 
@@ -1098,7 +1126,7 @@ fn cmd_compile(
         Some(a) => assemble_with(a, file)?,
     };
     let out = output.unwrap_or_else(|| file.with_extension("qx"));
-    std::fs::write(&out, &bytes).map_err(|e| {
+    qoa::state::write_file(&out, &bytes).map_err(|e| {
         t!(
             "cannot write {}: {}",
             "ezin da {} idatzi: {}",
@@ -1126,6 +1154,7 @@ fn assemble_with(assembler: &Path, file: &Path) -> Result<(Program, Vec<u8>), St
     let name = file.display().to_string();
     let source = qoa::state::read_file(file)
         .map_err(|e| t!("cannot read {}: {}", "ezin da {} irakurri: {}", name, e))?;
+    require_seal(&source, &name)?;
     let config = RunConfig {
         shots: 1,
         seed: 0,
@@ -1160,7 +1189,7 @@ fn assemble_with(assembler: &Path, file: &Path) -> Result<(Program, Vec<u8>), St
 fn write_or_print(output: Option<PathBuf>, text: &str) -> Result<(), String> {
     match output {
         Some(path) => {
-            std::fs::write(&path, text).map_err(|e| {
+            qoa::state::write_file(&path, text.as_bytes()).map_err(|e| {
                 t!(
                     "cannot write {}: {}",
                     "ezin da {} idatzi: {}",
@@ -1250,6 +1279,41 @@ fn cmd_export(
     }
 }
 
+// iturburu bat zigilatu: aurreko zigilua ordezten da, eta programa mihiztatzen dela egiaztatzen da idatzi aurretik
+fn cmd_seal(file: &Path) -> Result<(), String> {
+    let name = file.display().to_string();
+    let ext = file
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    if matches!(ext.as_str(), "qx" | "qexe" | "oexe") {
+        return Err(t!(
+            "{}: a .qx file already carries its own SHA-256; seal its source instead",
+            "{}: .qx fitxategi batek bere SHA-256-a badu jada; zigilatu haren iturburua",
+            name
+        ));
+    }
+    let src = qoa::state::read_text(file)
+        .map_err(|e| t!("cannot read {}: {}", "ezin da {} irakurri: {}", name, e))?;
+    let sealed = qoa::seal::seal(src.as_bytes(), qoa::seal::Style::for_name(&name));
+    let text = String::from_utf8(sealed).expect("utf-8 + ascii");
+    load_source(&ext, &text, &name)?;
+    qoa::state::write_file(file, text.as_bytes())
+        .map_err(|e| t!("cannot write {}: {}", "ezin da {} idatzi: {}", name, e))?;
+    let last = text.trim_end().rsplit('\n').next().unwrap_or("");
+    println!(
+        "{}",
+        t!(
+            "sealed {}: {}",
+            "{} zigilatuta: {}",
+            qoa::term::for_stdout(&name),
+            last.trim_start_matches("// ")
+        )
+    );
+    Ok(())
+}
+
 fn cmd_import(file: &Path, output: Option<PathBuf>) -> Result<(), String> {
     let name = file.display().to_string();
     let src = qoa::state::read_text(file)
@@ -1258,7 +1322,7 @@ fn cmd_import(file: &Path, output: Option<PathBuf>) -> Result<(), String> {
         .extension()
         .is_some_and(|e| e.eq_ignore_ascii_case("qg"));
     let text = if is_glyph {
-        qoa::glyph::expand(&src)
+        qoa::glyph::expand_file(&src, &name)
             .map_err(|d| asm::render(&d, &src, &name))?
             .source
     } else {

@@ -608,6 +608,41 @@ fn generated_programs_assemble_the_same() {
     );
     cases.push(b"\n\n\n".to_vec());
     cases.push(Vec::new());
+    // zigiluak: luzera askotako programak (SHA-256-aren bloke-muga guztiak: 55, 56, 63, 64 byte ...),
+    // zuzenak, aldatuak eta forma okerrekoak, eta ascii ez den testuarekin
+    let mut sealed = Vec::new();
+    for n in 0..130usize {
+        let mut text = String::new();
+        while text.len() < n {
+            text.push_str(["H q0\n", "; ñ\n", "X q1\n", "PRINT \"π\"\n", "\n"][text.len() % 5]);
+        }
+        text.truncate(n);
+        while !text.is_char_boundary(text.len()) {
+            text.pop();
+        }
+        let s = qoa::seal::seal(text.as_bytes(), qoa::seal::Style::Plain);
+        let mut changed = s.clone();
+        if !text.is_empty() {
+            changed[rng.random_range(0..text.len())] ^= 0x01;
+        }
+        sealed.push(s);
+        if n % 4 == 0 {
+            sealed.push(changed);
+        }
+    }
+    sealed.push(b"H q0\nSEAL sha256:ABCDEF\n".to_vec());
+    sealed.push(b"H q0\nSEAL\n".to_vec());
+    sealed.push(
+        b"H q0\n\tSEAL   sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b85\n"
+            .to_vec(),
+    );
+    sealed.push(
+        b"SEAL sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\n\n \n"
+            .to_vec(),
+    );
+    sealed.push(b"H q0\nseal sha256:00\nX q0\n".to_vec());
+    sealed.push("H q0\nSEAL sha256:é\n".as_bytes().to_vec());
+    cases.extend(sealed);
     // proba-multzoak 0.4.4-ko erroreak ukitzen ditu benetan
     let seen: Vec<String> = cases
         .iter()

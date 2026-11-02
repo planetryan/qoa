@@ -15,16 +15,45 @@ egiten, ez da mugarik gabe geratzen, eta ez du memoria betetzen sistemak hil art
 
 - **Iturburuak**: `.qoa`, `.qg` (glifo-sintaxia) eta `.qasm` (OpenQASM), utf-8 baliogabea, ausazko byteak,
   zenbaki zentzugabeak eta milaka mailako habiaraketak barne.
-- **Fitxategi konpilatuak** (`.qx`): kargatutako programa batek mihiztatzaileak bere testutik eraikitzen
-  duena izan behar du zehazki, eragiketaz eragiketa egiaztatuta. Existitzen ez den erregistro, qubit, modu,
-  bit edo jauzi-helburu bat aipatzen duen, begizta bat hausten duen, edo neurri zentzugabe bat adierazten duen
-  fitxategi hondatu edo eskuz aldatu bat hondatu gisa baztertzen da, eta makinak ez du inoiz ikusten.
+- **Fitxategi konpilatuak** (`.qx`): fitxategi bakoitza bere gainerako byte guztien SHA-256-arekin amaitzen
+  da, beraz edonon aldatutako bit bakar bat ere baztertu egiten da ezer irakurri aurretik (ikus
+  [Fitxategien osotasuna](#fitxategien-osotasuna)). Horretaz gain, kargatutako programa batek mihiztatzaileak
+  bere testutik eraikitzen duena izan behar du zehazki, eragiketaz eragiketa egiaztatuta: existitzen ez den
+  erregistro, qubit, modu, bit edo jauzi-helburu bat aipatzen duen, begizta bat hausten duen, edo neurri
+  zentzugabe bat adierazten duen fitxategi bat hondatu gisa baztertzen da, eta makinak ez du inoiz ikusten.
 - **Exekutatzen ari diren programak**: programa batek eska dezakeen baliabide bakoitza erabili aurretik
   egiaztatzen da (ikus behean mugak), eta finituak ez diren zenbakiek programa gelditzen dute, egoera
   isilik NaN bihurtu beharrean.
 - **Irteera**: irteera ezin bada idatzi (disko betea), QOA gelditu egiten da eta hala esaten du, isilik
   galdu beharrean; irakurlea joaten bada (`qoa ... | head`), QOA isilik amaitzen da edozein komando-lerroko
   tresna bezala.
+
+## Fitxategien osotasuna
+
+Programa bat datorren fitxategia bezain fidagarria da. QOA-k bere fitxategiak urrats guztietan egiaztatzen
+ditu:
+
+- **Fitxategi konpilatuek laburpen bat dute.** 0.4.5etik `.qx` bakoitza bere aurreko byte guztien
+  SHA-256-arekin amaitzen da. Ezer irakurri aurretik, QOA-k berriz kalkulatzen du; disko-errore batek,
+  deskarga eten batek edo eskuzko aldaketa batek bit bakar bat aldatu badu (ate baten angelua, qubit-zenbaki
+  bat, programaren izena), fitxategia baztertu egiten da, hala dioen mezu batekin. Laburpenik gabe aldaketa
+  horrek programa baliozko bat izaten jarrai lezake, isilik beste zerbait kalkulatuz. Edonork egiazta dezake
+  `.qx` bat tresna arruntekin: `head -c -32 f.qx | sha256sum`-ek eta `tail -c 32 f.qx | od -An -tx1`-ek
+  digitu berberak ematen dituzte. QOA 0.4.2-tik 0.4.4-ra idatzitako fitxategiak (laburpenik gabe) kargatzen
+  dira oraindik.
+- **Iturburuak zigila daitezke.** `qoa seal programa.qoa`-k azken lerro bat gehitzen du, `SEAL sha256:...`,
+  haren gaineko lerro guztien SHA-256-arekin (`.qasm`-en iruzkin bat da, `// SEAL sha256:...`, beste tresnek
+  fitxategia irakurtzen jarrai dezaten). Hortik aurrera QOA-k ez du fitxategia exekutatzen, egiaztatzen edo
+  konpilatzen zigiluaren gainean zerbait aldatu bada, eta aldaketa zurea bada berriz nola zigilatu esaten du.
+  Zigiluak `.qoa`, `.qg` eta `.qasm`-entzat balio du, mihiztatzaile biek egiaztatzen dute (Rust-ekoak eta QOAn
+  idatzitakoak), eta aukerakoa da: zigilurik gabeko fitxategiek lehen bezala funtzionatzen dute.
+- **Zigiluak eskatzea.** Osorik galdutako zigilu-lerro batek (haren gainean moztutako fitxategi batek)
+  zigilurik gabeko fitxategi bat uzten du. Iturburu zigilatuak bakarrik exekutatu behar diren lekuan, ezarri
+  `QOA_REQUIRE_SEAL=1`: orduan QOA-k zigilurik gabeko iturburu guztiak baztertzen ditu.
+- **Fitxategiak osorik idazten dira edo batere ez.** `qoa compile`-k, `qoa export -o`-k, `qoa import -o`-k eta
+  `qoa seal`-ek helburuaren ondoan fitxategi berri batean idazten dute, diskora bidaltzen dute, eta orduan
+  bakarrik jartzen dute bere lekuan. Disko bete batek, huts-egite batek edo itzalaldi batek aurreko
+  fitxategia bere horretan uzten du, inoiz ez erdi idatzita.
 
 ## Programa batek zer irits dezakeen
 
@@ -82,7 +111,9 @@ Emaitzak emaitza desberdin bakoitzeko gordetzen dira, inoiz ez shot bakoitzeko: 
 ## Nola probatzen den
 
 - `tests/hostile.rs` eraikitze bakoitzean exekutatzen da: 20.000 `.qx` fitxategi hondatu (bit aldatuak,
-  moztutako fitxategiak, luzera eta indize erraldoiak, NaN eta infinitua zenbakien ordez), 10.000 `.qoa`,
+  moztutako fitxategiak, luzera eta indize erraldoiak, NaN eta infinitua zenbakien ordez; herena laburpena
+  kaltearen ondoren berriz kalkulatuta, eta beste herena laburpenik gabeko formatu zaharrean, irakurlea bera
+  ere proba dadin), 10.000 `.qoa`,
   `.qg` eta `.qasm` programa nahasi, eta 200.000 mailako habiaraketak dituzten programak. Bakoitza kargatu,
   mihiztatu, exekutatu (muga txikiekin) eta esportazio guztietatik pasatzen da (QOA testua, zerrenda, json,
   dot, glifoak, OpenQASM, IonQ). Edozein panic, bertan behera uzte edo geldialdik huts eginarazten du proba.
@@ -122,7 +153,9 @@ slice-en gaineko rust arrunta dira, emaitza berberekin bitez bit eta abiadura be
   lotuta daude, beraz mugitutako edo bahitutako etiketa batek ezin du aldatu QOA zerk eraikitzen duen. Cargo
   eraikitzeek `--locked` erabiltzen dute.
 - **Menpekotasunak.** CI-k menpekotasun bakoitzaren bertsio zehatza RustSec-en aholku-datu-basearen aurka
-  egiaztatzen du.
+  egiaztatzen du. QOA-k bere `.qx` formatua berak irakurri eta idazten du eta SHA-256 berak kalkulatzen du
+  (NIST-en adibideen eta `sha256sum`-en aurka egiaztatuta), beraz fitxategi-formatuak ez du kanpoko
+  liburutegirik behar.
 - **Etengabeko egiaztapenak.** Eraikitze bakoitzeko eraso-probaz gain, gaueko lan batek beste 64 hazirekin
   exekutatzen du, eta CI-k proba-multzo osoa zenbaki osoen gainezkatze-egiaztapenekin eta debug
   baieztapenekin exekutatzen du.

@@ -1,0 +1,5 @@
+; nahita huts egiten duen proba: zigilua ez dago azken lerroan
+; expect-error: unknown instruction 'SEAL'
+QINIT 1
+SEAL sha256:0000000000000000000000000000000000000000000000000000000000000000
+H q0

@@ -2,19 +2,18 @@
 // eragiketen zerrenda laua.
 //
 // aurrealde guztiek (qoa iturburua, openqasm inportazioa, etorkizuneko glifo-sintaxia) `Program` bat
-// sortzen dute. `qoa compile`-k .qx fitxategi batean idazten du: "QOAX" byteak, u16 formatu-bertsioa,
-// eta gero programa bincode-rekin serializatuta.
+// sortzen dute. `qoa compile`-k .qx fitxategi batean idazten du (ikus qx.rs): "QOAX" byteak, u16
+// formatu-bertsioa, programa, eta fitxategi osoaren SHA-256-a.
 
 use crate::t;
 use num_complex::Complex64 as C;
-use serde::{Deserialize, Serialize};
 use std::f64::consts::{FRAC_1_SQRT_2, FRAC_PI_4};
 
 // erregistro klasikoen kopurua: R0..R31
 pub const NUM_REGS: usize = 32;
 
 // qubit bakarreko atea
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize)]
 pub enum Gate {
     H,
     X,
@@ -152,7 +151,7 @@ impl Gate {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
 pub enum Basis {
     X,
     Y,
@@ -170,7 +169,7 @@ impl Basis {
 }
 
 // neurketa baten emaitza nora idazten den
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
 pub enum Dest {
     // neurtutakoaren irakurketa propioa: c<q> bita q qubitarentzat, o moduaren detektagailua
     Own,
@@ -181,14 +180,14 @@ pub enum Dest {
 }
 
 // jauzi batek aztertzen duen balioa: erregistro bat edo bit klasiko bat
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
 pub enum Source {
     Reg(u32),
     Bit(u32),
 }
 
 // begizta-kopurua: literala edo erregistro baten balioa begiztan sartzean
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
 pub enum Count {
     Lit(u64),
     Reg(u32),
@@ -198,13 +197,13 @@ pub enum Count {
 // 0.4.3 arteko eragiketek erregistroak bakarrik dituzte; zenbaki bat duten forma berriak (BinV, BranchV, ...)
 // formatuaren 2. bertsioan daude, eta mihiztatzaileak forma zaharra idazten du eragigai guztiak erregistroak
 // direnean, programa zaharrek byte berberak izan ditzaten
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize)]
 pub enum Val {
     Reg(u32),
     Num(f64),
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
 pub enum BinOp {
     Add,
     Sub,
@@ -219,7 +218,7 @@ pub enum BinOp {
     Pow,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
 pub enum UnOp {
     Sqrt,
     Exp,
@@ -231,7 +230,7 @@ pub enum UnOp {
     Tan,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
 pub enum Cmp {
     Eq,
     Ne,
@@ -241,7 +240,7 @@ pub enum Cmp {
 
 // eragiketa exekutagarri bat. qubitak, moduak eta erregistroak indizeak dira; jauzi-helburuak
 // `Program::ops`-eko indizeak dira.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize)]
 pub enum Op {
     // ---- qubit-ateak ----
     Gate {
@@ -754,7 +753,7 @@ impl Op {
 }
 
 // programa mihiztatu bat
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize)]
 pub struct Program {
     // programa nondik datorren (fitxategi-izena), mezuetarako
     pub name: String,
@@ -848,12 +847,15 @@ impl Program {
     // ---- formatu bitarra ----
 
     pub const MAGIC: &'static [u8; 4] = b"QOAX";
-    // irakur daitekeen bertsio berriena. bertsio bakoitza hurrengoaren azpimultzoa da, eta programa bat
-    // bere eragiketek behar duten bertsio txikienean idazten da, QOA zaharragoek ere irakur dezaten: 1
-    // (0.4.2), 2 (0.4.3-ko aginduekin) edo 3 (0.4.4-ko (zenbaki) eragigaiekin). QOA zahar batek bertsio
+    // irakur daitekeen bertsio berriena: 1 (0.4.2), 2 (0.4.3-ko aginduekin), 3 (0.4.4-ko (zenbaki)
+    // eragigaiekin) eta 4 (0.4.5: 3.aren eragiketa berberak, eta fitxategi osoaren SHA-256-a amaieran).
+    // QOA 0.4.5-ek beti 4. bertsioa idazten du, osotasuna beti egiazta dadin; QOA zahar batek bertsio
     // berriago bat ikustean argi esaten du ezin duela irakurri, "hondatua" esan beharrean
-    pub const FORMAT_VERSION: u16 = 3;
+    pub const FORMAT_VERSION: u16 = 4;
+    // SHA-256 laburpena duen lehen bertsioa
+    pub const CHECKSUM_VERSION: u16 = 4;
 
+    // eragiketek behar duten bertsio txikiena (laburpenik gabeko bertsio zaharrak egiaztatzeko)
     pub fn format_version(&self) -> u16 {
         self.ops.iter().map(Op::format_needed).max().unwrap_or(1)
     }
@@ -861,8 +863,10 @@ impl Program {
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut out = Vec::new();
         out.extend_from_slice(Self::MAGIC);
-        out.extend_from_slice(&self.format_version().to_le_bytes());
-        out.extend(bincode::serialize(self).expect("programa beti serializatzen da"));
+        out.extend_from_slice(&Self::FORMAT_VERSION.to_le_bytes());
+        out.extend(crate::qx::body(self));
+        let sum = crate::sha256::digest(&out);
+        out.extend_from_slice(&sum);
         out
     }
 
@@ -895,7 +899,26 @@ impl Program {
                 Self::FORMAT_VERSION
             ));
         }
-        let p: Program = bincode::deserialize(&data[6..])
+        let body = if version >= Self::CHECKSUM_VERSION {
+            // lehenik osotasuna: byte bat aldatu bada, ez da ezer irakurtzen
+            let Some(split) = data.len().checked_sub(32).filter(|&n| n >= 6) else {
+                return Err(t!(
+                    "corrupt QOA binary: the file ends before its SHA-256 checksum",
+                    "QOA bitar hondatua: fitxategia bere SHA-256 laburpena baino lehen amaitzen da"
+                ));
+            };
+            let (head, sum) = data.split_at(split);
+            if crate::sha256::digest(head) != sum {
+                return Err(t!(
+                    "corrupt QOA binary: its SHA-256 checksum does not match, so the file was changed or damaged after it was written; build it again from its source",
+                    "QOA bitar hondatua: haren SHA-256 laburpena ez dator bat, beraz fitxategia idatzi ondoren aldatu edo hondatu da; eraiki berriz bere iturburutik"
+                ));
+            }
+            &head[6..]
+        } else {
+            &data[6..]
+        };
+        let p: Program = crate::qx::read_body(body)
             .map_err(|e| t!("corrupt QOA binary: {}", "QOA bitar hondatua: {}", e))?;
         // edukia ere bai: mihiztatzaileak sor dezakeen programa bat, bestela makinak ez du ikusten
         crate::disasm::check_loaded(&p)

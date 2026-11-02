@@ -1,0 +1,5 @@
+; windows lerro-amaierak (\r\n) zigilatutako fitxategi batean
+; expect-output: 2
+REGSET R1 2
+PRINTF "{}\n" R1
+SEAL sha256:e3794078da3954a5de7352cd6a1332a005663a63b07b2c4717bd9a9bcd949601

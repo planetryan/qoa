@@ -168,8 +168,8 @@ both languages. It assembles itself, and the copy it builds is identical to the 
 qoa compile --assembler tools/asm.qoa program.qoa
 ```
 
-It is about 17 times slower than the Rust assembler (27,000 lines per second instead of 470,000), still
-under half a second for its own 11,000 lines. The instructions it needed (memory with `LOAD`/`STORE`, bytes
+It is about 30 times slower than the Rust assembler (13,000 lines per second instead of 400,000), about a
+second for its own 12,000 lines, including the SHA-256 it computes in QOA for every `.qx` it writes. The instructions it needed (memory with `LOAD`/`STORE`, bytes
 with `GETC`/`PUTC`, arguments, standard error, exit status) work in any QOA program, and `qoa run --quiet`
 runs a program as a tool. What is in QOA, what stays in Rust and why: [docs/self-hosting.md](docs/self-hosting.md).
 
@@ -206,8 +206,10 @@ in the memory it may use before it starts (`QOA_MAX_MEMORY` to change it). See [
 ### Safe with any input
 
 Whatever you give QOA, it runs it or stops with a clear message: no crash, no hang without a limit, no
-filling the memory. Damaged `.qx` files are refused before they run, every resource a program asks for is
-checked first, and every build feeds QOA thousands of damaged and garbled programs to prove it. `unsafe` Rust
+filling the memory. Every `.qx` ends with a SHA-256 of itself, so a damaged or altered file is refused before
+it runs; `qoa seal program.qoa` stamps a source the same way, and a sealed file that changed afterwards is
+refused too. Every resource a program asks for is checked first, files are written whole or not at all, and
+every build feeds QOA thousands of damaged and garbled programs to prove it. `unsafe` Rust
 is confined to a few modules (vector kernels, GPU and MPI libraries), each saying why. The limits, the tests
 and the reasons: [docs/safety.md](docs/safety.md).
 

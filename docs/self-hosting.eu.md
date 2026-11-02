@@ -63,22 +63,24 @@ dago oraindik. QOAn idatzitako glifo-aurrealde bat etorkizuneko lana izan daitek
 
 ## Nola konparatzen den rust-ekin
 
-Mihiztatzailearen iturburu propioan neurtuta (11.000 lerro), 4 nukleoko hodeiko makina batean:
+Mihiztatzailearen iturburu propioan neurtuta (12.000 lerro), 4 nukleoko hodeiko makina batean, bost
+exekuzioetatik onena:
 
 | | rust (`src/asm.rs`) | QOA (`tools/asm.qoa`) |
 |---|---|---|
 | irteera | erreferentzia | byte berberak, mezu berberak |
-| denbora | 23 ms | 405 ms (17 aldiz motelago, gutxi gorabehera) |
-| abiadura | 470.000 lerro segundoko inguru | 27.000 lerro segundoko inguru |
-| tamaina | 2.700 lerro inguru mihiztatzailearentzat eta adierazpenentzat, gehi agindu-taula | 10.700 lerro inguru, gehi rust-etik sortutako 300 lerro inguru taula |
+| denbora | 30 ms | 0,95 s (30 aldiz motelago, gutxi gorabehera), horietatik 0,35 s inguru idazten dituen 234 KB-en SHA-256-a kalkulatzen |
+| abiadura | 400.000 lerro segundoko inguru | 13.000 lerro segundoko inguru |
+| tamaina | 3.000 lerro inguru mihiztatzailearentzat, adierazpenentzat, `.qx` idazlearentzat, SHA-256-arentzat eta zigiluentzat, gehi agindu-taula | 11.900 lerro inguru, gehi rust-etik sortutako 300 lerro inguru taula |
 
-Beraz rust 17 aldiz azkarragoa da eta 4 aldiz laburragoa logika berarentzat. Hori da interpretatzaile
+Beraz rust 30 aldiz azkarragoa da eta 4 aldiz laburragoa logika berarentzat. (0.4.5 aurretik, laburpenik
+gabe, QOA-ren mihiztatzaileak 0,6 s inguru behar zituen makina berean.) Hori da interpretatzaile
 batean mihiztatze-estiloko kodearen kostua: QOA-k 32 zenbaki-erregistro, memoria-gelaxka zenbakituak eta
 jauziak ditu, eta ez mota, egitura edo testu-katerik. Eremu-irakurketa, konparazio eta konstante bakoitza
 agindu bereizi bat da. Trukean, mihiztatzaile osoa QOA programa bat da, eta QOA exekutatzen duen edozerk
-QOA-ren programak eraiki ditzake berriz. Segundoko 27.000 lerroko mihiztatzailea nahikoa azkarra da edozein
-QOA programa errealentzat: biltegiko programa handiena mihiztatzailea bera da, eta segundo erdi baino
-gutxiagoan eraikitzen da.
+QOA-ren programak eraiki ditzake berriz. Segundoko 13.000 lerroko mihiztatzailea nahikoa azkarra da edozein
+QOA programa errealentzat: biltegiko programa handiena mihiztatzailea bera da, eta segundo bat ingurutan
+eraikitzen da.
 
 ## Zergatik datozen bat biak
 
@@ -88,6 +90,10 @@ gutxiagoan eraikitzen da.
   biribiltze zuzena probatzen duten ausazko 3.000 zenbaki hamartar (luzeak, txiki-txikiak, erdiko kasuak,
   azpinormalak); gehi akatsez betetako 165 programa, 50 errore-mezu desberdin baino gehiago, utf-8 baliogabea,
   Windows eta Mac zaharraren lerro-amaierak eta aldi berean 30 errore baino gehiago ukitzen dituztenak.
+- **Zigiluak eta laburpenak**: 0tik 130 bytera arteko luzera guztietako programa zigilatuak (beraz SHA-256-aren
+  bloke-muga guztiak), ascii ez den testuarekin, batzuk zigilatu ondoren aldatuak eta beste batzuk zigilu
+  okerrekin. Mihiztatzaile batek zein besteak idatzitako `.qx` guztiak SHA-256 batekin amaitzen dira, beraz
+  goiko konparazio guztiek SHA-256-aren bi inplementazioak ere konparatzen dituzte.
 - Goiko **puntu finkoa**.
 - **Taulak ezin dira aldendu**: `tools/asm.qoa` barruko agindu-taula (izenak, ezizenak, eragigaiak,
   erabilera-lerroak, kendutako aginduen arrazoiak) eta unicode-ko letra-tarteak `src/isa.rs`-etik eta
@@ -121,11 +127,15 @@ lan egiten duen edozein programarentzat erabilgarriak:
 | `EXIT n` | irteera-egoera batekin gelditu |
 | `SIN`, `COS`, `TAN`, `POW` | adierazpenek erabiltzen dituzten gainerako funtzioak |
 
-Horietako bat erabiltzen duen programa `.qx` formatuaren 2. bertsioan idazten da; beste programa guztiak 1.
-bertsioan geratzen dira, eta QOA 0.4.2-k irakurtzen ditu oraindik. QOA 0.4.4-k parentesi arteko zenbakiak
-(`ADD R1 R1 (1)`), `CONST` eta `RREG` gehitu zituen, eta QOAn idatzitako mihiztatzaileak ulertu eta erabili
-ere egiten ditu; parentesi arteko zenbaki bat duen programa formatuaren 3. bertsioa da. [ISA.eu.md](ISA.eu.md)-k
-guztiak deskribatzen ditu.
+QOA 0.4.4-k parentesi arteko zenbakiak (`ADD R1 R1 (1)`), `CONST` eta `RREG` gehitu zituen, eta QOAn
+idatzitako mihiztatzaileak ulertu eta erabili ere egiten ditu. [ISA.eu.md](ISA.eu.md)-k guztiak deskribatzen
+ditu.
+
+0.4.5etik mihiztatzaile biek `.qx` formatuaren 4. bertsioa idazten dute, aurreko guztiaren SHA-256-arekin
+amaitzen dena (ikus [safety.eu.md](safety.eu.md#fitxategien-osotasuna)). QOAn idatzitako mihiztatzaileak
+SHA-256 hori berak kalkulatzen du, QOAn, goiko bit-eragiketekin, eta iturburu zigilatuen `SEAL` lerroak modu
+berean egiaztatzen ditu. Formatu zaharretako fitxategiak (1 0.4.2-rako, 2 0.4.3-ko aginduekin, 3 parentesi
+arteko zenbakiekin) kargatzen dira oraindik.
 
 ## Mugak
 

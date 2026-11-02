@@ -36,7 +36,10 @@ pub mod opencl; // OpenCL gailua (AMD Instinct, NVIDIA, Intel, POCL), libOpenCL 
 pub mod program; // programa mihiztatua eta .qx formatua
 pub mod qasm; // openqasm inportazioa eta esportazioa
 pub mod quad; // 128 biteko qubit-motorra (double-double): `qoa run --precision quad`
+pub mod qx; // .qx formatu bitarra: idaztea, irakurtzea eta SHA-256 osotasuna
 pub mod report; // emaitzen txostena (testua eta json)
+pub mod seal; // iturburuen zigilua (SEAL sha256:...): zigilatu ondoren aldatutako fitxategiak ez dira mihiztatzen
+pub mod sha256; // SHA-256 (FIPS 180-4), menpekotasunik gabe: fitxategien osotasuna
 pub mod simd; // kernel beroak mihiztaduran: avx-512, avx2, neon, rvv
 pub mod state; // egoera-bektorea: qubitak eta modu optikoak
 #[cfg(any(feature = "opencl", feature = "mpi"))]

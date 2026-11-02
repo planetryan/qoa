@@ -1,0 +1,10 @@
+; zigilatutako programa bat: azken lerroak gaineko byte guztien SHA-256-a du (qoa seal), eta mihiztatzaile
+; biek egiaztatzen dute. testuak ascii ez diren karaktereak ditu, laburpena byteen gainean dela frogatzeko
+; expect-output: π ≈ 3.14 eta ñ
+; expect-output: 1
+QINIT 1
+PRINTLN "π ≈ 3.14 eta ñ"
+X q0
+MEASURE q0 -> R1
+PRINTF "{}\n" R1
+SEAL sha256:e7ad197c4ce174a25dcafdba03726056b6620cd76f3f0cb1a362058d8491e88a

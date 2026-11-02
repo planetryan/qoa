@@ -147,6 +147,67 @@ pub fn read_text(path: &std::path::Path) -> std::io::Result<String> {
     })
 }
 
+// fitxategi bat oso-osorik idatzi edo batere ez: lehenik fitxategi berri batean karpeta berean, diskora
+// bidalita (fsync), eta gero izena aldatuta helburuaren gainean (rename atomikoa da). huts egiten badu
+// (disko betea, etena, itzalaldia), aurreko fitxategiak bere horretan jarraitzen du, inoiz ez erdi idatzita.
+// esteka sinboliko batek bere helburuari begiratzen dio (esteka bera ez da ordezten); fitxategi arrunta ez
+// den helburu bat (/dev/stdout, fifo bat) zuzenean idazten da
+pub fn write_file(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    let target = match std::fs::metadata(path) {
+        Ok(m) if !m.is_file() => return std::fs::write(path, bytes),
+        Ok(_) => std::fs::canonicalize(path)?,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => path.to_path_buf(),
+        Err(e) => return Err(e),
+    };
+    let dir = match target.parent() {
+        Some(d) if !d.as_os_str().is_empty() => d.to_path_buf(),
+        _ => std::path::PathBuf::from("."),
+    };
+    let base = target
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let mut attempt = 0;
+    let (tmp, mut file) = loop {
+        let n = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let tmp = dir.join(format!(".{}.{}-{}.qoa-tmp", base, std::process::id(), n));
+        // create_new: inoiz ez dagoen fitxategi edo esteka baten bidez
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&tmp)
+        {
+            Ok(f) => break (tmp, f),
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists && attempt < 100 => {
+                attempt += 1
+            }
+            Err(e) => return Err(e),
+        }
+    };
+    let done = (|| {
+        file.write_all(bytes)?;
+        // helburuak bazituen baimenak gorde
+        if let Ok(m) = std::fs::metadata(&target) {
+            file.set_permissions(m.permissions())?;
+        }
+        file.sync_all()?;
+        drop(file);
+        std::fs::rename(&tmp, &target)
+    })();
+    if let Err(e) = done {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(e);
+    }
+    // izen-aldaketa bera ere diskora (unix-en karpeta sinkronizatuta; huts eginez gero, fitxategia osorik dago)
+    #[cfg(unix)]
+    if let Ok(d) = std::fs::File::open(&dir) {
+        let _ = d.sync_all();
+    }
+    Ok(())
+}
+
 pub fn check_memory(what: &str, bytes: u128) -> Result<(), String> {
     let (limit, source) = memory_limit();
     if bytes <= limit {
@@ -1014,4 +1075,44 @@ fn shift_slabs(buf: &mut [C], out: &mut [C], t: usize, shift: &[(usize, C)]) {
         }
     }
     buf.copy_from_slice(&out[..buf.len()]);
+}
+
+#[cfg(test)]
+mod write_tests {
+    use super::write_file;
+
+    #[test]
+    fn writes_whole_files_and_leaves_nothing_behind() {
+        let dir = std::env::temp_dir().join(format!("qoa-write-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let f = dir.join("a.qx");
+        write_file(&f, b"lehena").unwrap();
+        write_file(&f, b"bigarrena").unwrap();
+        assert_eq!(std::fs::read(&f).unwrap(), b"bigarrena");
+        // esteka baten bidez: helburua aldatzen da, esteka geratzen da
+        #[cfg(unix)]
+        {
+            let link = dir.join("link.qx");
+            std::os::unix::fs::symlink(&f, &link).unwrap();
+            write_file(&link, b"hirugarrena").unwrap();
+            assert!(
+                std::fs::symlink_metadata(&link)
+                    .unwrap()
+                    .file_type()
+                    .is_symlink()
+            );
+            assert_eq!(std::fs::read(&f).unwrap(), b"hirugarrena");
+        }
+        // ez dago behin-behineko fitxategirik
+        let left: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .filter(|n| n.contains("qoa-tmp"))
+            .collect();
+        assert!(left.is_empty(), "{:?}", left);
+        // karpeta ez badago, errorea eta ezer ez
+        assert!(write_file(&dir.join("ez/dago.qx"), b"x").is_err());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

@@ -219,7 +219,25 @@ fn hostile_inputs_give_errors_not_crashes() {
     let mut loaded = 0;
     for round in 0..20000 {
         let (name, bytes) = &binaries[round % binaries.len()];
-        let bad = mutate(&mut rng, bytes);
+        // hiru modu: (0) 4. bertsioa bere horretan, laburpenak geldiarazi behar du; (1) aldatu eta laburpena
+        // berriz kalkulatu, irakurlea bera probatzeko; (2) laburpenik gabeko 3. bertsioa (0.4.4-ko fitxategiak)
+        let body = &bytes[6..bytes.len() - 32];
+        let bad = match round % 3 {
+            0 => mutate(&mut rng, bytes),
+            1 => {
+                let mut head = b"QOAX\x04\x00".to_vec();
+                head.extend_from_slice(body);
+                let mut m = mutate(&mut rng, &head);
+                let sum = qoa::sha256::digest(&m);
+                m.extend_from_slice(&sum);
+                m
+            }
+            _ => {
+                let mut old = b"QOAX\x03\x00".to_vec();
+                old.extend_from_slice(body);
+                mutate(&mut rng, &old)
+            }
+        };
         let what = format!("{} (aldaketa {})", name, round);
         // QOA_HOSTILE_DUMP="n fitxategia": n. aldaketa (edo "sn": n. nahasketa) fitxategi horretan idatzi,
         // eskuz aztertzeko
@@ -233,6 +251,11 @@ fn hostile_inputs_give_errors_not_crashes() {
             if let Ok(p) = Program::from_bytes(&bad) {
                 loaded += 1;
                 exercise(&p);
+                // laburpena bere horretan zegoen fitxategi aldatu bat ezin da kargatu
+                assert!(
+                    round % 3 != 0 || bad == *bytes,
+                    "laburpenak ez du aldaketa ikusi"
+                );
             }
         }) {
             problems.push(e);

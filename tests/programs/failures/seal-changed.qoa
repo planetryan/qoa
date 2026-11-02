@@ -1,0 +1,6 @@
+; nahita huts egiten duen proba: zigilatu ondoren aldatua (X ordez H)
+; expect-error: was changed after it was sealed
+QINIT 1
+H q0
+MEASURE q0
+SEAL sha256:234bdf1a723b466322325249e03c328a2018a0642536737282eb8da4afc2fc27

@@ -234,7 +234,27 @@ struct Named {
 }
 
 // testu osoa programa bihurtu; akatsik badago, guztiak itzultzen ditu
+// iturburuaren zigilua (badago) egiaztatu: zuzena bada, zigiluaren gaineko testua
+pub fn unseal<'a>(
+    source: &'a str,
+    name: &str,
+    style: crate::seal::Style,
+) -> Result<&'a str, Vec<Diagnostic>> {
+    match crate::seal::check(source.as_bytes(), style, name) {
+        Ok(Some(start)) => Ok(&source[..start]),
+        Ok(None) => Ok(source),
+        Err(b) => Err(vec![Diagnostic {
+            line: b.line,
+            col: b.col,
+            len: b.len,
+            message: b.message,
+            help: None,
+        }]),
+    }
+}
+
 pub fn assemble(source: &str, name: &str) -> Result<Program, Vec<Diagnostic>> {
+    let source = unseal(source, name, crate::seal::Style::Plain)?;
     let mut a = Asm {
         diags: Vec::new(),
         ops: Vec::new(),
@@ -868,7 +888,12 @@ impl Asm {
                     head.text
                 ),
             );
-            if let Some(s) = suggest(&head.text) {
+            if head.text.eq_ignore_ascii_case("SEAL") {
+                d = d.help(t!(
+                    "a seal must be the last line of the file: it seals the lines above it",
+                    "zigilu batek fitxategiaren azken lerroa izan behar du: haren gaineko lerroak zigilatzen ditu"
+                ));
+            } else if let Some(s) = suggest(&head.text) {
                 d = d.help(t!("did you mean {}?", "{} esan nahi zenuen?", s));
             } else {
                 d = d.help(t!(
