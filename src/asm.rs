@@ -577,6 +577,17 @@ pub(crate) fn glued(text: &str) -> Option<(&str, &str)> {
     None
 }
 
+// lerro baten tokenak, mihiztatzaileak irakurtzen dituen bezala (iruzkinik gabe, forma laburrak zabalduta), eta
+// kodearen amaiera (iruzkinaren hasiera) lerroan, bytetan. None testu bat ixten ez bada
+pub(crate) fn line_tokens(line: &str) -> Option<(Vec<String>, usize)> {
+    let code = strip_comment(line);
+    let toks = tokenize(code, 1).ok()?;
+    Some((
+        short_forms(toks).into_iter().map(|t| t.text).collect(),
+        code.len(),
+    ))
+}
+
 fn strip_label(toks: &[Token]) -> Vec<Token> {
     match toks.first() {
         Some(t) if t.text.ends_with(':') => toks[1..].to_vec(),

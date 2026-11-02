@@ -794,3 +794,52 @@ fn generated_valid_programs_assemble_the_same() {
     }
     assert!(bad.is_empty(), "{}", bad.join("\n\n"));
 }
+
+// tools/asm.qg: mihiztatzailea bera glifo-sintaxian, tools/asm.qoa-tik lerroz lerro sortua. bat etorri behar dute
+// (sortu berriz: QOA_REGENERATE=1 cargo test --test selfhost), eta programa bera izan behar dute, lerroak barne
+#[test]
+fn the_assembler_in_glyphs_is_the_same_program() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let src = std::fs::read_to_string(root.join("tools/asm.qoa")).unwrap();
+    let want = qoa::convert::qoa_to_glyph(&src, "tools/asm.qoa").unwrap();
+    let path = root.join("tools/asm.qg");
+    let have = std::fs::read_to_string(&path).unwrap_or_default();
+    if want != have {
+        if std::env::var_os("QOA_REGENERATE").is_some() {
+            std::fs::write(&path, &want).unwrap();
+        } else {
+            panic!(
+                "tools/asm.qg ez dator bat tools/asm.qoa-rekin; sortu berriz: QOA_REGENERATE=1 cargo test --test selfhost"
+            );
+        }
+    }
+    let plain = qoa::asm::assemble(&src, "asm").unwrap();
+    let glyph = qoa::glyph::assemble(&want, "asm").unwrap();
+    assert_eq!(plain, glyph);
+    // eta .qx byte berberak
+    assert_eq!(plain.to_bytes(), glyph.to_bytes());
+}
+
+// --keep-source: programa guztiak glifora, eta bakoitza bere programa bera da (qoa_to_glyph-ek berak egiaztatzen du)
+#[test]
+fn every_plain_program_converts_to_glyphs_keeping_its_source() {
+    let mut n = 0;
+    for f in programs() {
+        let text = std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join(&f)).unwrap();
+        let name = f.to_string_lossy().to_string();
+        if qoa::asm::assemble(&text, &name).is_err() {
+            continue;
+        }
+        let g =
+            qoa::convert::qoa_to_glyph(&text, &name).unwrap_or_else(|e| panic!("{}: {}", name, e));
+        // iruzkin-lerro guztiak geratzen dira
+        let comments = |t: &str| {
+            t.lines()
+                .filter(|l| l.trim_start().starts_with(';'))
+                .count()
+        };
+        assert!(comments(&g) >= comments(&text), "{}", name);
+        n += 1;
+    }
+    assert!(n > 50, "{}", n);
+}

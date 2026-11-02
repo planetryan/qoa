@@ -139,6 +139,10 @@ arteko zenbakiekin) kargatzen dira oraindik.
 
 ## Mugak
 
+- Mihiztatzaile bera glifo-sintaxian ere badago: [tools/asm.qg](../tools/asm.qg), `tools/asm.qoa`-tik lerroz
+  lerro sortua `qoa export --to glyph --keep-source`-rekin (iruzkin guztiak gordeta). Proba batek egiaztatzen du
+  biek programa bera ematen dutela, byte bat aldatu gabe, beraz `qoa compile tools/asm.qg`-k mihiztatzaile
+  bera eraikitzen du. `tools/asm.qoa` da editatu beharreko fitxategia.
 - QOA arrunta irakurtzen du (`.qoa`). Glifo (`.qg`) eta OpenQASM (`.qasm`) iturburuak rust-etik pasatzen dira
   oraindik.
 - Memoria guztia gordetzen du amaitu arte (megabyte gutxi batzuk bere iturburuarentzat).

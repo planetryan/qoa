@@ -135,6 +135,10 @@ formats (1 for 0.4.2, 2 with the 0.4.3 instructions, 3 with numbers in parenthes
 ## Limits
 
 - It reads plain QOA (`.qoa`). Glyph (`.qg`) and OpenQASM (`.qasm`) sources still go through Rust.
+- The same assembler also exists in the glyph syntax: [tools/asm.qg](../tools/asm.qg), generated from
+  `tools/asm.qoa` line by line with `qoa export --to glyph --keep-source` (every comment kept). A test checks
+  that the two give the same program, byte for byte, so `qoa compile tools/asm.qg` builds the same
+  assembler. `tools/asm.qoa` stays the file to edit.
 - It keeps all its memory until it finishes (a few megabytes for its own source).
 - `sin`, `cos`, `tan`, `exp`, `ln` and `pow` are the machine's, as in `qoa compile`. Both assemblers agree on
   the same machine; on a different machine both may round those few functions differently in the last bit.

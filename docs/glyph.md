@@ -282,6 +282,7 @@ it is written. Options:
 | `--no-ranges` | one statement per element |
 | `--hex` | indices in hexadecimal, like `Q[0x3]` |
 | `--dense` | as dense as possible: no `;` or spaces where the boundary is clear, bits as `#C0`, classical instructions as assignments (`#2<=#1+3`, `#2_+1`) |
+| `--keep-source` | for a `.qoa` source: convert it line by line, keeping its comments, labels, blank lines and layout (labels with dots become `_`). A line glyphs cannot say stays as plain QOA between backticks. The result is checked to be the same program, line numbers included (0.4.7) |
 
 ## Examples
 

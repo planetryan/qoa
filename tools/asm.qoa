@@ -6,6 +6,9 @@
 ;   qoa compile tools/asm.qoa                               (mihiztatzailea bera, rust-en mihiztatzailearekin)
 ;   qoa run tools/asm.qx --quiet -- programa.qoa < programa.qoa > programa.qx
 ;
+;   tools/asm.qg: programa bera glifo-sintaxian, fitxategi honetatik sortua lerroz lerro
+;   (qoa export --to glyph --keep-source tools/asm.qoa); ez editatu eskuz, proba batek bat datozela egiaztatzen du
+;
 ; sarrera: iturburua sarrera estandarrean; 0. argumentua fitxategi-izena da (.qx-an gordetzen da).
 ; irteera: .qx-a irteera estandarrean; erroreak errore-irteeran, eta EXIT 1.
 ;

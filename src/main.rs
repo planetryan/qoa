@@ -216,6 +216,11 @@ enum Command {
             "glifoa: ahalik eta trinkoen: ; eta hutsunerik gabe muga argia denean, bitak #C0 gisa"
         ))]
         dense: bool,
+        #[arg(long, help_heading = "glyph", help = ts!(
+            "glyph: convert a .qoa source line by line, keeping its comments, labels and layout",
+            "glifoa: .qoa iturburu bat lerroz lerro bihurtu, haren iruzkinak, etiketak eta antolaketa gordeta"
+        ))]
+        keep_source: bool,
     },
     #[command(about = ts!(
         "Convert an OpenQASM 2.0 file (.qasm) or a glyph-syntax file (.qg) into plain QOA source",
@@ -598,20 +603,25 @@ fn main() -> ExitCode {
             no_ranges,
             hex,
             dense,
+            keep_source,
         } => {
             let to = to.unwrap_or(ExportFormat::Glyph);
             let _ = to_glyph;
-            glyph_options(to, width, &names, long_names, no_ranges, hex)
-                .map(|g| qoa::disasm::GlyphOptions { dense, ..g })
-                .and_then(|g| {
-                    if dense && to != ExportFormat::Glyph {
-                        return Err(t!(
-                            "--dense only applies to --to glyph",
-                            "--dense --to glyph-ekin bakarrik dabil"
-                        ));
-                    }
-                    cmd_export(&file, to, output, shots, &g)
-                })
+            if keep_source {
+                cmd_keep_source(&file, to, output)
+            } else {
+                glyph_options(to, width, &names, long_names, no_ranges, hex)
+                    .map(|g| qoa::disasm::GlyphOptions { dense, ..g })
+                    .and_then(|g| {
+                        if dense && to != ExportFormat::Glyph {
+                            return Err(t!(
+                                "--dense only applies to --to glyph",
+                                "--dense --to glyph-ekin bakarrik dabil"
+                            ));
+                        }
+                        cmd_export(&file, to, output, shots, &g)
+                    })
+            }
         }
         Command::Import { file, output } => cmd_import(&file, output),
         Command::Isa { name, markdown } => cmd_isa(name, markdown),
@@ -1353,6 +1363,21 @@ fn cmd_seal(file: &Path) -> Result<(), String> {
         )
     );
     Ok(())
+}
+
+// `qoa export --to glyph --keep-source`: .qoa iturburua glifora, lerroz lerro
+fn cmd_keep_source(file: &Path, to: ExportFormat, output: Option<PathBuf>) -> Result<(), String> {
+    let name = file.display().to_string();
+    if to != ExportFormat::Glyph || !name.to_ascii_lowercase().ends_with(".qoa") {
+        return Err(t!(
+            "--keep-source converts a .qoa source to --to glyph",
+            "--keep-source-k .qoa iturburu bat --to glyph-era bihurtzen du"
+        ));
+    }
+    let src = qoa::state::read_text(file)
+        .map_err(|e| t!("cannot read {}: {}", "ezin da {} irakurri: {}", name, e))?;
+    let text = qoa::convert::qoa_to_glyph(&src, &name)?;
+    write_or_print(output, &text)
 }
 
 fn cmd_import(file: &Path, output: Option<PathBuf>) -> Result<(), String> {

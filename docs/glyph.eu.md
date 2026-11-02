@@ -292,6 +292,7 @@ jatorrizkoarekin konparatzen da idatzi aurretik. Aukerak:
 | `--no-ranges` | adierazpen bat elementu bakoitzeko |
 | `--hex` | indizeak hamaseitarrean, `Q[0x3]` bezala |
 | `--dense` | ahalik eta trinkoen: `;` eta hutsunerik gabe muga argia denean, bitak `#C0` gisa, agindu klasikoak esleipen gisa (`#2<=#1+3`, `#2_+1`) |
+| `--keep-source` | `.qoa` iturburu batentzat: lerroz lerro bihurtu, haren iruzkinak, etiketak, lerro hutsak eta antolaketa gordeta (puntuak dituzten etiketak `_` bihurtzen dira). Glifoek esan ezin duten lerro bat QOA arrunt gisa geratzen da ` artean. Emaitza programa bera dela egiaztatzen da, lerro-zenbakiak barne (0.4.7) |
 
 ## Adibideak
 

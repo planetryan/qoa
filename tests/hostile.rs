@@ -284,6 +284,10 @@ fn hostile_inputs_give_errors_not_crashes() {
         if let Some(e) = check(&what, || {
             if let Some(p) = assemble(name, &bad) {
                 exercise(&p);
+                // QOA arruntetik glifora, iturburua gordeta: errore bat izan daiteke, inoiz ez panic bat
+                if ext(name) == "qoa" {
+                    let _ = qoa::convert::qoa_to_glyph(&bad, name);
+                }
             }
             let _ = qoa::glyph::expand(&bad);
             let _ = qoa::expr::eval(&bad);
