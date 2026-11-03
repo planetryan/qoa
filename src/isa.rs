@@ -1730,7 +1730,7 @@ impl Spec {
         self.usage_in(is_eu())
     }
 
-    // sinadura hizkuntza jakin batean (tools/asm.qoa-ren taula biak behar ditu)
+    // sinadura hizkuntza jakin batean (src/qoa/asm.qoa-ren taula biak behar ditu)
     pub fn usage_in(&self, eu: bool) -> String {
         let mut s = self.name.to_string();
         for op in self.operand_specs() {

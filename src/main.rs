@@ -166,13 +166,13 @@ enum Command {
         #[arg(short, long, help = ts!("output file (default: same name with .qx)", "irteera-fitxategia (lehenetsia: izen bera .qx-rekin)"))]
         output: Option<PathBuf>,
         #[arg(long, value_name = "ASSEMBLER", help = ts!(
-            "assemble with this QOA program instead of the built-in assembler, for example tools/asm.qoa (QOA's assembler written in QOA). It runs on the QOA machine, reads the source on its input, gets the file name as its argument and writes the .qx",
-            "mihiztatzaile integratuaren ordez QOA programa honekin mihiztatu, adibidez tools/asm.qoa (QOAn idatzitako QOA-ren mihiztatzailea). QOA makinan exekutatzen da, iturburua sarreran irakurtzen du, fitxategi-izena argumentu gisa jasotzen du eta .qx idazten du"
+            "assemble with this QOA program instead of the built-in assembler, for example src/qoa/asm.qoa (QOA's assembler written in QOA). It runs on the QOA machine, reads the source on its input, gets the file name as its argument and writes the .qx",
+            "mihiztatzaile integratuaren ordez QOA programa honekin mihiztatu, adibidez src/qoa/asm.qoa (QOAn idatzitako QOA-ren mihiztatzailea). QOA makinan exekutatzen da, iturburua sarreran irakurtzen du, fitxategi-izena argumentu gisa jasotzen du eta .qx idazten du"
         ))]
         assembler: Option<PathBuf>,
         #[arg(long, conflicts_with = "assembler", help = ts!(
-            "assemble with QOA's own assembler written in QOA, built into this binary (tools/asm.qoa; see qoa tools). The .qx is byte for byte what the built-in assembler writes",
-            "QOAn idatzitako QOA-ren mihiztatzailearekin mihiztatu, binario honetan sartua (tools/asm.qoa; ikus qoa tools). .qx-a mihiztatzaile integratuak idazten dituen byte berberak dira"
+            "assemble with QOA's own assembler written in QOA, built into this binary (src/qoa/asm.qoa; see qoa tools). The .qx is byte for byte what the built-in assembler writes",
+            "QOAn idatzitako QOA-ren mihiztatzailearekin mihiztatu, binario honetan sartua (src/qoa/asm.qoa; ikus qoa tools). .qx-a mihiztatzaile integratuak idazten dituen byte berberak dira"
         ))]
         self_hosted: bool,
     },
@@ -1197,7 +1197,7 @@ fn cmd_compile(
     Ok(())
 }
 
-// QOA programa batekin mihiztatu (adib. tools/asm.qoa): iturburua sarrera gisa, fitxategi-izena argumentu
+// QOA programa batekin mihiztatu (adib. src/qoa/asm.qoa): iturburua sarrera gisa, fitxategi-izena argumentu
 // gisa, eta programak idatzitako byteak .qx-a dira. haren mezuak errore-irteerara doaz zuzenean
 fn assemble_with(tool: &Program, label: &str, file: &Path) -> Result<(Program, Vec<u8>), String> {
     let name = file.display().to_string();

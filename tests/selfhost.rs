@@ -1,4 +1,4 @@
-// fitxategi honek tools/asm.qoa probatzen du: QOAn idatzitako QOA-ren mihiztatzailea. egiaztatzen du haren
+// fitxategi honek src/qoa/asm.qoa probatzen du: QOAn idatzitako QOA-ren mihiztatzailea. egiaztatzen du haren
 // taulak src/isa.rs-ekin bat datozela, programa guztiak `qoa compile`-k bezala mihiztatzen dituela (byte
 // berberak), errore berberak ematen dituela (testu berberarekin, bi hizkuntzetan), eta bere burua
 // mihiztatzen duela: rust-ek eraikitako mihiztatzaileak eta berak eraikitakoak byte berberak dituzte.
@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::sync::OnceLock;
 
-const ASM: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tools/asm.qoa");
+const ASM: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/src/qoa/asm.qoa");
 
 // isatext-en erregistroak: izena|ezizenak|eragigaiak|hedapena|kendua|arrazoia en|eu|erabilera en|eu|izen labur leuna
 fn isa_block() -> String {
@@ -94,7 +94,7 @@ fn tables_match_the_rust_side() {
             std::fs::write(ASM, &want).unwrap();
         } else {
             panic!(
-                "tools/asm.qoa-ren taulak ez datoz bat src/isa.rs-ekin edo rust-en unicode-arekin; \
+                "src/qoa/asm.qoa-ren taulak ez datoz bat src/isa.rs-ekin edo rust-en unicode-arekin; \
                  sortu berriz: QOA_REGENERATE=1 cargo test --test selfhost"
             );
         }
@@ -115,7 +115,7 @@ fn scratch(name: &str) -> PathBuf {
     Path::new(env!("CARGO_TARGET_TMPDIR")).join(name)
 }
 
-// tools/asm.qoa rust-en mihiztatzailearekin eraikita, behin
+// src/qoa/asm.qoa rust-en mihiztatzailearekin eraikita, behin
 fn stage1() -> &'static Path {
     static QX: OnceLock<PathBuf> = OnceLock::new();
     QX.get_or_init(|| {
@@ -183,7 +183,7 @@ fn programs() -> Vec<PathBuf> {
         }
     }
     files.sort();
-    files.push(PathBuf::from("tools/asm.qoa"));
+    files.push(PathBuf::from("src/qoa/asm.qoa"));
     files
 }
 
@@ -203,7 +203,7 @@ fn every_program_assembles_to_the_same_bytes_and_errors() {
 
 #[test]
 fn qoa_builds_qoa_a_fixed_point() {
-    // 1. rust-ek eraiki tools/asm.qoa; 2. horrek bere burua; 3. bigarrenak berriz: hiruak berdinak
+    // 1. rust-ek eraiki src/qoa/asm.qoa; 2. horrek bere burua; 3. bigarrenak berriz: hiruak berdinak
     let one = std::fs::read(stage1()).unwrap();
     let two_path = scratch("asm-stage2.qx");
     let o = qoa(
@@ -795,21 +795,21 @@ fn generated_valid_programs_assemble_the_same() {
     assert!(bad.is_empty(), "{}", bad.join("\n\n"));
 }
 
-// tools/asm.qg: mihiztatzailea bera glifo-sintaxian, tools/asm.qoa-tik lerroz lerro sortua. bat etorri behar dute
+// src/qoa/asm.qg: mihiztatzailea bera glifo-sintaxian, src/qoa/asm.qoa-tik lerroz lerro sortua. bat etorri behar dute
 // (sortu berriz: QOA_REGENERATE=1 cargo test --test selfhost), eta programa bera izan behar dute, lerroak barne
 #[test]
 fn the_assembler_in_glyphs_is_the_same_program() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let src = std::fs::read_to_string(root.join("tools/asm.qoa")).unwrap();
-    let want = qoa::convert::qoa_to_glyph(&src, "tools/asm.qoa").unwrap();
-    let path = root.join("tools/asm.qg");
+    let src = std::fs::read_to_string(root.join("src/qoa/asm.qoa")).unwrap();
+    let want = qoa::convert::qoa_to_glyph(&src, "src/qoa/asm.qoa").unwrap();
+    let path = root.join("src/qoa/asm.qg");
     let have = std::fs::read_to_string(&path).unwrap_or_default();
     if want != have {
         if std::env::var_os("QOA_REGENERATE").is_some() {
             std::fs::write(&path, &want).unwrap();
         } else {
             panic!(
-                "tools/asm.qg ez dator bat tools/asm.qoa-rekin; sortu berriz: QOA_REGENERATE=1 cargo test --test selfhost"
+                "src/qoa/asm.qg ez dator bat src/qoa/asm.qoa-rekin; sortu berriz: QOA_REGENERATE=1 cargo test --test selfhost"
             );
         }
     }
@@ -845,13 +845,13 @@ fn every_plain_program_converts_to_glyphs_keeping_its_source() {
 }
 
 // binarioan sartutako mihiztatzailea: `qoa compile --self-hosted` rust-en mihiztatzailearen byte eta errore
-// berberak, eta `qoa tools --write`-k tools/ karpetako iturburu berberak idazten ditu
+// berberak, eta `qoa tools --write`-k src/qoa/ karpetako iturburu berberak idazten ditu
 #[test]
-fn the_built_in_self_hosted_assembler_matches_the_tools_folder() {
+fn the_built_in_self_hosted_assembler_matches_its_source() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     assert_eq!(
         qoa::tools::find("asm").unwrap().source,
-        std::fs::read_to_string(root.join("tools/asm.qoa")).unwrap()
+        std::fs::read_to_string(root.join("src/qoa/asm.qoa")).unwrap()
     );
     for (lang, file) in [
         ("en", "examples/grover.qoa"),
@@ -882,20 +882,20 @@ fn the_built_in_self_hosted_assembler_matches_the_tools_folder() {
     for f in ["asm.qoa", "asm.qg"] {
         assert_eq!(
             std::fs::read(dir.join(f)).unwrap(),
-            std::fs::read(root.join("tools").join(f)).unwrap(),
+            std::fs::read(root.join("src/qoa").join(f)).unwrap(),
             "{}",
             f
         );
     }
     let list = qoa("eu", &["tools"]);
-    assert!(String::from_utf8_lossy(&list.stdout).contains("tools/asm.qoa"));
+    assert!(String::from_utf8_lossy(&list.stdout).contains("src/qoa/asm.qoa"));
     let both = qoa(
         "en",
         &[
             "compile",
             "--self-hosted",
             "--assembler",
-            "tools/asm.qoa",
+            "src/qoa/asm.qoa",
             "examples/bell.qoa",
         ],
     );

@@ -223,24 +223,25 @@ fn assembler(quick: bool, runs: usize) -> Item {
     )
 }
 
-// QOA makina: tools/asm.qoa (QOAn idatzitako mihiztatzailea) bere iturburua mihiztatzen, agindu klasikoak
+// QOA makina: src/qoa/asm.qoa (QOAn idatzitako mihiztatzailea) bere iturburua mihiztatzen, agindu klasikoak
 // segundoko. irteerak `qoa compile`-renaren berdina izan behar du
 fn machine(runs: usize) -> Item {
-    const SOURCE: &str = include_str!("../tools/asm.qoa");
-    let tool = crate::asm::assemble(SOURCE, "tools/asm.qoa").expect("tools/asm.qoa mihiztatzen da");
+    let asm = crate::tools::find("asm").expect("asm tresna binarioan dago");
+    let tool =
+        crate::asm::assemble(asm.source, &asm.path()).expect("src/qoa/asm.qoa mihiztatzen da");
     let want = tool.to_bytes();
     let cfg = RunConfig {
         shots: 1,
         max_steps: u64::MAX,
-        args: vec!["tools/asm.qoa".to_string()],
-        input: Some(std::sync::Arc::new(SOURCE.as_bytes().to_vec())),
+        args: vec!["src/qoa/asm.qoa".to_string()],
+        input: Some(std::sync::Arc::new(asm.source.as_bytes().to_vec())),
         ..RunConfig::default()
     };
     let mut steps = 0;
     let mut same = true;
     let times = time(runs, || {
         let mut out = Vec::new();
-        let r = vm::run(&tool, &cfg, &mut out).expect("tools/asm.qoa exekutatzen da");
+        let r = vm::run(&tool, &cfg, &mut out).expect("src/qoa/asm.qoa exekutatzen da");
         steps = r.steps;
         same &= out == want;
     });
@@ -249,8 +250,8 @@ fn machine(runs: usize) -> Item {
             key: "machine",
             name: ts!("QOA machine", "QOA makina").into(),
             what: ts!(
-                "classical instructions: QOA's assembler written in QOA (tools/asm.qoa) assembling its own source",
-                "agindu klasikoak: QOAn idatzitako QOA-ren mihiztatzailea (tools/asm.qoa) bere iturburua mihiztatzen"
+                "classical instructions: QOA's assembler written in QOA (src/qoa/asm.qoa) assembling its own source",
+                "agindu klasikoak: QOAn idatzitako QOA-ren mihiztatzailea (src/qoa/asm.qoa) bere iturburua mihiztatzen"
             )
             .into(),
             unit: "M instr/s",
@@ -263,7 +264,7 @@ fn machine(runs: usize) -> Item {
             t!(
                 "{} lines, {} instructions run",
                 "{} lerro, {} agindu exekutatuta",
-                SOURCE.lines().count(),
+                asm.source.lines().count(),
                 steps
             ),
             if same {

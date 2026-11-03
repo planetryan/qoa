@@ -171,13 +171,13 @@ esportazio oker bat errore bat da, inoiz ez isilean desberdina den programa bat.
 
 ### QOA-k QOA eraikitzen du
 
-QOA-ren mihiztatzailea QOAn idatzita ere badago: [tools/asm.qoa](tools/asm.qoa) QOA makinan exekutatzen da
+QOA-ren mihiztatzailea QOAn idatzita ere badago: [src/qoa/asm.qoa](src/qoa/asm.qoa) QOA makinan exekutatzen da
 eta `.qoa` programa bat `qoa compile`-ren `.qx` byte berberak bihurtzen du, errore-mezu berberekin hitzez
 hitz, bi hizkuntzetan. Bere burua mihiztatzen du, eta eraikitzen duen kopia rust-ek eraikitzen duenaren
 berdina da.
 
 ```sh
-qoa compile --assembler tools/asm.qoa programa.qoa
+qoa compile --assembler src/qoa/asm.qoa programa.qoa
 qoa compile --self-hosted programa.qoa       # mihiztatzaile bera, qoa-n sartua (qoa tools-ek zerrendatzen du)
 ```
 

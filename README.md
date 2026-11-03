@@ -166,12 +166,12 @@ is an error, never a silently different program.
 
 ### QOA builds QOA
 
-QOA's assembler also exists written in QOA: [tools/asm.qoa](tools/asm.qoa) runs on the QOA machine and turns
+QOA's assembler also exists written in QOA: [src/qoa/asm.qoa](src/qoa/asm.qoa) runs on the QOA machine and turns
 a `.qoa` program into the same `.qx` bytes as `qoa compile`, with the same error messages word for word, in
 both languages. It assembles itself, and the copy it builds is identical to the one Rust builds.
 
 ```sh
-qoa compile --assembler tools/asm.qoa program.qoa
+qoa compile --assembler src/qoa/asm.qoa program.qoa
 qoa compile --self-hosted program.qoa        # the same assembler, built into qoa (qoa tools lists it)
 ```
 

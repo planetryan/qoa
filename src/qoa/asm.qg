@@ -2,13 +2,13 @@
 ; bat .qx bitar bihurtzen du, `qoa compile`-k bezala, byte berberak idatziz, eta akatsak daudenean errore
 ; berberak inprimatzen ditu, testu berberarekin, bi hizkuntzetan.
 ;
-;   qoa compile --assembler tools/asm.qoa programa.qoa      (qoa-k iturburua eta izena ematen dizkio)
+;   qoa compile --assembler src/qoa/asm.qoa programa.qoa      (qoa-k iturburua eta izena ematen dizkio)
 ;   qoa compile --self-hosted programa.qoa                  (qoa binarioan sartutako kopia bera; qoa tools)
-;   qoa compile tools/asm.qoa                               (mihiztatzailea bera, rust-en mihiztatzailearekin)
-;   qoa run tools/asm.qx --quiet -- programa.qoa < programa.qoa > programa.qx
+;   qoa compile src/qoa/asm.qoa                               (mihiztatzailea bera, rust-en mihiztatzailearekin)
+;   qoa run src/qoa/asm.qx --quiet -- programa.qoa < programa.qoa > programa.qx
 ;
-;   tools/asm.qg: programa bera glifo-sintaxian, fitxategi honetatik sortua lerroz lerro
-;   (qoa export --to glyph --keep-source tools/asm.qoa); ez editatu eskuz, proba batek bat datozela egiaztatzen du
+;   src/qoa/asm.qg: programa bera glifo-sintaxian, fitxategi honetatik sortua lerroz lerro
+;   (qoa export --to glyph --keep-source src/qoa/asm.qoa); ez editatu eskuz, proba batek bat datozela egiaztatzen du
 ;
 ; sarrera: iturburua sarrera estandarrean; 0. argumentua fitxategi-izena da (.qx-an gordetzen da).
 ; irteera: .qx-a irteera estandarrean; erroreak errore-irteeran, eta EXIT 1.
@@ -584,10 +584,10 @@ ARGC#0;
 IGT#0,#30,readname_ok;
 STREAM/2;
 IEQ#28,#31,readname_eu;
-PLN"usage: qoa compile --assembler tools/asm.qoa FILE.qoa (or: qoa run tools/asm.qx --quiet -- FILE.qoa < FILE.qoa > FILE.qx)";
+PLN"usage: qoa compile --assembler src/qoa/asm.qoa FILE.qoa (or: qoa run src/qoa/asm.qx --quiet -- FILE.qoa < FILE.qoa > FILE.qx)";
 EXIT/2;
 readname_eu:
-PLN"erabilera: qoa compile --assembler tools/asm.qoa FITXATEGIA.qoa (edo: qoa run tools/asm.qx --quiet -- FITXATEGIA.qoa < FITXATEGIA.qoa > FITXATEGIA.qx)";
+PLN"erabilera: qoa compile --assembler src/qoa/asm.qoa FITXATEGIA.qoa (edo: qoa run src/qoa/asm.qx --quiet -- FITXATEGIA.qoa < FITXATEGIA.qoa > FITXATEGIA.qx)";
 EXIT/2;
 readname_ok:
 #0<=0;
@@ -2567,7 +2567,7 @@ LXP@(#1)<=#0;
 >builders_next;
 builders_unknown:
 STREAM/2;
-PRINT"tools/asm.qoa: buildtext names an instruction that is not in the table: ";
+PRINT"src/qoa/asm.qoa: buildtext names an instruction that is not in the table: ";
 #0<=#9;
 #1<=#8-#9;
 &printbytes;
@@ -2590,7 +2590,7 @@ IEQ#0,#31,builders_skip;
 #0<=LXP@(#0);
 INE#0,#30,builders_skip;
 STREAM/2;
-PRINT"tools/asm.qoa: buildtext has no builder for ";
+PRINT"src/qoa/asm.qoa: buildtext has no builder for ";
 #0<=LXP@(#8);
 #1<=#8+#31;
 #1<=LXP@(#1);

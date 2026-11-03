@@ -45,7 +45,7 @@ pub fn eval_with(src: &str, vars: &HashMap<String, f64>) -> Result<f64, String> 
 
 // adierazpen batek izan dezakeen habiaraketa (parentesiak, funtzioak, zeinuak eta ^ kateak): honetatik
 // gora errorea, pila ez gainezkatzeko (benetako adierazpen batek ez du inoiz hainbeste behar).
-// tools/asm.qoa-k muga bera du
+// src/qoa/asm.qoa-k muga bera du
 const MAX_DEPTH: u32 = 100;
 
 struct Parser<'v> {

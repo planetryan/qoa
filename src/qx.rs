@@ -473,7 +473,7 @@ mod tests {
             "examples",
             "tests/programs/sanity",
             "tests/programs/stress",
-            "tools",
+            "src/qoa",
         ] {
             let Ok(rd) = std::fs::read_dir(dir) else {
                 continue;

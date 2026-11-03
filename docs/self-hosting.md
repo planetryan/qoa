@@ -3,7 +3,7 @@
 [Euskaraz: self-hosting.eu.md](self-hosting.eu.md)
 
 QOA's assembler, the part that turns a `.qoa` text into a `.qx` binary, also exists written in QOA itself:
-[tools/asm.qoa](../tools/asm.qoa). It runs on the QOA machine like any other QOA program, and it produces
+[src/qoa/asm.qoa](../src/qoa/asm.qoa). It runs on the QOA machine like any other QOA program, and it produces
 exactly what `qoa compile` produces: the same bytes for every program, and for a program with mistakes the
 same error messages, in the same order, word for word, in English and in Basque.
 
@@ -13,12 +13,14 @@ Rust assembler and the copy it builds of itself are identical, byte for byte.
 ## Using it
 
 ```sh
-qoa compile --assembler tools/asm.qoa program.qoa        # same result as: qoa compile program.qoa
+qoa compile --assembler src/qoa/asm.qoa program.qoa        # same result as: qoa compile program.qoa
 qoa compile --self-hosted program.qoa                    # the same assembler, built into qoa itself
 ```
 
-The assembler's source is `tools/asm.qoa` in the repository, and from QOA 0.4.4 every release package
-includes it too. From QOA 0.4.7 it is also built into the `qoa` binary: `--self-hosted` uses that copy, so
+The assembler's source is `src/qoa/asm.qoa` in the repository, and from QOA 0.4.4 every release package
+includes it too (in `tools/` until 0.4.7). `src/qoa/` holds the parts of QOA written in QOA, next to the
+Rust sources, because they are compiled into the `qoa` binary; `tools/` holds helper scripts in Python and
+shell. From QOA 0.4.7 it is also built into the `qoa` binary: `--self-hosted` uses that copy, so
 no file is needed, `qoa tools` lists the tools written in QOA that the binary carries, and
 `qoa tools --write DIR` writes their sources out (`asm.qoa`, and `asm.qg` generated from it). A test checks
 that the built-in copy is the file in `tools/`, and that it gives the same bytes and errors as the Rust
@@ -31,7 +33,7 @@ straight to the terminal, and its exit status becomes `qoa`'s.
 The same thing by hand, which shows that nothing hidden is involved:
 
 ```sh
-qoa compile tools/asm.qoa -o asm.qx                       # build the assembler (Rust does this once)
+qoa compile src/qoa/asm.qoa -o asm.qx                       # build the assembler (Rust does this once)
 qoa run asm.qx --quiet -- program.qoa < program.qoa > program.qx
 ```
 
@@ -41,9 +43,9 @@ status. Everything after `--` is given to the program as arguments.
 ## The bootstrap
 
 ```sh
-qoa compile tools/asm.qoa -o stage1.qx                                   # built by Rust
-qoa compile --assembler stage1.qx tools/asm.qoa -o stage2.qx             # built by QOA
-qoa compile --assembler stage2.qx tools/asm.qoa -o stage3.qx             # built by the QOA-built QOA
+qoa compile src/qoa/asm.qoa -o stage1.qx                                   # built by Rust
+qoa compile --assembler stage1.qx src/qoa/asm.qoa -o stage2.qx             # built by QOA
+qoa compile --assembler stage2.qx src/qoa/asm.qoa -o stage3.qx             # built by the QOA-built QOA
 cmp stage1.qx stage2.qx && cmp stage2.qx stage3.qx                       # all identical
 ```
 
@@ -69,7 +71,7 @@ QOA is possible future work.
 
 Measured on the assembler's own source (12,000 lines) on a 4-core cloud machine, best of five runs:
 
-| | Rust (`src/asm.rs`) | QOA (`tools/asm.qoa`) |
+| | Rust (`src/asm.rs`) | QOA (`src/qoa/asm.qoa`) |
 |---|---|---|
 | output | reference | identical bytes, identical messages |
 | time | 30 ms | 0.95 s (about 30 times slower), of which about 0.35 s computes the SHA-256 of the 234 KB it writes |
@@ -99,7 +101,7 @@ repository is the assembler itself, and it builds in about a second.
   implementations.
 - **The fixed point** above.
 - **The tables cannot drift**: the instruction table (names, aliases, operands, usage lines, the reasons for
-  removed instructions) and the Unicode letter ranges inside `tools/asm.qoa` are generated from `src/isa.rs`
+  removed instructions) and the Unicode letter ranges inside `src/qoa/asm.qoa` are generated from `src/isa.rs`
   and from Rust's own character functions. A test fails if they differ.
 
 A few places where matching Rust took care:
@@ -140,10 +142,10 @@ formats (1 for 0.4.2, 2 with the 0.4.3 instructions, 3 with numbers in parenthes
 ## Limits
 
 - It reads plain QOA (`.qoa`). Glyph (`.qg`) and OpenQASM (`.qasm`) sources still go through Rust.
-- The same assembler also exists in the glyph syntax: [tools/asm.qg](../tools/asm.qg), generated from
-  `tools/asm.qoa` line by line with `qoa export --to glyph --keep-source` (every comment kept). A test checks
-  that the two give the same program, byte for byte, so `qoa compile tools/asm.qg` builds the same
-  assembler. `tools/asm.qoa` stays the file to edit.
+- The same assembler also exists in the glyph syntax: [src/qoa/asm.qg](../src/qoa/asm.qg), generated from
+  `src/qoa/asm.qoa` line by line with `qoa export --to glyph --keep-source` (every comment kept). A test checks
+  that the two give the same program, byte for byte, so `qoa compile src/qoa/asm.qg` builds the same
+  assembler. `src/qoa/asm.qoa` stays the file to edit.
 - It keeps all its memory until it finishes (a few megabytes for its own source).
 - `sin`, `cos`, `tan`, `exp`, `ln` and `pow` are the machine's, as in `qoa compile`. Both assemblers agree on
   the same machine; on a different machine both may round those few functions differently in the last bit.
@@ -152,6 +154,6 @@ formats (1 for 0.4.2, 2 with the 0.4.3 instructions, 3 with numbers in parenthes
 
 1. Add it to `src/isa.rs` and to `src/asm.rs` as usual.
 2. Regenerate the tables: `QOA_REGENERATE=1 cargo test --test selfhost`.
-3. In `tools/asm.qoa`, give it a builder: a line in `buildtext` (name, builder number, parameter) and, if no
+3. In `src/qoa/asm.qoa`, give it a builder: a line in `buildtext` (name, builder number, parameter) and, if no
    existing builder fits, a new one in `build`.
 4. `cargo test --test selfhost` compares both assemblers again; it fails until they agree.

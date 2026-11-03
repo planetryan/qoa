@@ -9,7 +9,7 @@
 // du. zigilua aukerakoa da: zigilurik gabeko fitxategiak lehen bezala doaz.
 //
 // lerroak byteetan bilatzen dira (ascii hutsuneak: zuriunea, tabulazioa, \r, \n), mihiztatzaile bietan
-// berdin (tools/asm.qoa-k gauza bera egiten du).
+// berdin (src/qoa/asm.qoa-k gauza bera egiten du).
 
 use crate::t;
 

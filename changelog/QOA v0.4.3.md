@@ -7,7 +7,7 @@ classical instructions that made it possible, and a benchmark of every part of Q
 
 ## New
 
-* **QOA builds QOA.** QOA's assembler is now also written in QOA: [tools/asm.qoa](../tools/asm.qoa) runs on the
+* **QOA builds QOA.** QOA's assembler is now also written in QOA: [tools/asm.qoa](../src/qoa/asm.qoa) runs on the
   QOA machine and turns a `.qoa` program into the same `.qx` bytes as `qoa compile`, with the same error
   messages word for word, in English and Basque. `qoa compile --assembler tools/asm.qoa program.qoa` uses it.
   It assembles itself, and the copy it builds is identical to the copy Rust builds. It is about 19 times
@@ -54,7 +54,7 @@ duena, hori posible egin zuten agindu klasikoak, eta QOA-ren zati guztien errend
 ## Berria
 
 * **QOA-k QOA eraikitzen du.** QOA-ren mihiztatzailea QOAn idatzita ere badago orain:
-  [tools/asm.qoa](../tools/asm.qoa) QOA makinan exekutatzen da eta `.qoa` programa bat `qoa compile`-ren `.qx`
+  [tools/asm.qoa](../src/qoa/asm.qoa) QOA makinan exekutatzen da eta `.qoa` programa bat `qoa compile`-ren `.qx`
   byte berberak bihurtzen du, errore-mezu berberekin hitzez hitz, ingelesez eta euskaraz.
   `qoa compile --assembler tools/asm.qoa programa.qoa`-k erabiltzen du. Bere burua mihiztatzen du, eta
   eraikitzen duen kopia rust-ek eraikitzen duenaren berdina da. Rust-en mihiztatzailea baino 19 aldiz

@@ -3,7 +3,7 @@
 [In English: self-hosting.md](self-hosting.md)
 
 QOA-ren mihiztatzailea, `.qoa` testu bat `.qx` bitar bihurtzen duen zatia, QOAn bertan idatzita ere badago:
-[tools/asm.qoa](../tools/asm.qoa). QOA makinan exekutatzen da beste edozein QOA programa bezala, eta
+[src/qoa/asm.qoa](../src/qoa/asm.qoa). QOA makinan exekutatzen da beste edozein QOA programa bezala, eta
 `qoa compile`-k sortzen duen gauza bera sortzen du: programa guztietarako byte berberak, eta akatsak dituen
 programa batentzat errore-mezu berberak, ordena berean, hitzez hitz, ingelesez eta euskaraz.
 
@@ -13,12 +13,13 @@ eraikitako mihiztatzailearen kopia eta hark bere buruaz eraikitzen duena berdina
 ## Erabilera
 
 ```sh
-qoa compile --assembler tools/asm.qoa programa.qoa       # emaitza bera: qoa compile programa.qoa
+qoa compile --assembler src/qoa/asm.qoa programa.qoa       # emaitza bera: qoa compile programa.qoa
 qoa compile --self-hosted programa.qoa                   # mihiztatzaile bera, qoa-n bertan sartua
 ```
 
-Mihiztatzailearen iturburua biltegiko `tools/asm.qoa` da, eta QOA 0.4.4-tik aurrera argitalpen-pakete
-guztiek ere badakarte. QOA 0.4.7-tik `qoa` binarioan ere sartuta dago: `--self-hosted`-ek kopia hori
+Mihiztatzailearen iturburua biltegiko `src/qoa/asm.qoa` da, eta QOA 0.4.4-tik aurrera argitalpen-pakete
+guztiek ere badakarte (`tools/`-en 0.4.7 arte). `src/qoa/`-k QOAn idatzitako QOA-ren zatiak ditu, rust-en
+iturburuen ondoan, `qoa` binarioan konpilatzen direlako; `tools/`-ek python eta shell laguntza-scriptak ditu. QOA 0.4.7-tik `qoa` binarioan ere sartuta dago: `--self-hosted`-ek kopia hori
 erabiltzen du, beraz ez da fitxategirik behar, `qoa tools`-ek binarioak daramatzan QOAn idatzitako tresnak
 zerrendatzen ditu, eta `qoa tools --write KARPETA`-k haien iturburuak idazten ditu (`asm.qoa`, eta hartatik
 sortutako `asm.qg`). Proba batek egiaztatzen du binarioko kopia `tools/`-eko fitxategia dela, eta rust-en
@@ -32,7 +33,7 @@ da.
 Gauza bera eskuz, ezkutuko ezer ez dagoela ikusteko:
 
 ```sh
-qoa compile tools/asm.qoa -o asm.qx                       # mihiztatzailea eraiki (rust-ek behin)
+qoa compile src/qoa/asm.qoa -o asm.qx                       # mihiztatzailea eraiki (rust-ek behin)
 qoa run asm.qx --quiet -- programa.qoa < programa.qoa > programa.qx
 ```
 
@@ -42,9 +43,9 @@ egoerarekin amaitzen da. `--` ondoko guztia programari argumentu gisa ematen zai
 ## Abiaraztea
 
 ```sh
-qoa compile tools/asm.qoa -o stage1.qx                                   # rust-ek eraikia
-qoa compile --assembler stage1.qx tools/asm.qoa -o stage2.qx             # QOA-k eraikia
-qoa compile --assembler stage2.qx tools/asm.qoa -o stage3.qx             # QOA-k eraikitako QOA-k eraikia
+qoa compile src/qoa/asm.qoa -o stage1.qx                                   # rust-ek eraikia
+qoa compile --assembler stage1.qx src/qoa/asm.qoa -o stage2.qx             # QOA-k eraikia
+qoa compile --assembler stage2.qx src/qoa/asm.qoa -o stage3.qx             # QOA-k eraikitako QOA-k eraikia
 cmp stage1.qx stage2.qx && cmp stage2.qx stage3.qx                       # guztiak berdinak
 ```
 
@@ -71,7 +72,7 @@ dago oraindik. QOAn idatzitako glifo-aurrealde bat etorkizuneko lana izan daitek
 Mihiztatzailearen iturburu propioan neurtuta (12.000 lerro), 4 nukleoko hodeiko makina batean, bost
 exekuzioetatik onena:
 
-| | rust (`src/asm.rs`) | QOA (`tools/asm.qoa`) |
+| | rust (`src/asm.rs`) | QOA (`src/qoa/asm.qoa`) |
 |---|---|---|
 | irteera | erreferentzia | byte berberak, mezu berberak |
 | denbora | 30 ms | 0,95 s (30 aldiz motelago, gutxi gorabehera), horietatik 0,35 s inguru idazten dituen 234 KB-en SHA-256-a kalkulatzen |
@@ -100,7 +101,7 @@ eraikitzen da.
   okerrekin. Mihiztatzaile batek zein besteak idatzitako `.qx` guztiak SHA-256 batekin amaitzen dira, beraz
   goiko konparazio guztiek SHA-256-aren bi inplementazioak ere konparatzen dituzte.
 - Goiko **puntu finkoa**.
-- **Taulak ezin dira aldendu**: `tools/asm.qoa` barruko agindu-taula (izenak, ezizenak, eragigaiak,
+- **Taulak ezin dira aldendu**: `src/qoa/asm.qoa` barruko agindu-taula (izenak, ezizenak, eragigaiak,
   erabilera-lerroak, kendutako aginduen arrazoiak) eta unicode-ko letra-tarteak `src/isa.rs`-etik eta
   rust-en karaktere-funtzioetatik sortuak dira. Proba batek huts egiten du desberdinak badira.
 
@@ -144,10 +145,10 @@ arteko zenbakiekin) kargatzen dira oraindik.
 
 ## Mugak
 
-- Mihiztatzaile bera glifo-sintaxian ere badago: [tools/asm.qg](../tools/asm.qg), `tools/asm.qoa`-tik lerroz
+- Mihiztatzaile bera glifo-sintaxian ere badago: [src/qoa/asm.qg](../src/qoa/asm.qg), `src/qoa/asm.qoa`-tik lerroz
   lerro sortua `qoa export --to glyph --keep-source`-rekin (iruzkin guztiak gordeta). Proba batek egiaztatzen du
-  biek programa bera ematen dutela, byte bat aldatu gabe, beraz `qoa compile tools/asm.qg`-k mihiztatzaile
-  bera eraikitzen du. `tools/asm.qoa` da editatu beharreko fitxategia.
+  biek programa bera ematen dutela, byte bat aldatu gabe, beraz `qoa compile src/qoa/asm.qg`-k mihiztatzaile
+  bera eraikitzen du. `src/qoa/asm.qoa` da editatu beharreko fitxategia.
 - QOA arrunta irakurtzen du (`.qoa`). Glifo (`.qg`) eta OpenQASM (`.qasm`) iturburuak rust-etik pasatzen dira
   oraindik.
 - Memoria guztia gordetzen du amaitu arte (megabyte gutxi batzuk bere iturburuarentzat).
@@ -158,6 +159,6 @@ arteko zenbakiekin) kargatzen dira oraindik.
 
 1. Gehitu `src/isa.rs`-en eta `src/asm.rs`-en ohi bezala.
 2. Sortu berriz taulak: `QOA_REGENERATE=1 cargo test --test selfhost`.
-3. `tools/asm.qoa`-n, eman eraikitzaile bat: lerro bat `buildtext`-en (izena, eraikitzaile-zenbakia,
+3. `src/qoa/asm.qoa`-n, eman eraikitzaile bat: lerro bat `buildtext`-en (izena, eraikitzaile-zenbakia,
    parametroa) eta, lehendik dagoen eraikitzaile bat egokitzen ez bada, berri bat `build`-en.
 4. `cargo test --test selfhost`-ek bi mihiztatzaileak konparatzen ditu berriz; huts egiten du bat etorri arte.

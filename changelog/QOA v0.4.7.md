@@ -12,7 +12,7 @@ assembler in glyphs, converted from its plain source line by line.
   keeping every comment, label, blank line and the layout. Each line becomes one statement in the shortest
   form (`Hq0`, `#2<=#1+3`, `!c0>again`, `PF"x"/#1`); a line glyphs cannot say stays as plain QOA between
   backticks. The result is assembled again and must be the same program, line numbers included.
-* **The assembler written in QOA, in glyphs:** [tools/asm.qg](../tools/asm.qg) is `tools/asm.qoa` converted
+* **The assembler written in QOA, in glyphs:** [tools/asm.qg](../src/qoa/asm.qg) is `tools/asm.qoa` converted
   that way. A test checks that both give the same program byte for byte.
 * **OpenQASM 3 export: `qoa export --to qasm3`.** Counted loops stay `for` loops, a forward jump on a
   measured bit becomes an `if` block (an `if`/`else` when a `JUMP` skips a second block),
@@ -65,7 +65,7 @@ sartuta; eta mihiztatzailea glifoetan, bere iturburu arruntetik lerroz lerro bih
   bihurtzen da forma laburrenean (`Hq0`, `#2<=#1+3`, `!c0>berriz`, `PF"x"/#1`); glifoek esan ezin duten lerro bat
   QOA arrunt gisa geratzen da ` artean. Emaitza berriz mihiztatzen da eta programa bera izan behar du,
   lerro-zenbakiak barne.
-* **QOAn idatzitako mihiztatzailea, glifoetan:** [tools/asm.qg](../tools/asm.qg) horrela bihurtutako
+* **QOAn idatzitako mihiztatzailea, glifoetan:** [tools/asm.qg](../src/qoa/asm.qg) horrela bihurtutako
   `tools/asm.qoa` da. Proba batek egiaztatzen du biek programa bera ematen dutela byte bat aldatu gabe.
 * **OpenQASM 3 esportazioa: `qoa export --to qasm3`.** Kopuru finkoko begiztak `for` begizta gisa geratzen
   dira, neurtutako bit baten araberako aurrerako jauzi bat `if` bloke bihurtzen da (`if`/`else` bat `JUMP`

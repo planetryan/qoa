@@ -4,7 +4,7 @@
 
 use crate::program::Program;
 
-// tresna bat: izena, fitxategia (tools/ karpetan), iturburua eta deskribapena bi hizkuntzetan
+// tresna bat: izena, fitxategia (src/qoa/ karpetan), iturburua eta deskribapena bi hizkuntzetan
 pub struct Tool {
     pub name: &'static str,
     pub file: &'static str,
@@ -16,7 +16,7 @@ pub struct Tool {
 pub const TOOLS: &[Tool] = &[Tool {
     name: "asm",
     file: "asm.qoa",
-    source: include_str!("../tools/asm.qoa"),
+    source: include_str!("qoa/asm.qoa"),
     about_en: "QOA's assembler written in QOA: .qoa source in, .qx binary out, byte for byte what qoa compile writes, with the same errors",
     about_eu: "QOAn idatzitako QOA-ren mihiztatzailea: .qoa iturburua sartu, .qx bitarra atera, qoa compile-k idazten dituen byte berberak, errore berberekin",
 }];
@@ -28,7 +28,7 @@ pub fn find(name: &str) -> Option<&'static Tool> {
 impl Tool {
     // fitxategiaren bidea iturburu-zuhaitzean (mezuetan eta programaren izenean)
     pub fn path(&self) -> String {
-        format!("tools/{}", self.file)
+        format!("src/qoa/{}", self.file)
     }
 
     // tresna mihiztatuta, rust-en mihiztatzailearekin
@@ -38,7 +38,7 @@ impl Tool {
             .map_err(|d| crate::asm::render(&d, self.source, &name))
     }
 
-    // glifo-bertsioa (tools/asm.qg), iturburutik sortua lerroz lerro (`--keep-source`): ez dago binarioan bi aldiz
+    // glifo-bertsioa (src/qoa/asm.qg), iturburutik sortua lerroz lerro (`--keep-source`): ez dago binarioan bi aldiz
     pub fn glyph_source(&self) -> Result<String, String> {
         crate::convert::qoa_to_glyph(self.source, &self.path())
     }
