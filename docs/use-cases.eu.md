@@ -119,4 +119,6 @@ prozesu eta nodoen artean, egoera bakar bat prozesu askotan banatuta, eta OpenCL
 izendunak QOA arruntean, MPI ezer eraiki gabe, eta QOA edozein sarrerarekin seguru
 ([safety.eu.md](safety.eu.md)). 0.4.5-n: SHA-256 bat fitxategi konpilatu bakoitzean eta iturburu zigilatuak,
 agindu guztientzako forma laburrak, eta glifo trinkoagoak ([glyph.eu.md](glyph.eu.md)). 0.4.6-n: glifoak
-ahalik eta trinkoenak (`qoa export --to glyph --dense`).
+ahalik eta trinkoenak (`qoa export --to glyph --dense`). 0.4.7-n: OpenQASM 3 irteera eta sarrera, `if`/`else`,
+`while` eta `for` blokeekin ([hardware.eu.md](hardware.eu.md#openqasm-3)), eta QOA-ren mihiztatzaile propioa
+`qoa`-n sartuta.

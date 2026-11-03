@@ -113,4 +113,5 @@ QOA's assembler written in QOA, which rebuilds itself identically ([self-hosting
 0.4.4: the glyph syntax made stable, numbers and named constants in plain QOA, MPI with nothing to build, and
 QOA made safe with any input ([safety.md](safety.md)). In 0.4.5: a SHA-256 in every compiled file and sealed
 sources, short forms for every instruction, and denser glyphs ([glyph.md](glyph.md)). In 0.4.6: glyphs as
-dense as they can be (`qoa export --to glyph --dense`).
+dense as they can be (`qoa export --to glyph --dense`). In 0.4.7: OpenQASM 3 out and in, with `if`/`else`,
+`while` and `for` blocks ([hardware.md](hardware.md#openqasm-3)), and QOA's own assembler built into `qoa`.

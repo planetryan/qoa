@@ -1,6 +1,10 @@
 # QOA v0.4.7 Release Notes
 
-**Status:** in progress, not released yet (euskaraz behean)
+**Status:** released 2026-11-03 (euskaraz behean)
+
+Builds on [0.4.6](<QOA v0.4.6.md>): OpenQASM 3 export and import with `for`, `if`/`else` and `while` blocks,
+checked against Qiskit and IBM's current device rules; QOA's own assembler built into `qoa`; and the
+assembler in glyphs, converted from its plain source line by line.
 
 ## Added
 
@@ -11,10 +15,10 @@
 * **The assembler written in QOA, in glyphs:** [tools/asm.qg](../tools/asm.qg) is `tools/asm.qoa` converted
   that way. A test checks that both give the same program byte for byte.
 * **OpenQASM 3 export: `qoa export --to qasm3`.** Counted loops stay `for` loops, a forward jump on a
-  measured bit becomes an `if` block (an `if`/`else` when a `JUMP` skips a second block), and
-  repeat-until-success becomes a `while` loop, and blocks nest. Gates missing from `stdgates.inc` use modifiers (`inv @ sx`,
-  `ctrl(3) @ x`). Every exportable example gives the same distribution in Qiskit Aer as in QOA
-  ([docs/hardware.md](../docs/hardware.md#openqasm-3)).
+  measured bit becomes an `if` block (an `if`/`else` when a `JUMP` skips a second block),
+  repeat-until-success becomes a `while` loop, and blocks nest. Gates missing from `stdgates.inc` use
+  modifiers (`inv @ sx`, `ctrl(3) @ x`). Every exportable example gives the same distribution in Qiskit Aer
+  as in QOA ([docs/hardware.md](../docs/hardware.md#openqasm-3)).
 * **OpenQASM 3 import:** `qoa run` and `qoa import` read bits, `if`/`else` (and `else if`), `while`, `for`
   (when the loop variable is not used inside) and the `inv`, `ctrl`, `ctrl(n)` and `pow(k)` gate modifiers.
   QOA -> OpenQASM 3 -> QOA gives the same counts shot for shot. Blocks nested more than 64 deep are an error.
@@ -48,7 +52,11 @@
 
 # QOA v0.4.7 bertsio-oharrak
 
-**Egoera:** lanean, oraindik argitaratu gabe
+**Egoera:** 2026-11-03an argitaratua
+
+[0.4.6](<QOA v0.4.6.md>)-ren gainean: OpenQASM 3 esportazioa eta inportazioa `for`, `if`/`else` eta `while`
+blokeekin, qiskit-ekin eta IBM-ren gailuen gaurko arauekin egiaztatuta; QOA-ren mihiztatzaile propioa `qoa`-n
+sartuta; eta mihiztatzailea glifoetan, bere iturburu arruntetik lerroz lerro bihurtuta.
 
 ## Gehitua
 
