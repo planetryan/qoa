@@ -3,6 +3,7 @@
 ; berberak inprimatzen ditu, testu berberarekin, bi hizkuntzetan.
 ;
 ;   qoa compile --assembler tools/asm.qoa programa.qoa      (qoa-k iturburua eta izena ematen dizkio)
+;   qoa compile --self-hosted programa.qoa                  (qoa binarioan sartutako kopia bera; qoa tools)
 ;   qoa compile tools/asm.qoa                               (mihiztatzailea bera, rust-en mihiztatzailearekin)
 ;   qoa run tools/asm.qx --quiet -- programa.qoa < programa.qoa > programa.qx
 ;

@@ -172,6 +172,7 @@ both languages. It assembles itself, and the copy it builds is identical to the 
 
 ```sh
 qoa compile --assembler tools/asm.qoa program.qoa
+qoa compile --self-hosted program.qoa        # the same assembler, built into qoa (qoa tools lists it)
 ```
 
 It is about 30 times slower than the Rust assembler (13,000 lines per second instead of 400,000), about a

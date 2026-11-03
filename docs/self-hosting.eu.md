@@ -14,10 +14,15 @@ eraikitako mihiztatzailearen kopia eta hark bere buruaz eraikitzen duena berdina
 
 ```sh
 qoa compile --assembler tools/asm.qoa programa.qoa       # emaitza bera: qoa compile programa.qoa
+qoa compile --self-hosted programa.qoa                   # mihiztatzaile bera, qoa-n bertan sartua
 ```
 
 Mihiztatzailearen iturburua biltegiko `tools/asm.qoa` da, eta QOA 0.4.4-tik aurrera argitalpen-pakete
-guztiek ere badakarte.
+guztiek ere badakarte. QOA 0.4.7-tik `qoa` binarioan ere sartuta dago: `--self-hosted`-ek kopia hori
+erabiltzen du, beraz ez da fitxategirik behar, `qoa tools`-ek binarioak daramatzan QOAn idatzitako tresnak
+zerrendatzen ditu, eta `qoa tools --write KARPETA`-k haien iturburuak idazten ditu (`asm.qoa`, eta hartatik
+sortutako `asm.qg`). Proba batek egiaztatzen du binarioko kopia `tools/`-eko fitxategia dela, eta rust-en
+mihiztatzailearen byte eta errore berberak ematen dituela.
 
 `--assembler`-ek edozein QOA programa hartzen du, iturburu gisa edo `.qx` konpilatu gisa. QOA-k exekutatzen
 du iturburu-fitxategia sarreran eta fitxategi-izena argumentu gisa emanda, eta inprimatzen duena `.qx`

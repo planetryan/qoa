@@ -14,10 +14,15 @@ Rust assembler and the copy it builds of itself are identical, byte for byte.
 
 ```sh
 qoa compile --assembler tools/asm.qoa program.qoa        # same result as: qoa compile program.qoa
+qoa compile --self-hosted program.qoa                    # the same assembler, built into qoa itself
 ```
 
 The assembler's source is `tools/asm.qoa` in the repository, and from QOA 0.4.4 every release package
-includes it too.
+includes it too. From QOA 0.4.7 it is also built into the `qoa` binary: `--self-hosted` uses that copy, so
+no file is needed, `qoa tools` lists the tools written in QOA that the binary carries, and
+`qoa tools --write DIR` writes their sources out (`asm.qoa`, and `asm.qg` generated from it). A test checks
+that the built-in copy is the file in `tools/`, and that it gives the same bytes and errors as the Rust
+assembler.
 
 `--assembler` takes any QOA program, as source or as a compiled `.qx`. QOA runs it with the source file on
 its input and the file name as its argument, and writes what it prints as the `.qx`. Its error messages go

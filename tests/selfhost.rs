@@ -843,3 +843,61 @@ fn every_plain_program_converts_to_glyphs_keeping_its_source() {
     }
     assert!(n > 50, "{}", n);
 }
+
+// binarioan sartutako mihiztatzailea: `qoa compile --self-hosted` rust-en mihiztatzailearen byte eta errore
+// berberak, eta `qoa tools --write`-k tools/ karpetako iturburu berberak idazten ditu
+#[test]
+fn the_built_in_self_hosted_assembler_matches_the_tools_folder() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    assert_eq!(
+        qoa::tools::find("asm").unwrap().source,
+        std::fs::read_to_string(root.join("tools/asm.qoa")).unwrap()
+    );
+    for (lang, file) in [
+        ("en", "examples/grover.qoa"),
+        ("eu", "examples/teleport.qoa"),
+        ("en", "tests/programs/failures/kerr-overflow.qoa"),
+    ] {
+        let out = scratch("builtin.qx");
+        let o = out.to_str().unwrap();
+        let _ = std::fs::remove_file(&out);
+        let rust = qoa(lang, &["compile", file, "-o", o]);
+        let want = std::fs::read(&out).ok();
+        let _ = std::fs::remove_file(&out);
+        let mine = qoa(lang, &["compile", "--self-hosted", file, "-o", o]);
+        let got = std::fs::read(&out).ok();
+        assert_eq!(rust.status.code(), mine.status.code(), "{}", file);
+        assert_eq!(
+            String::from_utf8_lossy(&rust.stderr),
+            String::from_utf8_lossy(&mine.stderr),
+            "{}",
+            file
+        );
+        assert_eq!(want, got, "{}", file);
+    }
+    let dir = scratch("tools-out");
+    let _ = std::fs::remove_dir_all(&dir);
+    let o = qoa("en", &["tools", "--write", dir.to_str().unwrap()]);
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+    for f in ["asm.qoa", "asm.qg"] {
+        assert_eq!(
+            std::fs::read(dir.join(f)).unwrap(),
+            std::fs::read(root.join("tools").join(f)).unwrap(),
+            "{}",
+            f
+        );
+    }
+    let list = qoa("eu", &["tools"]);
+    assert!(String::from_utf8_lossy(&list.stdout).contains("tools/asm.qoa"));
+    let both = qoa(
+        "en",
+        &[
+            "compile",
+            "--self-hosted",
+            "--assembler",
+            "tools/asm.qoa",
+            "examples/bell.qoa",
+        ],
+    );
+    assert!(!both.status.success());
+}

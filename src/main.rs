@@ -170,8 +170,13 @@ enum Command {
             "mihiztatzaile integratuaren ordez QOA programa honekin mihiztatu, adibidez tools/asm.qoa (QOAn idatzitako QOA-ren mihiztatzailea). QOA makinan exekutatzen da, iturburua sarreran irakurtzen du, fitxategi-izena argumentu gisa jasotzen du eta .qx idazten du"
         ))]
         assembler: Option<PathBuf>,
+        #[arg(long, conflicts_with = "assembler", help = ts!(
+            "assemble with QOA's own assembler written in QOA, built into this binary (tools/asm.qoa; see qoa tools). The .qx is byte for byte what the built-in assembler writes",
+            "QOAn idatzitako QOA-ren mihiztatzailearekin mihiztatu, binario honetan sartua (tools/asm.qoa; ikus qoa tools). .qx-a mihiztatzaile integratuak idazten dituen byte berberak dira"
+        ))]
+        self_hosted: bool,
     },
-    #[command(about = ts!("Convert a program to another form: glyph, OpenQASM 2.0, IonQ json, canonical QOA, a listing, json or a dot graph", "Programa bat beste forma batera bihurtu: glifoa, OpenQASM 2.0, IonQ json, QOA kanonikoa, zerrenda, json edo dot grafoa"))]
+    #[command(about = ts!("Convert a program to another form: glyph, OpenQASM 2.0 or 3, IonQ json, canonical QOA, a listing, json or a dot graph", "Programa bat beste forma batera bihurtu: glifoa, OpenQASM 2.0 edo 3, IonQ json, QOA kanonikoa, zerrenda, json edo dot grafoa"))]
     Export {
         #[arg(help = ts!("program file", "programa-fitxategia"))]
         file: PathBuf,
@@ -239,6 +244,17 @@ enum Command {
     Seal {
         #[arg(required = true, help = ts!(".qoa, .qg or .qasm files", ".qoa, .qg edo .qasm fitxategiak"))]
         files: Vec<PathBuf>,
+    },
+    #[command(about = ts!(
+        "List the tools written in QOA that are built into this binary, or write their sources out",
+        "Binario honetan sartutako QOAn idatzitako tresnak zerrendatu, edo haien iturburuak idatzi"
+    ))]
+    Tools {
+        #[arg(long, value_name = "DIR", help = ts!(
+            "write each tool's source into this folder: the plain QOA file and its glyph form (for the assembler, asm.qoa and asm.qg)",
+            "tresna bakoitzaren iturburua karpeta honetan idatzi: QOA arrunteko fitxategia eta haren glifo-forma (mihiztatzailearentzat, asm.qoa eta asm.qg)"
+        ))]
+        write: Option<PathBuf>,
     },
     #[command(about = ts!("Show the instruction reference, or one instruction in detail", "Aginduen erreferentzia erakutsi, edo agindu bat zehatz"))]
     Isa {
@@ -592,7 +608,9 @@ fn main() -> ExitCode {
             file,
             output,
             assembler,
-        } => cmd_compile(&file, output, assembler.as_deref()),
+            self_hosted,
+        } => cmd_compile(&file, output, assembler.as_deref(), self_hosted),
+        Command::Tools { write } => cmd_tools(write.as_deref()),
         Command::Export {
             file,
             to,
@@ -1143,14 +1161,19 @@ fn cmd_compile(
     file: &Path,
     output: Option<PathBuf>,
     assembler: Option<&Path>,
+    self_hosted: bool,
 ) -> Result<(), String> {
     let (p, bytes) = match assembler {
+        _ if self_hosted => {
+            let tool = qoa::tools::find("asm").expect("asm tresna binarioan dago");
+            assemble_with(&tool.program()?, &tool.path(), file)?
+        }
         None => {
             let p = load(file)?;
             let bytes = p.to_bytes();
             (p, bytes)
         }
-        Some(a) => assemble_with(a, file)?,
+        Some(a) => assemble_with(&load(a)?, &a.display().to_string(), file)?,
     };
     let out = output.unwrap_or_else(|| file.with_extension("qx"));
     qoa::state::write_file(&out, &bytes).map_err(|e| {
@@ -1176,8 +1199,7 @@ fn cmd_compile(
 
 // QOA programa batekin mihiztatu (adib. tools/asm.qoa): iturburua sarrera gisa, fitxategi-izena argumentu
 // gisa, eta programak idatzitako byteak .qx-a dira. haren mezuak errore-irteerara doaz zuzenean
-fn assemble_with(assembler: &Path, file: &Path) -> Result<(Program, Vec<u8>), String> {
-    let tool = load(assembler)?;
+fn assemble_with(tool: &Program, label: &str, file: &Path) -> Result<(Program, Vec<u8>), String> {
     let name = file.display().to_string();
     let source = qoa::state::read_file(file)
         .map_err(|e| t!("cannot read {}: {}", "ezin da {} irakurri: {}", name, e))?;
@@ -1191,8 +1213,7 @@ fn assemble_with(assembler: &Path, file: &Path) -> Result<(Program, Vec<u8>), St
         ..RunConfig::default()
     };
     let mut bytes = Vec::new();
-    let output = vm::run(&tool, &config, &mut bytes)
-        .map_err(|e| format!("{}: {}", assembler.display(), e))?;
+    let output = vm::run(tool, &config, &mut bytes).map_err(|e| format!("{}: {}", label, e))?;
     match output.exit_status.unwrap_or(0) {
         0 => {}
         status => {
@@ -1205,12 +1226,66 @@ fn assemble_with(assembler: &Path, file: &Path) -> Result<(Program, Vec<u8>), St
         t!(
             "{} did not write a QOA binary for {}: {}",
             "{}-k ez du QOA bitarrik idatzi {}-rentzat: {}",
-            assembler.display(),
+            label,
             name,
             e
         )
     })?;
     Ok((p, bytes))
+}
+
+// binarioan sartutako tresnak: zerrenda, edo iturburuak karpeta batean (QOA arrunta eta glifoak)
+fn cmd_tools(write: Option<&Path>) -> Result<(), String> {
+    let Some(dir) = write else {
+        for tool in qoa::tools::TOOLS {
+            println!(
+                "{:<6} {} ({} {})\n       {}",
+                tool.name,
+                tool.path(),
+                tool.source.lines().count(),
+                t!("lines", "lerro"),
+                if qoa::lang::is_eu() {
+                    tool.about_eu
+                } else {
+                    tool.about_en
+                }
+            );
+        }
+        println!(
+            "{}",
+            t!(
+                "\nqoa compile --self-hosted file.qoa assembles with the built-in assembler written in QOA; qoa tools --write DIR writes the sources",
+                "\nqoa compile --self-hosted fitxategia.qoa-k QOAn idatzitako mihiztatzaile integratuarekin mihiztatzen du; qoa tools --write KARPETA-k iturburuak idazten ditu"
+            )
+        );
+        return Ok(());
+    };
+    std::fs::create_dir_all(dir).map_err(|e| {
+        t!(
+            "cannot create {}: {}",
+            "ezin da {} sortu: {}",
+            dir.display(),
+            e
+        )
+    })?;
+    for tool in qoa::tools::TOOLS {
+        for (file, text) in [
+            (tool.file.to_string(), tool.source.to_string()),
+            (tool.glyph_file(), tool.glyph_source()?),
+        ] {
+            let path = dir.join(file);
+            qoa::state::write_file(&path, text.as_bytes()).map_err(|e| {
+                t!(
+                    "cannot write {}: {}",
+                    "ezin da {} idatzi: {}",
+                    path.display(),
+                    e
+                )
+            })?;
+            println!("{}", t!("wrote {}", "{} idatzita", path.display()));
+        }
+    }
+    Ok(())
 }
 
 fn write_or_print(output: Option<PathBuf>, text: &str) -> Result<(), String> {

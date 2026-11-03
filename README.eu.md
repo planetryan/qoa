@@ -178,6 +178,7 @@ berdina da.
 
 ```sh
 qoa compile --assembler tools/asm.qoa programa.qoa
+qoa compile --self-hosted programa.qoa       # mihiztatzaile bera, qoa-n sartua (qoa tools-ek zerrendatzen du)
 ```
 
 Rust-en mihiztatzailea baino 30 aldiz motelagoa da gutxi gorabehera (segundoko 13.000 lerro 400.000-ren

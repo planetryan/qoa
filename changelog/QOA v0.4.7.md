@@ -18,6 +18,9 @@
 * **OpenQASM 3 import:** `qoa run` and `qoa import` read bits, `if`/`else` (and `else if`), `while`, `for`
   (when the loop variable is not used inside) and the `inv`, `ctrl`, `ctrl(n)` and `pow(k)` gate modifiers.
   QOA -> OpenQASM 3 -> QOA gives the same counts shot for shot. Blocks nested more than 64 deep are an error.
+* **The assembler written in QOA is built into `qoa`:** `qoa compile --self-hosted file.qoa` assembles with
+  it (same bytes and errors as the built-in assembler), `qoa tools` lists the tools written in QOA that the
+  binary carries, and `qoa tools --write DIR` writes their sources (`asm.qoa`, and `asm.qg` made from it).
 * **`examples/until.qoa`:** repeat-until-success on a measured bit alone, the shape OpenQASM 3 can say.
 * **`tools/run_on_ibm.py`** sends OpenQASM 3 when OpenQASM 2.0 cannot hold the program, unrolls counted
   loops, and warns before spending QPU time when the program has a `while` loop, a block inside a block, or
@@ -66,6 +69,10 @@
   `for` (begizta-aldagaia barruan erabiltzen ez denean) eta `inv`, `ctrl`, `ctrl(n)` eta `pow(k)`
   ate-modifikatzaileak irakurtzen dituzte. QOA -> OpenQASM 3 -> QOA joan-etorriak kopuru berak ematen ditu,
   shot-ez shot. 64 maila baino sakonago habiaratutako blokeak errore bat dira.
+* **QOAn idatzitako mihiztatzailea `qoa`-n sartuta dago:** `qoa compile --self-hosted fitxategia.qoa`-k
+  harekin mihiztatzen du (mihiztatzaile integratuaren byte eta errore berberak), `qoa tools`-ek binarioak
+  daramatzan QOAn idatzitako tresnak zerrendatzen ditu, eta `qoa tools --write KARPETA`-k haien iturburuak
+  idazten ditu (`asm.qoa`, eta hartatik egindako `asm.qg`).
 * **`examples/until.qoa`:** errepikatu arrakasta lortu arte bit neurtu bakar batekin, OpenQASM 3-k esan
   dezakeen forma.
 * **`tools/run_on_ibm.py`**-k OpenQASM 3 bidaltzen du OpenQASM 2.0-n programa sartzen ez denean, kopuru
