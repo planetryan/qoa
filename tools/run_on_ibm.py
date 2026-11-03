@@ -63,7 +63,7 @@ def qoa_counts(path, shots):
     return out
 
 
-# SamplerV2-ren emaitza QOA-ren gakoetara: erregistro bakoitzaren bitak bere bit klasiko globalean
+# Sampler-aren emaitza QOA-ren gakoetara: erregistro bakoitzaren bitak bere bit klasiko globalean
 def hardware_counts(pub, circuit):
     n = circuit.num_clbits
     per_reg = []
@@ -193,8 +193,9 @@ def load_circuit(text):
     return qasm2.loads(text, custom_instructions=qasm2.LEGACY_CUSTOM_INSTRUCTIONS)
 
 
-# IBM-ren gailuek gaur egun onartzen ez dutena (IBM-ren dokumentazioa, 2025eko ekaina: `while`, `for` eta `switch`
-# zaharkituta, eta kontrol-fluxua beste baten barruan ere bai). abisuak, ez erroreak: IBM-k alda dezake
+# IBM-ren gailuek gaur egun onartzen ez dutena (IBM-ren "Execute dynamic circuits" gida, 2026ko azaroan irakurria:
+# `if` bakarrik; `for`, `while` eta `switch` ez; baldintza habiaraturik ez; reset edo neurketarik ez baldintza baten
+# barruan). abisuak, ez erroreak: IBM-k alda dezake
 def ibm_unsupported(circuit):
     found = set()
 
@@ -203,6 +204,8 @@ def ibm_unsupported(circuit):
             op = inst.operation
             if op.name == "while_loop":
                 found.add("while")
+            if depth > 0 and op.name in ("measure", "reset"):
+                found.add("inside")
             if hasattr(op, "blocks"):
                 if depth > 0:
                     found.add("nested")
@@ -211,6 +214,11 @@ def ibm_unsupported(circuit):
 
     walk(circuit, 0)
     out = []
+    if "inside" in found:
+        out.append(t("warning: the program measures or resets a qubit inside a block; IBM's current devices do not "
+                     "allow that, so the device will likely refuse the job",
+                     "abisua: programak qubit bat neurtu edo berrabiarazten du bloke baten barruan; IBM-ren gaurko "
+                     "gailuek ez dute hori onartzen, beraz gailuak lana ukatuko du ziurrenik"))
     if "while" in found:
         out.append(t("warning: the program repeats until a measurement succeeds (an OpenQASM 3 `while` loop); IBM's "
                      "current devices do not run `while` loops, so the device will likely refuse the job",
@@ -370,7 +378,11 @@ def main():
     try:
         from qiskit import qasm2
         from qiskit.transpiler import generate_preset_pass_manager
-        from qiskit_ibm_runtime import SamplerV2
+        try:
+            # qiskit-ibm-runtime 0.50+: bezero-aldeko Sampler (SamplerV2 zaharkituta dago 0.50-tik)
+            from qiskit_ibm_runtime.executor_sampler import Sampler as SamplerV2
+        except ImportError:
+            from qiskit_ibm_runtime import SamplerV2
     except ImportError as e:
         die(t(f"Qiskit is missing ({e}): pip install qiskit qiskit-ibm-runtime qiskit-aer",
               f"qiskit falta da ({e}): pip install qiskit qiskit-ibm-runtime qiskit-aer"))

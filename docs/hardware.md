@@ -66,18 +66,21 @@ Checked against Qiskit 2.5.2 and Aer 0.17.2 (`python3 tools/hardware_check.py --
 | `tests/programs/sanity/qasm3-blocks.qasm`, every block kind | `while`, `for`, `if`, `else` | yes (0.000) | refused: `while_loop` is not supported |
 
 **What runs where.** The exported files are valid OpenQASM 3, and Qiskit loads and simulates every one.
-IBM's devices take less: IBM's dynamic circuits run `if`/`else` on measured bits, but IBM deprecated
-`while`, `for` and `switch`, and blocks nested inside other blocks, when it rolled out its new dynamic
-circuits in 2025 ([IBM: classical feedforward and control flow](https://docs.quantum.ibm.com/build/classical-feedforward-and-control-flow),
-[IBM: execute dynamic circuits](https://quantum.cloud.ibm.com/docs/en/guides/execute-dynamic-circuits),
-[IBM service alert, July 2025](https://quantum.cloud.ibm.com/announcements/en/service-alerts/2025-07-07-dynamic-circuits-update)). The
-model of IBM's Torino device in qiskit-ibm-runtime 0.51 agrees: it compiles teleportation and refuses
-`while_loop`. IBM may change this, so check its documentation before relying on it. As of this writing:
+IBM's devices take less. IBM's guide ([Execute dynamic circuits](https://quantum.cloud.ibm.com/docs/en/guides/execute-dynamic-circuits),
+read in November 2026) says its new dynamic circuits are available on all backends, that "IBM Quantum
+Compute Service currently only supports the conditional if statement", and lists these limits: "The for,
+while, and switch instructions are not supported", nested conditionals are not allowed, reset and
+measurement inside a conditional are not supported, arithmetic is not supported, and a condition compares
+at most 32 bits. The model of IBM's Torino device in qiskit-ibm-runtime 0.51 agrees: it compiles
+teleportation and an `if`/`else`, and refuses `while_loop`. IBM may change this, so check the guide before
+relying on it. As of this writing:
 
-- **`if`/`else` on a measured bit** (teleportation, feed-forward): runs on IBM, from OpenQASM 2.0 or 3.
+- **`if` on a measured bit** (teleportation, feed-forward): runs on IBM, from OpenQASM 2.0 or 3. An `else`
+  compiles for the Torino model, though IBM's guide names only the `if` statement.
 - **Counted loops:** `tools/run_on_ibm.py` unrolls them before sending.
-- **Repeat-until-success:** valid OpenQASM 3 and runs in Qiskit's simulators, but IBM's current devices
-  refuse it; `tools/run_on_ibm.py` says so before spending QPU time.
+- **Repeat-until-success:** valid OpenQASM 3 and runs in Qiskit's simulators, but IBM's devices do not run
+  `while` loops, nor the reset and measurement inside it; `tools/run_on_ibm.py` says so before spending QPU
+  time, as it does for a block inside a block.
 - **Still not exportable:** programs that compute with registers (Shor's classical part, counters, loops
   counted by a register, the attempt counter in `examples/retry.qoa`). OpenQASM 3 has integer variables,
   but Qiskit's OpenQASM 3 importer does not read them (Qiskit 2.5.2 rejects `uint` declarations) and IBM's
@@ -94,7 +97,7 @@ Perceval, the software for Quandela's photonic processors:
 | network | photons | largest difference between QOA and Perceval |
 |---|---|---|
 | Hong-Ou-Mandel | 2 | 7e-16 |
-| Mach-Zehnder, phase π/3 | 1 | 0 |
+| Mach-Zehnder, phase π/3 | 1 | 3e-16 |
 | 6-mode interferometer (boson sampling) | 3 | 7e-16 |
 
 So the linear-optics subset of QOA is exactly what a photonic chip computes, and could be sent to one.
@@ -105,15 +108,19 @@ What has no hardware target yet:
 - **nonlinear optics** (`KERR`, `CROSSKERR`) at the single-photon level, and **number-resolving detection
   with feed-forward** in the middle of a circuit: partly demonstrated in labs, not available to rent;
 - **displacement and squeezing** exist on continuous-variable photonic machines, but as of this writing
-  none is openly available as a cloud device (Xanadu's Borealis was for a time); check the providers before
+  none is openly available as a cloud device (Xanadu's Borealis was, from its 2022 launch, through Xanadu
+  Cloud and Amazon Braket; articles dated 2026 that describe that access appear to repeat the 2022
+  announcement, and Xanadu's own pages did not confirm current access); check the providers before
   relying on this.
 
 ## Running on real hardware for free
 
-**IBM Quantum's Open Plan** is the free way onto real qubits: a free account gets up to 10 minutes of QPU
-runtime per rolling 28-day window, on IBM's current devices (IBM's documentation, checked October 2026;
-the terms change, so check [quantum.cloud.ibm.com](https://quantum.cloud.ibm.com) before relying on them).
-A small circuit with a few thousand shots uses only seconds of that.
+**IBM Quantum's Open Plan** is the free way onto real qubits: a free account gets the equivalent of up to
+10 minutes of QPU time (counted in IBM's resource units) per rolling 28-day window, on IBM's current
+devices, and since 16 March 2026 active Open Plan users can opt in to the equivalent of 180 more minutes
+over 12 months ([IBM: plans overview](https://quantum.cloud.ibm.com/docs/en/guides/plans-overview), read in
+November 2026; the terms change, so check before relying on them). A small circuit with a few thousand
+shots uses only seconds of that.
 
 `tools/run_on_ibm.py` does the whole trip for the qubit part of a QOA program:
 
@@ -143,9 +150,10 @@ the device's calibration (gate errors, T1/T2, readout errors), as described in [
 the gap between the two columns is what the calibration does not capture: idle decoherence, crosstalk,
 drift. `--save-model NAME` keeps the model and the transpiled circuit for `qoa run --noise-model`.
 
-**Photons:** Quandela Cloud offers free accounts and runs Perceval programs on photonic processors
-(Ascella, Belenos), but whether a free account includes QPU time, and how much, could not be checked from
-here; check [cloud.quandela.com](https://cloud.quandela.com). The QOA side is ready: `tools/hardware_check.py`
+**Photons:** Quandela runs Perceval programs on its photonic processors (Ascella, Belenos) through
+Quandela Cloud, and sells time through Scaleway and OVHcloud; European researchers can apply for credits
+through GENCI ([Quandela Cloud](https://www.quandela.com/cloud/), read in November 2026). Quandela's
+public pages do not say whether a free account includes QPU time, or how much, so check with Quandela. The QOA side is ready: `tools/hardware_check.py`
 already turns a QOA linear-optics network into the transfer matrix Perceval runs.
 
 **IonQ and Amazon Braket** have free simulators, but their real devices are paid, outside research credit

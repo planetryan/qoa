@@ -69,21 +69,22 @@ Qiskit 2.5.2 eta Aer 0.17.2-rekin egiaztatua (`python3 tools/hardware_check.py -
 | `tests/programs/sanity/qasm3-blocks.qasm`, bloke mota guztiak | `while`, `for`, `if`, `else` | bai (0.000) | ukatua: `while_loop` ez da onartzen |
 
 **Zer non dabilen.** Esportatutako fitxategiak OpenQASM 3 baliodunak dira, eta qiskit-ek guztiak kargatu
-eta simulatzen ditu. IBM-ren gailuek gutxiago hartzen dute: IBM-ren zirkuitu dinamikoek `if`/`else`
-exekutatzen dute bit neurtuekin, baina IBM-k `while`, `for` eta `switch` zaharkitutzat jo zituen, baita
-beste blokeen barruko blokeak ere, 2025ean zirkuitu dinamiko berriak zabaldu zituenean ([IBM: aurrera-elikadura klasikoa eta kontrol-fluxua](https://docs.quantum.ibm.com/build/classical-feedforward-and-control-flow),
-[IBM: zirkuitu dinamikoak exekutatu](https://quantum.cloud.ibm.com/docs/en/guides/execute-dynamic-circuits),
-[IBM-ren zerbitzu-abisua, 2025eko uztaila](https://quantum.cloud.ibm.com/announcements/en/service-alerts/2025-07-07-dynamic-circuits-update)).
-qiskit-ibm-runtime 0.51-eko IBM Torino gailuaren modeloa bat dator: teleportazioa konpilatzen du eta
-`while_loop` ukatzen du. IBM-k alda dezake, beraz egiaztatu haren dokumentazioa horretan oinarritu aurretik.
-Hau idaztean:
+eta simulatzen ditu. IBM-ren gailuek gutxiago hartzen dute. IBM-ren gidak ([Execute dynamic circuits](https://quantum.cloud.ibm.com/docs/en/guides/execute-dynamic-circuits),
+2026ko azaroan irakurria) dio zirkuitu dinamiko berriak gailu guztietan daudela, IBM-ren zerbitzuak
+baldintzazko `if` adierazpena bakarrik onartzen duela, eta muga hauek ematen ditu: `for`, `while` eta
+`switch` ez dira onartzen, baldintza habiaraturik ez, ez reset-ik ez neurketarik baldintza baten barruan,
+ez aritmetikarik, eta baldintza batek 32 bit gehienez konparatzen ditu. qiskit-ibm-runtime 0.51-eko IBM
+Torino gailuaren modeloa bat dator: teleportazioa eta `if`/`else` bat konpilatzen ditu, eta `while_loop`
+ukatzen du. IBM-k alda dezake, beraz egiaztatu gida horretan oinarritu aurretik. Hau idaztean:
 
-- **`if`/`else` bit neurtu batekin** (teleportazioa, aurrera-elikadura): IBM-n dabil, OpenQASM 2.0 edo
-  3-tik.
+- **`if` bit neurtu batekin** (teleportazioa, aurrera-elikadura): IBM-n dabil, OpenQASM 2.0 edo 3-tik.
+  `else` bat Torino modelorako konpilatzen da, nahiz eta IBM-ren gidak `if` adierazpena bakarrik aipatzen
+  duen.
 - **Kopuru finkoko begiztak:** `tools/run_on_ibm.py`-k zabaldu egiten ditu bidali aurretik.
 - **Errepikatu arrakasta lortu arte:** OpenQASM 3 baliozkoa da eta qiskit-en simulagailuetan dabil, baina
-  IBM-ren gaurko gailuek ukatu egiten dute; `tools/run_on_ibm.py`-k hala esaten du QPU denbora gastatu
-  aurretik.
+  IBM-ren gailuek ez dute `while` begiztarik exekutatzen, ezta haren barruko reset eta neurketarik ere;
+  `tools/run_on_ibm.py`-k hala esaten du QPU denbora gastatu aurretik, bloke baten barruko bloke batekin
+  bezala.
 - **Oraindik esportatu ezin dena:** erregistroekin kalkulatzen duten programak (shor-en zati klasikoa,
   kontagailuak, erregistro batek zenbatutako begiztak, `examples/retry.qoa`-ren saiakera-kontagailua).
   OpenQASM 3-k aldagai osoak ditu, baina qiskit-en OpenQASM 3 inportatzaileak ez ditu irakurtzen (qiskit
@@ -102,7 +103,7 @@ fotonikoen softwarea:
 | sarea | fotoiak | QOA eta Perceval-en arteko alde handiena |
 |---|---|---|
 | hong-ou-mandel | 2 | 7e-16 |
-| mach-zehnder, π/3 fasea | 1 | 0 |
+| mach-zehnder, π/3 fasea | 1 | 3e-16 |
 | 6 moduko interferometroa (boson-laginketa) | 3 | 7e-16 |
 
 Beraz QOA-ren optika linealeko azpimultzoa txip fotoniko batek kalkulatzen duena da zehazki, eta batera
@@ -114,15 +115,19 @@ bidal liteke. Oraindik hardware-helbururik ez duena:
   detekzioa aurrera-elikadurarekin** zirkuituaren erdian: laborategietan neurri batean frogatua, ez
   alokagarria;
 - **desplazamendua eta estutzea** aldagai jarraituko makina fotonikoetan badaude, baina hau idaztean ez
-  dago bat ere hodeiko gailu gisa irekian eskuragarri (Xanadu-ren Borealis izan zen denbora batez);
+  dago bat ere hodeiko gailu gisa irekian eskuragarri (Xanadu-ren Borealis izan zen, 2022an abiarazi
+  zenetik, Xanadu Cloud eta Amazon Braket bidez; sarbide hori deskribatzen duten 2026ko artikuluek 2022ko
+  iragarpena errepikatzen dutela dirudi, eta Xanadu-ren orriek ez dute gaurko sarbidea baieztatu);
   egiaztatu hornitzaileekin horretan oinarritu aurretik.
 
 ## Hardware errealean doan exekutatzea
 
-**IBM Quantum-en Open Plan** da qubit errealetara iristeko bide doakoa: doako kontu batek QPU exekuzio-denboraren
-10 minutu arte ditu 28 eguneko leiho mugikor bakoitzean, IBM-ren gaurko gailuetan (IBM-ren dokumentazioa, 2026ko
-urrian egiaztatua; baldintzak aldatzen dira, beraz egiaztatu [quantum.cloud.ibm.com](https://quantum.cloud.ibm.com)
-horretan oinarritu aurretik). Zirkuitu txiki batek, milaka shot-ekin, segundo gutxi batzuk erabiltzen ditu.
+**IBM Quantum-en Open Plan** da qubit errealetara iristeko bide doakoa: doako kontu batek QPU denboraren 10
+minutuen baliokidea du gehienez (IBM-ren baliabide-unitateetan zenbatua) 28 eguneko leiho mugikor bakoitzean,
+IBM-ren gaurko gailuetan, eta 2026ko martxoaren 16tik Open Plan-eko erabiltzaile aktiboek 180 minutu gehiagoren
+baliokidea eska dezakete 12 hilabeterako ([IBM: planak](https://quantum.cloud.ibm.com/docs/en/guides/plans-overview),
+2026ko azaroan irakurria; baldintzak aldatzen dira, beraz egiaztatu horretan oinarritu aurretik). Zirkuitu txiki
+batek, milaka shot-ekin, segundo gutxi batzuk erabiltzen ditu.
 
 `tools/run_on_ibm.py`-k QOA programa baten qubit-zatiaren bidaia osoa egiten du:
 
@@ -154,9 +159,11 @@ laginketaren zehaztasunera arte. Gailu errealean, bi zutabeen arteko aldea da ka
 duena: itxaronaldietako dekoherentzia, diafonia, aldaketak denboran. `--save-model IZENA`-k eredua eta
 zirkuitu transpilatua gordetzen ditu, `qoa run --noise-model`-ekin exekutatzeko.
 
-**Fotoiak:** Quandela Cloud-ek doako kontuak eskaintzen ditu eta Perceval programak prozesadore fotonikoetan
-exekutatzen ditu (Ascella, Belenos), baina doako kontu batek QPU denbora duen, eta zenbat, ezin izan da hemendik
-egiaztatu; egiaztatu [cloud.quandela.com](https://cloud.quandela.com). QOA-ren aldea prest dago:
+**Fotoiak:** Quandela-k Perceval programak bere prozesadore fotonikoetan exekutatzen ditu (Ascella, Belenos)
+Quandela Cloud bidez, eta denbora saltzen du Scaleway eta OVHcloud bidez; ikertzaile europarrek kredituak eska
+ditzakete GENCI bidez ([Quandela Cloud](https://www.quandela.com/cloud/), 2026ko azaroan irakurria).
+Quandela-ren orri publikoek ez dute esaten doako kontu batek QPU denbora duen, ez zenbat, beraz galdetu
+Quandela-ri. QOA-ren aldea prest dago:
 `tools/hardware_check.py`-k dagoeneko QOA sare optiko lineal bat Perceval-ek exekutatzen duen
 transferentzia-matrize bihurtzen du.
 

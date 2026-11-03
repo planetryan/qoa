@@ -20,9 +20,13 @@
   QOA -> OpenQASM 3 -> QOA gives the same counts shot for shot. Blocks nested more than 64 deep are an error.
 * **`examples/until.qoa`:** repeat-until-success on a measured bit alone, the shape OpenQASM 3 can say.
 * **`tools/run_on_ibm.py`** sends OpenQASM 3 when OpenQASM 2.0 cannot hold the program, unrolls counted
-  loops, and warns before spending QPU time when the program has a `while` loop or a nested block, which
-  IBM's current devices do not run (IBM deprecated them in 2025). `tools/hardware_check.py` has an OpenQASM 3
-  section (`--only qasm3`).
+  loops, and warns before spending QPU time when the program has a `while` loop, a block inside a block, or
+  a measurement or reset inside a block, which IBM's devices do not run (IBM's guide, read in November 2026).
+  It uses qiskit-ibm-runtime's new client-side Sampler when available (`SamplerV2` is deprecated since 0.50).
+  `tools/hardware_check.py` has an OpenQASM 3 section (`--only qasm3`).
+* **[docs/hardware.md](../docs/hardware.md)** quotes IBM's current limits for dynamic circuits and the Open
+  Plan terms (including the 180-minute opt-in since March 2026), lists Quandela's access routes, and its
+  measurements were regenerated (Perceval 1.3.1 agrees with QOA to 7e-16).
 
 ## Changed
 
@@ -66,8 +70,13 @@
   dezakeen forma.
 * **`tools/run_on_ibm.py`**-k OpenQASM 3 bidaltzen du OpenQASM 2.0-n programa sartzen ez denean, kopuru
   finkoko begiztak zabaltzen ditu, eta QPU denbora gastatu aurretik abisatzen du programak `while` begizta
-  bat edo bloke habiaratu bat duenean, IBM-ren gaurko gailuek exekutatzen ez dituztenak (IBM-k 2025ean
-  zaharkitutzat jo zituen). `tools/hardware_check.py`-k OpenQASM 3 atal bat du (`--only qasm3`).
+  bat, bloke baten barruko bloke bat, edo bloke baten barruko neurketa edo reset bat duenean, IBM-ren gailuek
+  exekutatzen ez dituztenak (IBM-ren gida, 2026ko azaroan irakurria). qiskit-ibm-runtime-ren bezero-aldeko
+  Sampler berria erabiltzen du eskuragarri dagoenean (`SamplerV2` zaharkituta dago 0.50-tik).
+  `tools/hardware_check.py`-k OpenQASM 3 atal bat du (`--only qasm3`).
+* **[docs/hardware.eu.md](../docs/hardware.eu.md)**-k IBM-ren zirkuitu dinamikoen gaurko mugak eta Open
+  Plan-aren baldintzak aipatzen ditu (2026ko martxotik 180 minutuko aukera barne), Quandela-ren sarbide-bideak
+  zerrendatzen ditu, eta bere neurketak berriz sortu dira (Perceval 1.3.1 QOA-rekin bat dator 7e-16-ra arte).
 
 ## Aldatua
 
