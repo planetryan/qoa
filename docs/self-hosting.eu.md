@@ -52,11 +52,35 @@ cmp stage1.qx stage2.qx && cmp stage2.qx stage3.qx                       # guzti
 
 Proba-multzoak hauxe bera egiten du eraikitze bakoitzean (`tests/selfhost.rs`).
 
+## Desmihiztatzailea, hau ere QOAn
+
+Itzulerako bidea ere QOAn idatzita dago: [src/qoa/dis.qoa](../src/qoa/dis.qoa)-k `.qx` bat irakurtzen du eta
+`qoa export --to qoa --long-names`-ek idazten duen QOA arrunta idazten du, bytez byte. Goiburua, bertsioa eta
+SHA-256-a egiaztatzen ditu (QOAn, mihiztatzailearen SHA-256 errutinekin), 80 eragiketa motetako bakoitza
+deskodetzen du, 64 biteko zenbaki bakoitza zehazki berreraikitzen du bere 8 byteetatik, eta `addr_0x..`
+etiketak jauziak iristen diren lekuetan jartzen ditu. Fitxategi hondatu batek `qoa`-k ematen duen errore
+bera jasotzen du, hitz berberekin eta bi hizkuntzetan.
+
+```sh
+qoa export --to qoa --long-names --self-hosted programa.qx      # binarioan sartutako kopia
+qoa export --to qoa --long-names --self-hosted programa.qoa     # lehenik QOA mihiztatzaileak mihiztatuta
+qoa run src/qoa/dis.qoa --quiet -- programa.qx < programa.qx    # eskuz
+```
+
+Iturburu-fitxategi batekin, QOAn idatzitako mihiztatzaile integratuak mihiztatzen du lehenik, beraz
+joan-etorri osoa (testua, bitarra, testua) QOAn exekutatzen da. Probek rust-ekin konparatzen dute biltegiko
+programa guztietan (mihiztatzailearen beraren 12.600 lerroak barne) eta mota guztietako fitxategi
+hondatuetan. Oraingoz izen luzeak idazten ditu; forma laburrak (`Hq0`, `Mq0.c0`) dira hurrengo urratsa.
+Mihiztatzaileak bezala, ez du emaitza berriz mihiztatzen programaren edukia egiaztatzeko, `qoa`-k `.qx` bat
+kargatzean egiten duen bezala; formatua, laburpena eta aldaera-zenbaki guztiak egiaztatzen ditu.
+Mihiztatzailearen bitarrarekin 0.3 s inguru behar ditu, rust-en 0.05 s-en aldean.
+
 ## Zer dagoen QOAn idatzita, eta zer geratzen den rust-en
 
 | zatia | lengoaia | zergatik |
 |---|---|---|
 | mihiztatzailea: lerroak, iruzkinak, tokenak, etiketak, izendun erregistroak, `q0..q3` tarteak, eragigai guztiak, adierazpenak, zenbaki hamartarrak, formatu bitarra, errore-mezu guztiak | **QOA** | testua eragiketa-zerrenda bihurtzen duen programa klasiko bat da, lengoaia batek bere buruarentzat egin dezakeena |
+| desmihiztatzailea: `.qx`-tik QOA arruntera izen luzeekin, laburpena, errore guztiak | **QOA** | mihiztatzailearen alderantzizkoa, joan-etorriak rust-ik behar ez dezan |
 | QOA makina: qubit-egoerak, fotoiak, SIMD kernelak, GPUak, MPI, zarata | rust | zenbakizko muina da; 64 biteko koma higikorra behar du makinaren abiadura osoan, bektore-aginduak eta GPU kontrolatzaileak, eta programa interpretatu batek ezin ditu horiek eman |
 | `sin`, `cos`, `tan`, `exp`, `ln`, `pow` | rust (agindu gisa) | `qoa compile`-k erabiltzen dituen funtzio berberak, biek bit berberak eman ditzaten |
 | fitxategiak irakurtzea, komando-lerroa | rust | sistema eragilearen aldea |

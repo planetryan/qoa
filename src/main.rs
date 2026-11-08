@@ -241,6 +241,11 @@ enum Command {
             "glifoa: .qoa iturburu bat lerroz lerro bihurtu, haren iruzkinak, etiketak eta antolaketa gordeta"
         ))]
         keep_source: bool,
+        #[arg(long, help = ts!(
+            "with --to qoa --long-names: disassemble with QOA's own disassembler written in QOA, built into this binary (src/qoa/dis.qoa; see qoa tools). A source file is first assembled by the built-in assembler written in QOA, so nothing of the path is Rust but the machine. The text is byte for byte what Rust writes",
+            "--to qoa --long-names-ekin: QOAn idatzitako QOA-ren desmihiztatzailearekin desmihiztatu, binario honetan sartua (src/qoa/dis.qoa; ikus qoa tools). iturburu-fitxategi bat lehenik QOAn idatzitako mihiztatzaile integratuak mihiztatzen du, beraz bideko ezer ez da rust makina izan ezik. testua rust-ek idazten dituen byte berberak dira"
+        ))]
+        self_hosted: bool,
     },
     #[command(about = ts!(
         "Convert an OpenQASM file (.qasm: all of 2.0; of 3, bits, if/else, while, for and gate modifiers) or a glyph-syntax file (.qg) into plain QOA source",
@@ -654,10 +659,13 @@ fn main() -> ExitCode {
             hex,
             dense,
             keep_source,
+            self_hosted,
         } => {
             let to = to.unwrap_or(ExportFormat::Glyph);
             let _ = to_glyph;
-            if keep_source {
+            if self_hosted {
+                cmd_export_self_hosted(&file, to, long_names, output)
+            } else if keep_source {
                 cmd_keep_source(&file, to, output)
             } else {
                 glyph_options(to, width, &names, long_names, no_ranges, hex)
@@ -1333,6 +1341,53 @@ fn cmd_bench_sim(model: Option<&Path>) -> Result<(), String> {
     };
     let stdin = std::io::stdin();
     qoa::device::serve(model.as_ref(), stdin.lock(), std::io::stdout().lock())
+}
+
+// QOAn idatzitako desmihiztatzailearekin esportatu: .qx-a (edo iturburua, QOAn idatzitako mihiztatzaileak
+// mihiztatuta) sarrera gisa, fitxategi-izena argumentu gisa; haren irteera da testua
+fn cmd_export_self_hosted(
+    file: &Path,
+    to: ExportFormat,
+    long_names: bool,
+    output: Option<PathBuf>,
+) -> Result<(), String> {
+    if to != ExportFormat::Qoa || !long_names {
+        return Err(t!(
+            "--self-hosted exports --to qoa --long-names: the disassembler written in QOA writes the long names so far",
+            "--self-hosted-ek --to qoa --long-names esportatzen du: QOAn idatzitako desmihiztatzaileak izen luzeak idazten ditu oraingoz"
+        ));
+    }
+    let name = file.display().to_string();
+    let is_qx = file
+        .extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| matches!(e.to_ascii_lowercase().as_str(), "qx" | "qexe" | "oexe"));
+    let bytes = if is_qx {
+        qoa::state::read_file(file)
+            .map_err(|e| t!("cannot read {}: {}", "ezin da {} irakurri: {}", name, e))?
+    } else {
+        let asm = qoa::tools::find("asm").expect("asm tresna binarioan dago");
+        assemble_with(&asm.program()?, &asm.path(), file)?.1
+    };
+    let dis = qoa::tools::find("dis").expect("dis tresna binarioan dago");
+    let config = RunConfig {
+        shots: 1,
+        seed: 0,
+        max_steps: u64::MAX,
+        args: vec![name.clone()],
+        input: Some(std::sync::Arc::new(bytes)),
+        ..RunConfig::default()
+    };
+    let mut text = Vec::new();
+    let out = vm::run(&dis.program()?, &config, &mut text)
+        .map_err(|e| format!("{}: {}", dis.path(), e))?;
+    if let Some(status) = out.exit_status.filter(|&s| s != 0) {
+        // desmihiztatzaileak bere errorea jada inprimatu du
+        EXIT_STATUS.store(status, std::sync::atomic::Ordering::Relaxed);
+        return Err(String::new());
+    }
+    let text = String::from_utf8(text).map_err(|e| format!("{}: {}", dis.path(), e))?;
+    write_or_print(output, &text)
 }
 
 // binarioan sartutako tresnak: zerrenda, edo iturburuak karpeta batean (QOA arrunta eta glifoak)

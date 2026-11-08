@@ -1,0 +1,3264 @@
+; QOA-ren desmihiztatzailea, QOAn idatzia (QOA 0.4.8). programa honek .qx bitar bat irakurtzen du eta
+; `qoa export --to qoa --long-names`-ek idazten duen QOA arrunt kanonikoa idazten du, byte berberak:
+; goiburua (QINIT, QMODE, behar denean CREG), eragiketa bakoitza bere izen nagusiarekin, eta jauzien
+; helburuak `addr_0x..` etiketekin. fitxategia hondatuta badago, `qoa`-ren errore berberak ematen ditu.
+;
+;   qoa export --to qoa --long-names --self-hosted programa.qx     (qoa-k fitxategia eta izena ematen dizkio)
+;   qoa run src/qoa/dis.qoa --quiet -- programa.qx < programa.qx
+;
+;   src/qoa/dis.qg: programa bera glifo-sintaxian, fitxategi honetatik sortua lerroz lerro
+;   (qoa export --to glyph --keep-source src/qoa/dis.qoa); ez editatu eskuz, proba batek bat datozela egiaztatzen du
+;
+; sarrera: .qx-a sarrera estandarrean; 0. argumentua fitxategi-izena da (mezuetarako).
+; irteera: QOA testua irteera estandarrean; erroreak errore-irteeran, eta EXIT 1.
+;
+; formatua (src/qx.rs): "QOAX", u16 bertsioa, programa, eta 4. bertsiotik 32 byteko SHA-256 bat. programa:
+; izena (u64 luzera eta utf-8), qubitak, moduak, muga (u32), muga adierazita (u8), bitak (u32), eragiketak
+; (u64 kopurua; bakoitza u32 aldaera eta eremuak) eta lerroak. zenbaki osoak little-endian, f64 bere 8
+; byteak. f64-a zehazki berreraikitzen da: mantisa osoa bider 2^k, 2^64-ko urratsetan (biderketa eta
+; zatiketa zehatzak dira bi-ren berreturekin).
+;
+; mihiztatzaileak ez bezala, honek ez du programaren edukia berriz mihiztatuta egiaztatzen (`qoa`-k kargatzean
+; egiten duena): formatua, osotasuna eta aldaeren zenbakiak egiaztatzen ditu.
+;
+; erregistroen ohitura:
+;   R0-R7   argumentuak, emaitzak eta behin-behinekoak: edozein deik alda ditzake
+;   R8-R24  deiek gordetzen dituzte: erabiltzen dituen errutinak PUSH/POP egiten ditu
+;   R25 behar den formatu-bertsioa   R26 c-tokenen indize handiena (-1 bat ere ez)   R27 1 inprimatzean
+;   R28 hizkuntza (1 euskara, 0 ingelesa)   R29 = -1   R30 = 0   R31 = 1
+;
+; memoria-mapa (gelaxkak; idatzi gabeak 0):
+;   0 HP hurrengo gelaxka librea   1 NAMEP 2 NAMEN fitxategi-izena   3 DATA 4 NDATA sarrerako byteak
+;   5 POS irakurtzeko hurrengo bytearen helbidea   6 END programaren amaiera   7 VER bertsioa
+;   8 OPV eragiketa bakoitzaren hasiera   9 NOPS   10 MARK jauzi-helburuak (NOPS + 1)
+;   11 NQ 12 NM 13 CUTOFF 14 NBITS   15 PNAME 16 PNAMEN programaren izena   19 NAMES izenen taula
+;   20 PC uneko eragiketa   21 BAD testu-formarik gabeko lehen eragiketa (pc + 1, 0 bat ere ez)
+;   22 BADKIND haren mota   23 NAN zenbaki ez-finitua duen lehen eragiketa (pc + 1)
+;   30-35 parametroak (balioa, -0 marka) x3
+;   96 SHA SHA-256-aren egoera   1000-tik aurrera: memoria dinamikoa
+
+; ---------------------------------------------------------------- nagusia
+main:
+SETR29 -1
+SETR30 0
+SETR31 1
+GETLANGR28
+SETR25 1
+SETR26 -1
+SETR27 0
+SETR0 1000
+ST R0 (0)
+C readname
+C readall
+C names
+C head
+C body
+C printall
+EXIT 0
+
+; ---------------------------------------------------------------- memoria
+; alloc: R0 = gelaxka-kopurua -> R0 = haien hasiera. aldatzen ditu R0-R3
+alloc:
+SETR1 0
+LDR2 R1
+ADDR3 R2 R0
+STR3 R1
+RCR0 R2
+RET
+
+; ---------------------------------------------------------------- sarrera
+; readname: 0. argumentua (fitxategi-izena) memoriara. argumenturik ez badago, erabilera azaldu
+readname:
+ARGCR0
+IGTR0 R30 readname.ok
+STREAM 2
+IEQR28 R31 readname.eu
+PLN "usage: qoa export --to qoa --long-names --self-hosted FILE.qx (or: qoa run src/qoa/dis.qoa --quiet -- FILE.qx < FILE.qx)"
+EXIT 2
+readname.eu:
+PLN "erabilera: qoa export --to qoa --long-names --self-hosted FITXATEGIA.qx (edo: qoa run src/qoa/dis.qoa --quiet -- FITXATEGIA.qx < FITXATEGIA.qx)"
+EXIT 2
+readname.ok:
+LDR4 (0)
+ST R4 (1)
+SETR5 0
+SETR6 0
+readname.next:
+ARGBYTER0 R6 R5
+IEQR0 R29 readname.done
+ADDR1 R4 R5
+STR0 R1
+ADDR5 R5 R31
+J readname.next
+readname.done:
+ST R5 (2)
+ADDR1 R4 R5
+ST R1 (0)
+RET
+
+; readall: sarrera osoa memoriara, byte bat gelaxka bakoitzean. aldatzen ditu R0-R5
+readall:
+LDR4 (0)
+RCR5 R4
+readall.next:
+GCR0
+IEQR0 R29 readall.done
+STR0 R5
+ADDR5 R5 R31
+J readall.next
+readall.done:
+ST R4 (3)
+SUBR1 R5 R4
+ST R1 (4)
+ST R5 (0)
+RET
+
+; printname: fitxategi-izena uneko irteerara. aldatzen ditu R0-R2
+printname:
+LDR1 (1)
+LDR2 (2)
+ADDR2 R1 R2
+printname.next:
+IEQR1 R2 printname.done
+LDR0 R1
+PUTCR0
+ADDR1 R1 R31
+J printname.next
+printname.done:
+RET
+
+; ---------------------------------------------------------------- goiburua eta osotasuna
+; head: magia, bertsioa eta (4. bertsiotik) SHA-256-a; POS eta END ezarri. aldatzen ditu R0-R11
+head:
+LDR8 (3)
+LDR9 (4)
+ILTR9 (6) head.short
+LDR0 R8
+ADDR1 R8 R31
+LDR1 R1
+ADDR2 R8 (2)
+LDR2 R2
+ADDR3 R8 (3)
+LDR3 R3
+; QOA 0.3-ren magiak: QEXE, OEXE, QX\0\0
+IEQR0 (81) head.q
+IEQR0 (79) head.o
+J head.notqoax
+head.q:
+INER1 (88) head.qe
+IEQR2 R30 head.qx0
+J head.notqoax
+head.qx0:
+IEQR3 R30 head.old
+J head.notqoax
+head.qe:
+INER1 (69) head.qoax
+INER2 (88) head.notqoax
+IEQR3 (69) head.old
+J head.notqoax
+head.o:
+INER1 (69) head.notqoax
+INER2 (88) head.notqoax
+IEQR3 (69) head.old
+J head.notqoax
+head.qoax:
+INER1 (79) head.notqoax
+INER2 (65) head.notqoax
+INER3 (88) head.notqoax
+; bertsioa
+ADDR0 R8 (4)
+LDR0 R0
+ADDR1 R8 (5)
+LDR1 R1
+MULR1 R1 (256)
+ADDR10 R0 R1
+ST R10 (7)
+IEQR10 R30 head.version
+IGTR10 (4) head.version
+ADDR0 R8 (6)
+ST R0 (5)
+ADDR0 R8 R9
+ST R0 (6)
+ILTR10 (4) head.done
+; SHA-256: azken 32 byteak aurreko guztienak dira
+SUBR11 R9 (32)
+ILTR11 (6) head.nosum
+C sha.init
+SETR10 0
+head.sum:
+IEQR10 R11 head.final
+ADDR0 R8 R10
+LDR0 R0
+C sha.byte
+ADDR10 R10 R31
+J head.sum
+head.final:
+C sha.final
+; H hitzak (big-endian) fitxategiko 32 byteekin
+LDR4 (96)
+ADDR5 R8 R11
+SETR6 0
+head.cmp:
+IEQR6 (8) head.ok
+ADDR0 R4 R6
+LDR7 R0
+MULR1 R6 (4)
+ADDR1 R5 R1
+LDR0 R1
+MULR0 R0 (16777216)
+ADDR1 R1 R31
+LDR2 R1
+MULR2 R2 (65536)
+ADDR0 R0 R2
+ADDR1 R1 R31
+LDR2 R1
+MULR2 R2 (256)
+ADDR0 R0 R2
+ADDR1 R1 R31
+LDR2 R1
+ADDR0 R0 R2
+INER0 R7 head.badsum
+ADDR6 R6 R31
+J head.cmp
+head.ok:
+ADDR0 R8 R11
+ST R0 (6)
+head.done:
+RET
+head.short:
+SETR0 1
+J fail
+head.old:
+SETR0 2
+J fail
+head.notqoax:
+SETR0 3
+J fail
+head.version:
+RCR1 R10
+SETR0 4
+J fail
+head.nosum:
+SETR0 5
+J fail
+head.badsum:
+SETR0 6
+J fail
+
+; ---------------------------------------------------------------- irakurketa
+; rb: -> R0 = hurrengo bytea. aldatzen ditu R0-R2
+rb:
+LDR1 (5)
+LDR2 (6)
+ILTR1 R2 rb.ok
+SETR0 7
+J fail
+rb.ok:
+LDR0 R1
+ADDR1 R1 R31
+ST R1 (5)
+RET
+
+; ru32: -> R0 = u32 (little-endian). aldatzen ditu R0-R3
+ru32:
+C rb
+RCR3 R0
+C rb
+MULR0 R0 (256)
+ADDR3 R3 R0
+C rb
+MULR0 R0 (65536)
+ADDR3 R3 R0
+C rb
+MULR0 R0 (16777216)
+ADDR0 R3 R0
+RET
+
+; ru64: -> R0 = u64 (2^53-tik gora ez da zehatza: ez du QOA-k sortzen). aldatzen ditu R0-R4
+ru64:
+C ru32
+RCR4 R0
+C ru32
+MULR0 R0 (4294967296)
+ADDR0 R0 R4
+RET
+
+; rf64: -> R0 = f64 zehatza, R1 = 1 -0 bada (R0 orduan 0), bestela 0. aldatzen ditu R0-R7
+rf64:
+C ru32
+RCR5 R0
+C rb
+RCR6 R0
+C rb
+MULR0 R0 (256)
+ADDR6 R6 R0
+C rb
+RCR7 R0
+C rb
+RCR4 R0
+SETR1 0
+ILTR4 (128) rf64.pos
+SETR1 1
+SUBR4 R4 (128)
+rf64.pos:
+; berretzailea: 7. bytearen 7 bitak eta 6.aren goiko 4ak
+MULR4 R4 (16)
+SHRR2 R7 (4)
+ADDR4 R4 R2
+ANDR7 R7 (15)
+; mantisa: 52 bit
+MULR6 R6 (4294967296)
+ADDR5 R5 R6
+MULR7 R7 (281474976710656)
+ADDR5 R5 R7
+IEQR4 (2047) rf64.nan
+IEQR4 R30 rf64.sub
+ADDR5 R5 (4503599627370496)
+SUBR4 R4 (1075)
+J rf64.scale
+rf64.sub:
+SETR4 -1074
+rf64.scale:
+IGTR4 (63) rf64.up64
+IGTR4 R30 rf64.up1
+ILTR4 (-63) rf64.dn64
+ILTR4 R30 rf64.dn1
+IEQR1 R30 rf64.plus
+IEQR5 R30 rf64.negzero
+SUBR0 R30 R5
+SETR1 0
+RET
+rf64.negzero:
+SETR0 0
+RET
+rf64.plus:
+RCR0 R5
+RET
+rf64.up64:
+MULR5 R5 (18446744073709551616)
+SUBR4 R4 (64)
+J rf64.scale
+rf64.up1:
+MULR5 R5 (2)
+SUBR4 R4 R31
+J rf64.scale
+rf64.dn64:
+DIVR5 R5 (18446744073709551616)
+ADDR4 R4 (64)
+J rf64.scale
+rf64.dn1:
+DIVR5 R5 (2)
+ADDR4 R4 R31
+J rf64.scale
+; berretzailea 2047 (infinitua edo NaN): qoa-k irakurtzen du eta gero baztertzen; hemen lehena gorde eta jarraitu
+rf64.nan:
+LDR0 (23)
+INER0 R30 rf64.nan.r
+LDR0 (20)
+ADDR0 R0 R31
+ST R0 (23)
+rf64.nan.r:
+SETR0 0
+SETR1 0
+RET
+
+; rbool: -> R0 = 0 edo 1 (u8). aldatzen ditu R0-R2
+rbool:
+C rb
+IGTR0 R31 rbool.bad
+RET
+rbool.bad:
+RCR1 R0
+SETR0 10
+J fail
+
+; rtag: R0 = aldaera-kopurua, R1 = zer den (mezuetarako) -> R0 = aldaera. aldatzen ditu R0-R3
+rtag:
+PUSHR8
+PUSHR9
+RCR8 R0
+RCR9 R1
+C ru32
+ILTR0 R8 rtag.ok
+RCR2 R0
+RCR1 R9
+SETR0 9
+J fail
+rtag.ok:
+POPR9
+POPR8
+RET
+
+; rlen: R0 = elementu bakoitzaren byte txikienak -> R0 = zerrendaren luzera, fitxategian sartzen dela
+; egiaztatuta (luzera * txikiena <= geratzen diren byteak). aldatzen ditu R0-R4
+rlen:
+PUSHR8
+RCR8 R0
+C ru64
+LDR1 (6)
+LDR2 (5)
+SUBR1 R1 R2
+MULR2 R0 R8
+IGTR2 R1 rlen.big
+POPR8
+RET
+rlen.big:
+RCR1 R0
+SETR0 8
+J fail
+
+; rstr: testu bat -> R0 = haren lehen bytearen helbidea, R1 = luzera; utf-8 zorrotza. aldatzen ditu R0-R7
+rstr:
+SETR0 1
+C rlen
+RCR1 R0
+LDR0 (5)
+ADDR2 R0 R1
+ST R2 (5)
+PUSHR0
+PUSHR1
+C utf8
+POPR1
+POPR0
+RET
+
+; utf8: R0 = helbidea, R1 = luzera: rust-en from_utf8 bezain zorrotz. aldatzen ditu R0-R5
+utf8:
+ADDR1 R0 R1
+utf8.next:
+IEQR0 R1 utf8.ok
+LDR2 R0
+ILTR2 (128) utf8.one
+ILTR2 (194) utf8.bad
+ILTR2 (224) utf8.two
+ILTR2 (240) utf8.three
+ILTR2 (245) utf8.four
+J utf8.bad
+utf8.one:
+ADDR0 R0 R31
+J utf8.next
+utf8.two:
+SETR3 128
+SETR4 191
+SETR5 1
+J utf8.cont
+utf8.three:
+SETR3 128
+SETR4 191
+INER2 (224) utf8.t2
+SETR3 160
+utf8.t2:
+INER2 (237) utf8.t3
+SETR4 159
+utf8.t3:
+SETR5 2
+J utf8.cont
+utf8.four:
+SETR3 128
+SETR4 191
+INER2 (240) utf8.f2
+SETR3 144
+utf8.f2:
+INER2 (244) utf8.f3
+SETR4 143
+utf8.f3:
+SETR5 3
+utf8.cont:
+ADDR0 R0 R31
+IEQR0 R1 utf8.bad
+LDR2 R0
+ILTR2 R3 utf8.bad
+IGTR2 R4 utf8.bad
+SETR3 128
+SETR4 191
+SUBR5 R5 R31
+IGTR5 R30 utf8.cont
+ADDR0 R0 R31
+J utf8.next
+utf8.ok:
+RET
+utf8.bad:
+SETR0 11
+J fail
+
+; u32at: R0 = helbidea -> R0 = han dagoen u32-a (lau byte). aldatzen ditu R0-R2
+u32at:
+LDR1 R0
+ADDR0 R0 R31
+LDR2 R0
+MULR2 R2 (256)
+ADDR1 R1 R2
+ADDR0 R0 R31
+LDR2 R0
+MULR2 R2 (65536)
+ADDR1 R1 R2
+ADDR0 R0 R31
+LDR2 R0
+MULR2 R2 (16777216)
+ADDR0 R1 R2
+RET
+
+; need: R0 = eragiketak behar duen formatu-bertsioa. R25 eguneratzen du
+need:
+IGTR0 R25 need.up
+RET
+need.up:
+RCR25 R0
+RET
+
+; ---------------------------------------------------------------- inprimatzea
+; R27 0 denean (lehen pasaldia) ez da ezer idazten, baina c-tokenak (R26) eta jauzi-helburuak (MARK) beti
+; jasotzen dira
+
+; pname: R0 = izenaren zenbakia (izenen taulan). aldatzen ditu R0, R1
+pname:
+IEQR27 R30 pname.r
+LDR1 (19)
+MULR0 R0 (16)
+ADDR1 R1 R0
+pname.c:
+LDR0 R1
+IEQR0 R30 pname.r
+PUTCR0
+ADDR1 R1 R31
+J pname.c
+pname.r:
+RET
+
+; pq / po / pr / pc: R0 = zenbakia -> " q3" / " o3" / " R3" / " c3". R0 bakarrik aldatzen dute
+pq:
+IEQR27 R30 pq.r
+PF " q{}" R0
+pq.r:
+RET
+
+po:
+IEQR27 R30 po.r
+PF " o{}" R0
+po.r:
+RET
+
+pr:
+IEQR27 R30 pr.r
+PF " R{}" R0
+pr.r:
+RET
+
+pc:
+IGTR0 R26 pc.max
+J pc.out
+pc.max:
+RCR26 R0
+pc.out:
+IEQR27 R30 pc.r
+PF " c{}" R0
+pc.r:
+RET
+
+; pnum: R0 = zenbakia, R1 = -0 marka -> " " eta rust-en `{}` (-0 "-0" da). R0 bakarrik aldatzen du
+pnum:
+IEQR27 R30 pnum.r
+IEQR1 R31 pnum.neg
+PF " {}" R0
+RET
+pnum.neg:
+PRINT " -0"
+pnum.r:
+RET
+
+; pimm: " (zenbakia)". R0 bakarrik aldatzen du
+pimm:
+IEQR27 R30 pimm.r
+IEQR1 R31 pimm.neg
+PF " ({})" R0
+RET
+pimm.neg:
+PRINT " (-0)"
+pimm.r:
+RET
+
+; pword: R0 = zenbaki osoa -> " 42". R0 bakarrik aldatzen du
+pword:
+IEQR27 R30 pword.r
+PF " {}" R0
+pword.r:
+RET
+
+; phex: R0 = zenbaki osoa -> hamaseitarrez, letra txikiz. aldatzen ditu R0-R2
+phex:
+SETR2 0
+phex.d:
+ANDR1 R0 (15)
+PUSHR1
+ADDR2 R2 R31
+SHRR0 R0 (4)
+IGTR0 R30 phex.d
+phex.p:
+POPR1
+ILTR1 (10) phex.dig
+ADDR1 R1 (87)
+J phex.out
+phex.dig:
+ADDR1 R1 (48)
+phex.out:
+PUTCR1
+SUBR2 R2 R31
+IGTR2 R30 phex.p
+RET
+
+; plab: R0 = jauzi-helburua -> " addr_0x..", eta helburua markatu. aldatzen ditu R0-R2
+plab:
+LDR1 (9)
+IGTR0 R1 plab.print
+IGTR0 R29 plab.mark
+J plab.print
+plab.mark:
+LDR1 (10)
+ADDR1 R1 R0
+ST R31 R1
+plab.print:
+IEQR27 R30 plab.r
+PRINT " addr_0x"
+C phex
+plab.r:
+RET
+
+; plabel: R0 = helbidea -> "addr_0x..:" lerro bat. aldatzen ditu R0-R2
+plabel:
+PRINT "addr_0x"
+C phex
+PLN ":"
+RET
+
+; ptext: R0 = helbidea, R1 = luzera -> ` "testua"` (\\, \", \n eta \t ihes eginda). aldatzen ditu R0-R3
+ptext:
+IEQR27 R30 ptext.r
+ADDR1 R0 R1
+PRINT " "
+PUTC (34)
+ptext.next:
+IEQR0 R1 ptext.end
+LDR2 R0
+IEQR2 (92) ptext.bs
+IEQR2 (34) ptext.q
+IEQR2 (10) ptext.nl
+IEQR2 (9) ptext.tab
+PUTCR2
+J ptext.adv
+ptext.bs:
+PUTC (92)
+PUTC (92)
+J ptext.adv
+ptext.q:
+PUTC (92)
+PUTC (34)
+J ptext.adv
+ptext.nl:
+PUTC (92)
+PUTC (110)
+J ptext.adv
+ptext.tab:
+PUTC (92)
+PUTC (116)
+ptext.adv:
+ADDR0 R0 R31
+J ptext.next
+ptext.end:
+PUTC (34)
+ptext.r:
+RET
+
+; ---------------------------------------------------------------- eremuak: irakurri eta idatzi
+; fq / fo / fr / fc: u32 bat qubit, modu, erregistro edo bit gisa. aldatzen dituzte R0-R3
+fq:
+C ru32
+J pq
+
+fo:
+C ru32
+J po
+
+fr:
+C ru32
+J pr
+
+fc:
+C ru32
+J pc
+
+; ff: f64 bat zenbaki gisa. aldatzen ditu R0-R7
+ff:
+C rf64
+J pnum
+
+; fw: u32 bat zenbaki oso gisa; fw64: u64 bat. aldatzen dituzte R0-R4
+fw:
+C ru32
+J pword
+
+fw64:
+C ru64
+J pword
+
+; fqs / fos / frs / fcs: u32 zerrenda bat qubit, modu, erregistro edo bit gisa. aldatzen dituzte R0-R5
+fqs:
+SETR0 4
+C rlen
+RCR5 R0
+fqs.n:
+IEQR5 R30 fqs.r
+C fq
+SUBR5 R5 R31
+J fqs.n
+fqs.r:
+RET
+
+fos:
+SETR0 4
+C rlen
+RCR5 R0
+fos.n:
+IEQR5 R30 fos.r
+C fo
+SUBR5 R5 R31
+J fos.n
+fos.r:
+RET
+
+frs:
+SETR0 4
+C rlen
+RCR5 R0
+frs.n:
+IEQR5 R30 frs.r
+C fr
+SUBR5 R5 R31
+J frs.n
+frs.r:
+RET
+
+fcs:
+SETR0 4
+C rlen
+RCR5 R0
+fcs.n:
+IEQR5 R30 fcs.r
+C fc
+SUBR5 R5 R31
+J fcs.n
+fcs.r:
+RET
+
+; fdest: Dest (Own: ezer ez; Bit: " -> c3"; Reg: " -> R3"). aldatzen ditu R0-R4
+fdest:
+SETR0 3
+SETR1 4
+C rtag
+IEQR0 R30 fdest.r
+RCR4 R0
+IEQR27 R30 fdest.v
+PRINT " ->"
+fdest.v:
+IEQR4 R31 fc
+J fr
+fdest.r:
+RET
+
+; fsrc: Source (Reg: " R3"; Bit: " c3"). aldatzen ditu R0-R3
+fsrc:
+SETR0 2
+SETR1 5
+C rtag
+IEQR0 R30 fr
+J fc
+
+; fval: Val (Reg: " R3"; Num: " (2.5)"). aldatzen ditu R0-R7
+fval:
+SETR0 2
+SETR1 7
+C rtag
+IEQR0 R30 fr
+C rf64
+J pimm
+
+; fbasis: Basis -> " X" / " Y" / " Z". aldatzen ditu R0-R3
+fbasis:
+SETR0 3
+SETR1 3
+C rtag
+ADDR0 R0 R31
+IEQR27 R30 fbasis.r
+PRINT " "
+J pname
+fbasis.r:
+RET
+
+; fopt: Option<u32> erregistro bat (EXPECT, BELLCHECK, MEANPHOTON). aldatzen ditu R0-R3
+fopt:
+C rb
+IEQR0 R30 fopt.r
+IEQR0 R31 fr
+RCR1 R0
+SETR0 10
+J fail
+fopt.r:
+RET
+
+; flab: usize jauzi-helburu bat. aldatzen ditu R0-R4
+flab:
+C ru64
+J plab
+
+; ftext: testu bat. aldatzen ditu R0-R7
+ftext:
+C rstr
+J ptext
+
+; fcount: Count (Lit: " 3"; Reg: " R3"). aldatzen ditu R0-R4
+fcount:
+SETR0 2
+SETR1 6
+C rtag
+IEQR0 R30 fw64
+J fr
+
+; bad: R0 = mota: testu-formarik gabeko eragiketa bat; lehena gorde (gorputza irakurri ondoren salatzen da,
+; qoa-k bezala). aldatzen ditu R0, R1
+bad:
+LDR1 (21)
+INER1 R30 bad.r
+LDR1 (20)
+ADDR1 R1 R31
+ST R1 (21)
+ST R0 (22)
+bad.r:
+RET
+
+; ---------------------------------------------------------------- izenak
+; names: aginduen izen nagusiak memoriara, 16 gelaxka bakoitza (0-z amaituak). aldatzen ditu R0-R3
+names:
+SETR0 1888
+C alloc
+ST R0 (19)
+ADDR1 R0 (0)
+STX R1 "H"
+ADDR1 R0 (16)
+STX R1 "X"
+ADDR1 R0 (32)
+STX R1 "Y"
+ADDR1 R0 (48)
+STX R1 "Z"
+ADDR1 R0 (64)
+STX R1 "S"
+ADDR1 R0 (80)
+STX R1 "SDG"
+ADDR1 R0 (96)
+STX R1 "T"
+ADDR1 R0 (112)
+STX R1 "TDG"
+ADDR1 R0 (128)
+STX R1 "SX"
+ADDR1 R0 (144)
+STX R1 "SXDG"
+ADDR1 R0 (160)
+STX R1 "RX"
+ADDR1 R0 (176)
+STX R1 "RY"
+ADDR1 R0 (192)
+STX R1 "RZ"
+ADDR1 R0 (208)
+STX R1 "PHASE"
+ADDR1 R0 (224)
+STX R1 "U"
+ADDR1 R0 (240)
+STX R1 "CNOT"
+ADDR1 R0 (256)
+STX R1 "CY"
+ADDR1 R0 (272)
+STX R1 "CH"
+ADDR1 R0 (288)
+STX R1 "CSX"
+ADDR1 R0 (304)
+STX R1 "CU"
+ADDR1 R0 (320)
+STX R1 "CRX"
+ADDR1 R0 (336)
+STX R1 "CRY"
+ADDR1 R0 (352)
+STX R1 "CRZ"
+ADDR1 R0 (368)
+STX R1 "CCX"
+ADDR1 R0 (384)
+STX R1 "MCX"
+ADDR1 R0 (400)
+STX R1 "CZ"
+ADDR1 R0 (416)
+STX R1 "CPHASE"
+ADDR1 R0 (432)
+STX R1 "MCZ"
+ADDR1 R0 (448)
+STX R1 "SWAP"
+ADDR1 R0 (464)
+STX R1 "CSWAP"
+ADDR1 R0 (480)
+STX R1 "BELL"
+ADDR1 R0 (496)
+STX R1 "GHZ"
+ADDR1 R0 (512)
+STX R1 "CLUSTER"
+ADDR1 R0 (528)
+STX R1 "ESWAP"
+ADDR1 R0 (544)
+STX R1 "MEASURE"
+ADDR1 R0 (560)
+STX R1 "MEASUREIN"
+ADDR1 R0 (576)
+STX R1 "MEASUREALL"
+ADDR1 R0 (592)
+STX R1 "RESET"
+ADDR1 R0 (608)
+STX R1 "RESETALL"
+ADDR1 R0 (624)
+STX R1 "TOBASIS"
+ADDR1 R0 (640)
+STX R1 "EMIT"
+ADDR1 R0 (656)
+STX R1 "COUNT"
+ADDR1 R0 (672)
+STX R1 "DETECT"
+ADDR1 R0 (688)
+STX R1 "PARITY"
+ADDR1 R0 (704)
+STX R1 "COINCIDENCE"
+ADDR1 R0 (720)
+STX R1 "DISPLACE"
+ADDR1 R0 (736)
+STX R1 "DISPLACEREG"
+ADDR1 R0 (752)
+STX R1 "SQUEEZE"
+ADDR1 R0 (768)
+STX R1 "SQUEEZEREG"
+ADDR1 R0 (784)
+STX R1 "MODEPHASE"
+ADDR1 R0 (800)
+STX R1 "KERR"
+ADDR1 R0 (816)
+STX R1 "CROSSKERR"
+ADDR1 R0 (832)
+STX R1 "BS"
+ADDR1 R0 (848)
+STX R1 "MODESWAP"
+ADDR1 R0 (864)
+STX R1 "ADDPHOTON"
+ADDR1 R0 (880)
+STX R1 "SUBPHOTON"
+ADDR1 R0 (896)
+STX R1 "LOSS"
+ADDR1 R0 (912)
+STX R1 "FOCK"
+ADDR1 R0 (928)
+STX R1 "DISPERSIVE"
+ADDR1 R0 (944)
+STX R1 "DUMPSTATE"
+ADDR1 R0 (960)
+STX R1 "DUMPREGS"
+ADDR1 R0 (976)
+STX R1 "EXPECT"
+ADDR1 R0 (992)
+STX R1 "BELLCHECK"
+ADDR1 R0 (1008)
+STX R1 "MEANPHOTON"
+ADDR1 R0 (1024)
+STX R1 "REGSET"
+ADDR1 R0 (1040)
+STX R1 "REGCOPY"
+ADDR1 R0 (1056)
+STX R1 "ADD"
+ADDR1 R0 (1072)
+STX R1 "SUB"
+ADDR1 R0 (1088)
+STX R1 "MUL"
+ADDR1 R0 (1104)
+STX R1 "DIV"
+ADDR1 R0 (1120)
+STX R1 "ANDBITS"
+ADDR1 R0 (1136)
+STX R1 "ORBITS"
+ADDR1 R0 (1152)
+STX R1 "XORBITS"
+ADDR1 R0 (1168)
+STX R1 "SHL"
+ADDR1 R0 (1184)
+STX R1 "SHR"
+ADDR1 R0 (1200)
+STX R1 "POW"
+ADDR1 R0 (1216)
+STX R1 "SQRT"
+ADDR1 R0 (1232)
+STX R1 "EXP"
+ADDR1 R0 (1248)
+STX R1 "LOG"
+ADDR1 R0 (1264)
+STX R1 "NOTBITS"
+ADDR1 R0 (1280)
+STX R1 "SIN"
+ADDR1 R0 (1296)
+STX R1 "COS"
+ADDR1 R0 (1312)
+STX R1 "TAN"
+ADDR1 R0 (1328)
+STX R1 "RAND"
+ADDR1 R0 (1344)
+STX R1 "SEEDRNG"
+ADDR1 R0 (1360)
+STX R1 "INPUT"
+ADDR1 R0 (1376)
+STX R1 "GETTIME"
+ADDR1 R0 (1392)
+STX R1 "PUSH"
+ADDR1 R0 (1408)
+STX R1 "POP"
+ADDR1 R0 (1424)
+STX R1 "PACKBITS"
+ADDR1 R0 (1440)
+STX R1 "JUMP"
+ADDR1 R0 (1456)
+STX R1 "JUMPIFZERO"
+ADDR1 R0 (1472)
+STX R1 "JUMPIFONE"
+ADDR1 R0 (1488)
+STX R1 "IFEQ"
+ADDR1 R0 (1504)
+STX R1 "IFNE"
+ADDR1 R0 (1520)
+STX R1 "IFGT"
+ADDR1 R0 (1536)
+STX R1 "IFLT"
+ADDR1 R0 (1552)
+STX R1 "CALL"
+ADDR1 R0 (1568)
+STX R1 "RETSUB"
+ADDR1 R0 (1584)
+STX R1 "LOOPSTART"
+ADDR1 R0 (1600)
+STX R1 "LOOPEND"
+ADDR1 R0 (1616)
+STX R1 "HALT"
+ADDR1 R0 (1632)
+STX R1 "BARRIER"
+ADDR1 R0 (1648)
+STX R1 "PRINT"
+ADDR1 R0 (1664)
+STX R1 "PRINTLN"
+ADDR1 R0 (1680)
+STX R1 "PRINTF"
+ADDR1 R0 (1696)
+STX R1 "CHAROUT"
+ADDR1 R0 (1712)
+STX R1 "VERBOSELOG"
+ADDR1 R0 (1728)
+STX R1 "LOAD"
+ADDR1 R0 (1744)
+STX R1 "STORE"
+ADDR1 R0 (1760)
+STX R1 "STORETEXT"
+ADDR1 R0 (1776)
+STX R1 "GETC"
+ADDR1 R0 (1792)
+STX R1 "PUTC"
+ADDR1 R0 (1808)
+STX R1 "STREAM"
+ADDR1 R0 (1824)
+STX R1 "EXIT"
+ADDR1 R0 (1840)
+STX R1 "GETLANG"
+ADDR1 R0 (1856)
+STX R1 "ARGC"
+ADDR1 R0 (1872)
+STX R1 "ARGBYTE"
+RET
+
+; ---------------------------------------------------------------- eragiketak
+; op: eragiketa bat irakurri (eta R27 bada, idatzi). aldatzen ditu R0-R7
+op:
+SETR0 80
+SETR1 1
+C rtag
+IEQR0 (0) op.0
+IEQR0 (1) op.1
+IEQR0 (2) op.2
+IEQR0 (3) op.3
+IEQR0 (4) op.4
+IEQR0 (5) op.5
+IEQR0 (6) op.6
+IEQR0 (7) op.7
+IEQR0 (8) op.8
+IEQR0 (9) op.9
+IEQR0 (10) op.10
+IEQR0 (11) op.11
+IEQR0 (12) op.12
+IEQR0 (13) op.13
+IEQR0 (14) op.14
+IEQR0 (15) op.15
+IEQR0 (16) op.16
+IEQR0 (17) op.17
+IEQR0 (18) op.18
+IEQR0 (19) op.19
+IEQR0 (20) op.20
+IEQR0 (21) op.21
+IEQR0 (22) op.22
+IEQR0 (23) op.23
+IEQR0 (24) op.24
+IEQR0 (25) op.25
+IEQR0 (26) op.26
+IEQR0 (27) op.27
+IEQR0 (28) op.28
+IEQR0 (29) op.29
+IEQR0 (30) op.30
+IEQR0 (31) op.31
+IEQR0 (32) op.32
+IEQR0 (33) op.33
+IEQR0 (34) op.34
+IEQR0 (35) op.35
+IEQR0 (36) op.36
+IEQR0 (37) op.37
+IEQR0 (38) op.38
+IEQR0 (39) op.39
+IEQR0 (40) op.40
+IEQR0 (41) op.41
+IEQR0 (42) op.42
+IEQR0 (43) op.43
+IEQR0 (44) op.44
+IEQR0 (45) op.45
+IEQR0 (46) op.46
+IEQR0 (47) op.47
+IEQR0 (48) op.48
+IEQR0 (49) op.49
+IEQR0 (50) op.50
+IEQR0 (51) op.51
+IEQR0 (52) op.52
+IEQR0 (53) op.53
+IEQR0 (54) op.54
+IEQR0 (55) op.55
+IEQR0 (56) op.56
+IEQR0 (57) op.57
+IEQR0 (58) op.58
+IEQR0 (59) op.59
+IEQR0 (60) op.60
+IEQR0 (61) op.61
+IEQR0 (62) op.62
+IEQR0 (63) op.63
+IEQR0 (64) op.64
+IEQR0 (65) op.65
+IEQR0 (66) op.66
+IEQR0 (67) op.67
+IEQR0 (68) op.68
+IEQR0 (69) op.69
+IEQR0 (70) op.70
+IEQR0 (71) op.71
+IEQR0 (72) op.72
+IEQR0 (73) op.73
+IEQR0 (74) op.74
+IEQR0 (75) op.75
+IEQR0 (76) op.76
+IEQR0 (77) op.77
+IEQR0 (78) op.78
+IEQR0 (79) op.79
+RET
+
+op.4:
+SETR0 30
+C pname
+C fq
+C fq
+RET
+
+op.5:
+SETR0 31
+C pname
+C fqs
+RET
+
+op.6:
+SETR0 32
+C pname
+C fqs
+RET
+
+op.7:
+SETR0 33
+C pname
+C fq
+C fq
+C fq
+C fq
+RET
+
+op.9:
+SETR0 36
+C pname
+RET
+
+op.10:
+SETR0 37
+C pname
+C fq
+RET
+
+op.11:
+SETR0 38
+C pname
+RET
+
+op.12:
+SETR0 39
+C pname
+C fq
+C fbasis
+RET
+
+op.13:
+SETR0 40
+C pname
+C fq
+C fo
+RET
+
+op.14:
+SETR0 41
+C pname
+C fo
+C fdest
+RET
+
+op.15:
+SETR0 42
+C pname
+C fo
+C fdest
+RET
+
+op.16:
+SETR0 43
+C pname
+C fo
+C fdest
+RET
+
+op.17:
+SETR0 44
+C pname
+C fos
+C fdest
+RET
+
+op.18:
+SETR0 45
+C pname
+C fo
+C ff
+C ff
+RET
+
+op.19:
+SETR0 46
+C pname
+C fo
+C fr
+RET
+
+op.20:
+SETR0 47
+C pname
+C fo
+C ff
+C ff
+RET
+
+op.21:
+SETR0 48
+C pname
+C fo
+C fr
+RET
+
+op.22:
+SETR0 49
+C pname
+C fo
+C ff
+RET
+
+op.23:
+SETR0 50
+C pname
+C fo
+C ff
+RET
+
+op.24:
+SETR0 51
+C pname
+C fo
+C fo
+C ff
+RET
+
+op.25:
+SETR0 52
+C pname
+C fo
+C fo
+C ff
+C ff
+RET
+
+op.26:
+SETR0 53
+C pname
+C fo
+C fo
+RET
+
+op.27:
+SETR0 54
+C pname
+C fo
+RET
+
+op.28:
+SETR0 55
+C pname
+C fo
+RET
+
+op.29:
+SETR0 56
+C pname
+C fo
+C ff
+RET
+
+op.30:
+SETR0 57
+C pname
+C fo
+C fw
+RET
+
+op.31:
+SETR0 58
+C pname
+C fq
+C fo
+C ff
+RET
+
+op.32:
+SETR0 59
+C pname
+RET
+
+op.33:
+SETR0 60
+C pname
+RET
+
+op.34:
+SETR0 61
+C pname
+C fq
+C fbasis
+C fopt
+RET
+
+op.35:
+SETR0 62
+C pname
+C fq
+C fq
+C fopt
+RET
+
+op.36:
+SETR0 63
+C pname
+C fo
+C fopt
+RET
+
+op.37:
+SETR0 64
+C pname
+C fr
+C ff
+RET
+
+op.38:
+SETR0 65
+C pname
+C fr
+C fr
+RET
+
+op.41:
+SETR0 83
+C pname
+C fr
+RET
+
+op.42:
+SETR0 84
+C pname
+C fw64
+RET
+
+op.43:
+SETR0 85
+C pname
+C fr
+RET
+
+op.44:
+SETR0 86
+C pname
+C fr
+RET
+
+op.45:
+SETR0 87
+C pname
+C fr
+RET
+
+op.46:
+SETR0 88
+C pname
+C fr
+RET
+
+op.47:
+SETR0 89
+C pname
+C fr
+C fcs
+RET
+
+op.48:
+SETR0 90
+C pname
+C flab
+RET
+
+op.51:
+SETR0 97
+C pname
+C flab
+RET
+
+op.52:
+SETR0 98
+C pname
+RET
+
+op.53:
+SETR0 99
+C pname
+C fcount
+C fskip
+RET
+
+op.54:
+SETR0 100
+C pname
+C fskip
+RET
+
+op.55:
+SETR0 101
+C pname
+RET
+
+op.56:
+SETR0 102
+C pname
+RET
+
+op.58:
+SETR0 105
+C pname
+C ftext
+C frs
+RET
+
+op.59:
+SETR0 106
+C pname
+C fr
+RET
+
+op.60:
+SETR0 107
+C pname
+C fq
+C ftext
+RET
+
+op.61:
+SETR0 2
+C need
+SETR0 108
+C pname
+C fr
+C fr
+RET
+
+op.62:
+SETR0 2
+C need
+SETR0 109
+C pname
+C fr
+C fr
+RET
+
+op.63:
+SETR0 2
+C need
+SETR0 110
+C pname
+C fr
+C ftext
+RET
+
+op.64:
+SETR0 2
+C need
+SETR0 111
+C pname
+C fr
+RET
+
+op.65:
+SETR0 2
+C need
+SETR0 112
+C pname
+C fr
+RET
+
+op.67:
+SETR0 2
+C need
+SETR0 114
+C pname
+C fbyte
+RET
+
+op.68:
+SETR0 2
+C need
+SETR0 115
+C pname
+C fr
+RET
+
+op.69:
+SETR0 2
+C need
+SETR0 116
+C pname
+C fr
+RET
+
+op.70:
+SETR0 2
+C need
+SETR0 117
+C pname
+C fr
+C fr
+C fr
+RET
+
+op.74:
+SETR0 3
+C need
+SETR0 108
+C pname
+C fr
+C fval
+RET
+
+op.75:
+SETR0 3
+C need
+SETR0 109
+C pname
+C fval
+C fval
+RET
+
+op.76:
+SETR0 3
+C need
+SETR0 112
+C pname
+C fval
+RET
+
+op.77:
+SETR0 3
+C need
+SETR0 106
+C pname
+C fval
+RET
+
+op.78:
+SETR0 3
+C need
+SETR0 87
+C pname
+C fval
+RET
+
+op.79:
+SETR0 3
+C need
+SETR0 117
+C pname
+C fr
+C fval
+C fval
+RET
+
+op.39:
+SETR0 10
+SETR1 1
+C rtag
+RCR4 R0
+INER4 (9) op.39.n
+SETR0 2
+C need
+op.39.n:
+ADDR0 R4 (66)
+C pname
+C fr
+C fr
+C fr
+RET
+
+op.40:
+SETR0 7
+SETR1 1
+C rtag
+RCR4 R0
+ILTR4 (4) op.40.n
+IGTR4 (6) op.40.n
+SETR0 2
+C need
+op.40.n:
+ADDR0 R4 (76)
+C pname
+C fr
+C fr
+RET
+
+op.50:
+SETR0 4
+SETR1 8
+C rtag
+RCR4 R0
+ADDR0 R4 (93)
+C pname
+C fr
+C fr
+C flab
+RET
+
+op.71:
+SETR0 3
+C need
+SETR0 10
+SETR1 1
+C rtag
+RCR4 R0
+ADDR0 R4 (66)
+C pname
+C fr
+C fval
+C fval
+RET
+
+op.72:
+SETR0 3
+C need
+SETR0 7
+SETR1 1
+C rtag
+RCR4 R0
+ADDR0 R4 (76)
+C pname
+C fr
+C fval
+RET
+
+op.73:
+SETR0 3
+C need
+SETR0 4
+SETR1 8
+C rtag
+RCR4 R0
+ADDR0 R4 (93)
+C pname
+C fval
+C fval
+C flab
+RET
+
+
+; ---------------------------------------------------------------- eragiketa konplexuak (izena eremuen araberakoa)
+; op.0: Gate { q, gate }
+op.0:
+C ru32
+PUSHR0
+SETR0 15
+SETR1 2
+C rtag
+RCR4 R0
+C pname
+POPR0
+C pq
+ILTR4 (10) op.0.r
+ILTR4 (14) op.0.one
+C ff
+C ff
+op.0.one:
+C ff
+op.0.r:
+RET
+
+; listq: R8 qubit, R9-tik aurrera (u32 bakoitza) -> " q.." bakoitzeko. aldatzen ditu R0-R3
+listq:
+PUSHR9
+RCR3 R8
+listq.n:
+IEQR3 R30 listq.r
+RCR0 R9
+C u32at
+C pq
+ADDR9 R9 (4)
+SUBR3 R3 R31
+J listq.n
+listq.r:
+POPR9
+RET
+
+; skipv: u32 zerrenda bat jauzi -> R8 kopurua, R9 lehen elementuaren helbidea. aldatzen ditu R0-R4
+skipv:
+SETR0 4
+C rlen
+RCR8 R0
+LDR9 (5)
+MULR0 R0 (4)
+ADDR1 R9 R0
+ST R1 (5)
+RET
+
+; op.1: Controlled { controls, q, gate }: CNOT, CY, CH, CSX, CU, CRX, CRY, CRZ, CCX, MCX
+op.1:
+PUSHR8
+PUSHR9
+PUSHR10
+PUSHR11
+C skipv
+C ru32
+RCR10 R0
+SETR0 15
+SETR1 2
+C rtag
+RCR11 R0
+ILTR11 (10) op.1.np
+ILTR11 (14) op.1.p1
+C rf64
+ST R0 (30)
+ST R1 (31)
+C rf64
+ST R0 (32)
+ST R1 (33)
+C rf64
+ST R0 (34)
+ST R1 (35)
+J op.1.np
+op.1.p1:
+C rf64
+ST R0 (30)
+ST R1 (31)
+op.1.np:
+IEQR8 R31 op.1.one
+INER11 R31 op.1.bad
+IEQR8 R30 op.1.bad
+SETR0 24
+INER8 (2) op.1.many
+SETR0 23
+op.1.many:
+C pname
+C listq
+RCR0 R10
+C pq
+J op.1.done
+op.1.one:
+SETR0 15
+IEQR11 (1) op.1.n
+SETR0 16
+IEQR11 (2) op.1.n
+SETR0 17
+IEQR11 (0) op.1.n
+SETR0 18
+IEQR11 (8) op.1.n
+SETR0 19
+IEQR11 (14) op.1.n
+SETR0 20
+IEQR11 (10) op.1.n
+SETR0 21
+IEQR11 (11) op.1.n
+SETR0 22
+IEQR11 (12) op.1.n
+J op.1.bad
+op.1.n:
+C pname
+C listq
+RCR0 R10
+C pq
+ILTR11 (10) op.1.done
+LDR0 (30)
+LDR1 (31)
+C pnum
+INER11 (14) op.1.done
+LDR0 (32)
+LDR1 (33)
+C pnum
+LDR0 (34)
+LDR1 (35)
+C pnum
+J op.1.done
+op.1.bad:
+SETR0 1
+C bad
+op.1.done:
+POPR11
+POPR10
+POPR9
+POPR8
+RET
+
+; op.2: PhaseAll { qubits, theta }: CZ (π), CPHASE, MCZ (π)
+op.2:
+PUSHR8
+PUSHR9
+C skipv
+C rf64
+ST R0 (30)
+ST R1 (31)
+INER8 (2) op.2.many
+SETR0 25
+LDR1 (30)
+IEQR1 (3.141592653589793) op.2.two
+SETR0 26
+op.2.two:
+C pname
+C listq
+LDR0 (30)
+IEQR0 (3.141592653589793) op.2.done
+LDR1 (31)
+C pnum
+J op.2.done
+op.2.many:
+IEQR8 R30 op.2.bad
+LDR1 (30)
+INER1 (3.141592653589793) op.2.bad
+SETR0 27
+C pname
+C listq
+J op.2.done
+op.2.bad:
+SETR0 2
+C bad
+op.2.done:
+POPR9
+POPR8
+RET
+
+; op.3: Swap { a, b, controls }: SWAP, CSWAP
+op.3:
+PUSHR8
+PUSHR9
+PUSHR10
+PUSHR11
+C ru32
+RCR10 R0
+C ru32
+RCR11 R0
+C skipv
+IEQR8 R30 op.3.swap
+INER8 R31 op.3.bad
+SETR0 29
+C pname
+C listq
+J op.3.ab
+op.3.swap:
+SETR0 28
+C pname
+op.3.ab:
+RCR0 R10
+C pq
+RCR0 R11
+C pq
+J op.3.done
+op.3.bad:
+SETR0 3
+C bad
+op.3.done:
+POPR11
+POPR10
+POPR9
+POPR8
+RET
+
+; op.8: Measure { q, basis, dest }: MEASURE (Z) edo MEASUREIN
+op.8:
+C ru32
+PUSHR0
+SETR0 3
+SETR1 3
+C rtag
+RCR4 R0
+SETR0 34
+IEQR4 (2) op.8.z
+SETR0 35
+op.8.z:
+C pname
+POPR0
+C pq
+IEQR4 (2) op.8.d
+IEQR27 R30 op.8.d
+PRINT " "
+ADDR0 R4 R31
+C pname
+op.8.d:
+J fdest
+
+; op.49: JumpIf { src, value, to }: JUMPIFZERO, JUMPIFONE
+op.49:
+PUSHR8
+PUSHR9
+SETR0 2
+SETR1 5
+C rtag
+RCR8 R0
+C ru32
+RCR9 R0
+C rf64
+ST R0 (30)
+C ru64
+ST R0 (31)
+LDR1 (30)
+SETR0 91
+IEQR1 R30 op.49.n
+SETR0 92
+IEQR1 R31 op.49.n
+SETR0 4
+C bad
+J op.49.done
+op.49.n:
+C pname
+RCR0 R9
+IEQR8 R30 op.49.reg
+C pc
+J op.49.l
+op.49.reg:
+C pr
+op.49.l:
+LDR0 (31)
+C plab
+op.49.done:
+POPR9
+POPR8
+RET
+
+; op.57: Print { text, newline }: PRINT, PRINTLN
+op.57:
+C rstr
+PUSHR0
+PUSHR1
+C rbool
+SETR2 103
+IEQR0 R30 op.57.n
+SETR2 104
+op.57.n:
+RCR0 R2
+C pname
+POPR1
+POPR0
+J ptext
+
+; op.66: Stream { stderr }: STREAM 1 edo 2
+op.66:
+SETR0 2
+C need
+C rbool
+PUSHR0
+SETR0 113
+C pname
+POPR0
+ADDR0 R0 R31
+J pword
+
+; fskip: usize bat irakurri, ezer idatzi gabe (LOOPSTART-en amaiera, LOOPEND-en hasiera). aldatzen ditu R0-R4
+fskip:
+J ru64
+
+; fbyte: u8 bat zenbaki gisa (EXIT). aldatzen ditu R0-R2
+fbyte:
+C rb
+J pword
+
+; ---------------------------------------------------------------- programa
+; body: programaren eremuak eta eragiketak (lehen pasaldia, idatzi gabe): hasierak, jauzi-helburuak eta
+; c-tokenak. gero lerroak, soberako byteak, testu-formarik gabeko eragiketak eta bertsioa
+body:
+C rstr
+ST R0 (15)
+ST R1 (16)
+C ru32
+ST R0 (11)
+C ru32
+ST R0 (12)
+C ru32
+ST R0 (13)
+C rbool
+C ru32
+ST R0 (14)
+SETR0 4
+C rlen
+ST R0 (9)
+RCR8 R0
+C alloc
+ST R0 (8)
+ADDR0 R8 R31
+C alloc
+ST R0 (10)
+SETR27 0
+SETR9 0
+body.op:
+IEQR9 R8 body.lines
+ST R9 (20)
+LDR0 (8)
+ADDR0 R0 R9
+LDR1 (5)
+STR1 R0
+C op
+ADDR9 R9 R31
+J body.op
+body.lines:
+SETR0 4
+C rlen
+RCR8 R0
+body.l:
+IEQR8 R30 body.end
+C ru32
+SUBR8 R8 R31
+J body.l
+body.end:
+LDR0 (5)
+LDR1 (6)
+IEQR0 R1 body.bad
+SUBR1 R1 R0
+SETR0 12
+J fail
+body.bad:
+LDR0 (21)
+IEQR0 R30 body.nan
+SUBR1 R0 R31
+LDR2 (22)
+SETR0 14
+J fail
+body.nan:
+LDR0 (23)
+IEQR0 R30 body.version
+SUBR1 R0 R31
+SETR0 16
+J fail
+body.version:
+LDR0 (7)
+ILTR0 R25 body.old
+RET
+body.old:
+RCR1 R0
+RCR2 R25
+SETR0 15
+J fail
+
+; printall: goiburua, behar bada CREG lerroa, eta eragiketa bakoitza bere etiketarekin (bigarren pasaldia)
+printall:
+SETR27 1
+LDR0 (11)
+IEQR0 R30 printall.m
+PF "QINIT {}\n" R0
+printall.m:
+LDR0 (12)
+IEQR0 R30 printall.b
+LDR1 (13)
+PF "QMODE {} {}\n" R0 R1
+printall.b:
+; adierazitako bitak eragiketek erakusten dituztenak baino gehiago badira: CREG bits N
+LDR0 (14)
+IEQR0 R30 printall.ops
+LDR1 (11)
+ADDR2 R26 R31
+IGTR1 R2 printall.k
+RCR1 R2
+printall.k:
+IEQR0 R1 printall.ops
+PF "CREG bits {}\n" R0
+printall.ops:
+LDR8 (9)
+SETR9 0
+printall.op:
+IEQR9 R8 printall.end
+LDR0 (10)
+ADDR0 R0 R9
+LDR0 R0
+IEQR0 R30 printall.nolab
+RCR0 R9
+C plabel
+printall.nolab:
+LDR0 (8)
+ADDR0 R0 R9
+LDR0 R0
+ST R0 (5)
+ST R9 (20)
+C op
+PUTC (10)
+ADDR9 R9 R31
+J printall.op
+printall.end:
+LDR0 (10)
+ADDR0 R0 R8
+LDR0 R0
+IEQR0 R30 printall.done
+RCR0 R8
+C plabel
+printall.done:
+; programa hutsa: qoa-k lerro huts bat idazten du
+LDR0 (11)
+LDR1 (12)
+ADDR0 R0 R1
+LDR1 (14)
+ADDR0 R0 R1
+ADDR0 R0 R8
+INER0 R30 printall.r
+PUTC (10)
+printall.r:
+RET
+
+; ---------------------------------------------------------------- erroreak
+; fail: R0 = errorea, R1 eta R2 xehetasunak -> "error: FITXATEGIA: mezua" errore-irteerara, eta EXIT 1.
+; qoa-ren mezu berberak (src/program.rs, src/qx.rs eta src/disasm.rs)
+fail:
+RCR8 R0
+RCR9 R1
+RCR10 R2
+STREAM 2
+IEQR28 R31 fail.eu
+PRINT "error: "
+J fail.name
+fail.eu:
+PRINT "errorea: "
+fail.name:
+C printname
+PRINT ": "
+ILTR8 (5) fail.plain
+IEQR8 (5) fail.plain
+IEQR8 (6) fail.plain
+IEQR28 R31 fail.peu
+PRINT "corrupt QOA binary: "
+J fail.plain
+fail.peu:
+PRINT "QOA bitar hondatua: "
+fail.plain:
+IEQR28 R31 fail.msgeu
+IEQR8 (1) fail.e1
+IEQR8 (2) fail.e2
+IEQR8 (3) fail.e3
+IEQR8 (4) fail.e4
+IEQR8 (5) fail.e5
+IEQR8 (6) fail.e6
+IEQR8 (7) fail.e7
+IEQR8 (8) fail.e8
+IEQR8 (9) fail.e9
+IEQR8 (10) fail.e10
+IEQR8 (11) fail.e11
+IEQR8 (12) fail.e12
+IEQR8 (14) fail.e14
+IEQR8 (15) fail.e15
+PRINT "operation 0x"
+RCR0 R9
+C phex
+PRINT " holds a number that is not finite"
+J fail.end
+fail.e1:
+PRINT "the file is too short to be a QOA binary"
+J fail.end
+fail.e2:
+PRINT "this binary was built by QOA 0.3.x, whose format is not supported; recompile the .qoa source with `qoa compile`"
+J fail.end
+fail.e3:
+PRINT "not a QOA binary (the QOAX header is missing)"
+J fail.end
+fail.e4:
+PF "binary format version {} is not supported by this QOA (it reads versions 1 to 4)" R9
+J fail.end
+fail.e5:
+PRINT "corrupt QOA binary: the file ends before its SHA-256 checksum"
+J fail.end
+fail.e6:
+PRINT "corrupt QOA binary: its SHA-256 checksum does not match, so the file was changed or damaged after it was written; build it again from its source"
+J fail.end
+fail.e7:
+PRINT "the file ends in the middle of the program"
+J fail.end
+fail.e8:
+PF "a list of {} items does not fit in the rest of the file" R9
+J fail.end
+fail.e9:
+PRINT "unknown "
+C what
+PF " (number {})" R10
+J fail.end
+fail.e10:
+PF "{} where only 0 or 1 fits" R9
+J fail.end
+fail.e11:
+PRINT "a text that is not valid UTF-8"
+J fail.end
+fail.e12:
+PF "{} unexpected bytes after the program" R9
+J fail.end
+fail.e14:
+PRINT "operation 0x"
+RCR0 R9
+C phex
+PRINT " ("
+C kind
+PRINT ") has no QOA text form"
+J fail.end
+fail.e15:
+SETR0 2
+IEQR10 (2) fail.e15r
+SETR0 3
+fail.e15r:
+IEQR0 (2) fail.e15a
+PF "version {} cannot hold QOA 0.4.4 instructions" R9
+J fail.end
+fail.e15a:
+PF "version {} cannot hold QOA 0.4.3 instructions" R9
+J fail.end
+fail.msgeu:
+IEQR8 (1) fail.u1
+IEQR8 (2) fail.u2
+IEQR8 (3) fail.u3
+IEQR8 (4) fail.u4
+IEQR8 (5) fail.u5
+IEQR8 (6) fail.u6
+IEQR8 (7) fail.u7
+IEQR8 (8) fail.u8
+IEQR8 (9) fail.u9
+IEQR8 (10) fail.u10
+IEQR8 (11) fail.u11
+IEQR8 (12) fail.u12
+IEQR8 (14) fail.u14
+IEQR8 (15) fail.u15
+PRINT "0x"
+RCR0 R9
+C phex
+PRINT " eragiketak zenbaki ez-finitu bat du"
+J fail.end
+fail.u1:
+PRINT "fitxategia laburregia da QOA bitar bat izateko"
+J fail.end
+fail.u2:
+PRINT "bitar hau QOA 0.3.x-ek sortu zuen, eta haren formatua ez da onartzen; konpilatu berriz .qoa iturburua `qoa compile`-rekin"
+J fail.end
+fail.u3:
+PRINT "ez da QOA bitar bat (QOAX goiburua falta da)"
+J fail.end
+fail.u4:
+PF "{}. bertsioko formatu bitarra ez du QOA honek onartzen (1. bertsiotik 4.era irakurtzen ditu)" R9
+J fail.end
+fail.u5:
+PRINT "QOA bitar hondatua: fitxategia bere SHA-256 laburpena baino lehen amaitzen da"
+J fail.end
+fail.u6:
+PRINT "QOA bitar hondatua: haren SHA-256 laburpena ez dator bat, beraz fitxategia idatzi ondoren aldatu edo hondatu da; eraiki berriz bere iturburutik"
+J fail.end
+fail.u7:
+PRINT "fitxategia programaren erdian amaitzen da"
+J fail.end
+fail.u8:
+PF "{} elementuko zerrenda bat ez da fitxategiaren gainerakoan sartzen" R9
+J fail.end
+fail.u9:
+C what
+PF " ezezaguna ({}. zenbakia)" R10
+J fail.end
+fail.u10:
+PF "{} 0 edo 1 bakarrik doan lekuan" R9
+J fail.end
+fail.u11:
+PRINT "utf-8 baliozkoa ez den testu bat"
+J fail.end
+fail.u12:
+PF "{} byte espero gabe programaren ondoren" R9
+J fail.end
+fail.u14:
+PRINT "0x"
+RCR0 R9
+C phex
+PRINT " eragiketak ("
+C kind
+PRINT ") ez du QOA testu-formarik"
+J fail.end
+fail.u15:
+SETR0 2
+IEQR10 (2) fail.u15r
+SETR0 3
+fail.u15r:
+IEQR0 (2) fail.u15a
+PF "{}. bertsioak ezin ditu QOA 0.4.4-ko aginduak izan" R9
+J fail.end
+fail.u15a:
+PF "{}. bertsioak ezin ditu QOA 0.4.3-ko aginduak izan" R9
+fail.end:
+PUTC (10)
+EXIT 1
+
+; what: R9 = zer den (rtag-en R1) -> haren izena. aldatzen ditu R0
+what:
+IEQR28 R31 what.eu
+IEQR9 (2) what.gate
+IEQR9 (3) what.basis
+IEQR9 (4) what.dest
+IEQR9 (5) what.source
+IEQR9 (6) what.count
+IEQR9 (7) what.value
+IEQR9 (8) what.cmp
+PRINT "operation"
+RET
+what.gate:
+PRINT "gate"
+RET
+what.basis:
+PRINT "basis"
+RET
+what.dest:
+PRINT "destination"
+RET
+what.source:
+PRINT "source"
+RET
+what.count:
+PRINT "count"
+RET
+what.value:
+PRINT "value"
+RET
+what.cmp:
+PRINT "comparison"
+RET
+what.eu:
+IEQR9 (2) what.ugate
+IEQR9 (3) what.ubasis
+IEQR9 (4) what.udest
+IEQR9 (5) what.usource
+IEQR9 (6) what.ucount
+IEQR9 (7) what.uvalue
+IEQR9 (8) what.ucmp
+PRINT "eragiketa"
+RET
+what.ugate:
+PRINT "ate"
+RET
+what.ubasis:
+PRINT "oinarri"
+RET
+what.udest:
+PRINT "helburu"
+RET
+what.usource:
+PRINT "iturri"
+RET
+what.ucount:
+PRINT "kopuru"
+RET
+what.uvalue:
+PRINT "balio"
+RET
+what.ucmp:
+PRINT "konparazio"
+RET
+
+; kind: R10 = testu-formarik gabeko eragiketaren mota -> haren izena. aldatzen ditu R0
+kind:
+IEQR28 R31 kind.eu
+IEQR10 (1) kind.ctl
+IEQR10 (2) kind.ph
+IEQR10 (3) kind.sw
+PRINT "jump on a value"
+RET
+kind.ctl:
+PRINT "controlled gate"
+RET
+kind.ph:
+PRINT "multi-qubit phase"
+RET
+kind.sw:
+PRINT "multi-controlled swap"
+RET
+kind.eu:
+IEQR10 (1) kind.uctl
+IEQR10 (2) kind.uph
+IEQR10 (3) kind.usw
+PRINT "balio baten araberako jauzia"
+RET
+kind.uctl:
+PRINT "ate kontrolatua"
+RET
+kind.uph:
+PRINT "qubit anitzeko fasea"
+RET
+kind.usw:
+PRINT "kontrol anitzeko trukaketa"
+RET
+
+; ---------------------------------------------------------------- SHA-256 (FIPS 180-4)
+; src/sha256.rs bezala: .qx-aren amaierako laburpena eta iturburuen SEAL lerroa. hitzak 0..2^32-1 artean
+; gordetzen dira; bit-eragiketak 64 biteko osoetan egiten dira, eta tarteko balio guztiak 2^53 azpitik daude,
+; beraz zehatzak dira. egoera (96. gelaxkak adierazten du, 216 gelaxka): 0-7 H, 8 byte-kopurua guztira,
+; 9 blokean dauden byteak, 16-79 blokea, 80-143 W, 144-207 K, 208 zigiluaren laburpenaren helbidea
+
+; sha.init: laburpen berri bat hasi. aldatzen ditu R0-R3
+sha.init:
+SETR0 96
+LDR1 R0
+INER1 R30 sha.init.h
+SETR0 216
+C alloc
+RCR1 R0
+SETR0 96
+STR1 R0
+ADDR2 R1 (144)
+ST (1116352408) R2
+ADDR2 R2 R31
+ST (1899447441) R2
+ADDR2 R2 R31
+ST (3049323471) R2
+ADDR2 R2 R31
+ST (3921009573) R2
+ADDR2 R2 R31
+ST (961987163) R2
+ADDR2 R2 R31
+ST (1508970993) R2
+ADDR2 R2 R31
+ST (2453635748) R2
+ADDR2 R2 R31
+ST (2870763221) R2
+ADDR2 R2 R31
+ST (3624381080) R2
+ADDR2 R2 R31
+ST (310598401) R2
+ADDR2 R2 R31
+ST (607225278) R2
+ADDR2 R2 R31
+ST (1426881987) R2
+ADDR2 R2 R31
+ST (1925078388) R2
+ADDR2 R2 R31
+ST (2162078206) R2
+ADDR2 R2 R31
+ST (2614888103) R2
+ADDR2 R2 R31
+ST (3248222580) R2
+ADDR2 R2 R31
+ST (3835390401) R2
+ADDR2 R2 R31
+ST (4022224774) R2
+ADDR2 R2 R31
+ST (264347078) R2
+ADDR2 R2 R31
+ST (604807628) R2
+ADDR2 R2 R31
+ST (770255983) R2
+ADDR2 R2 R31
+ST (1249150122) R2
+ADDR2 R2 R31
+ST (1555081692) R2
+ADDR2 R2 R31
+ST (1996064986) R2
+ADDR2 R2 R31
+ST (2554220882) R2
+ADDR2 R2 R31
+ST (2821834349) R2
+ADDR2 R2 R31
+ST (2952996808) R2
+ADDR2 R2 R31
+ST (3210313671) R2
+ADDR2 R2 R31
+ST (3336571891) R2
+ADDR2 R2 R31
+ST (3584528711) R2
+ADDR2 R2 R31
+ST (113926993) R2
+ADDR2 R2 R31
+ST (338241895) R2
+ADDR2 R2 R31
+ST (666307205) R2
+ADDR2 R2 R31
+ST (773529912) R2
+ADDR2 R2 R31
+ST (1294757372) R2
+ADDR2 R2 R31
+ST (1396182291) R2
+ADDR2 R2 R31
+ST (1695183700) R2
+ADDR2 R2 R31
+ST (1986661051) R2
+ADDR2 R2 R31
+ST (2177026350) R2
+ADDR2 R2 R31
+ST (2456956037) R2
+ADDR2 R2 R31
+ST (2730485921) R2
+ADDR2 R2 R31
+ST (2820302411) R2
+ADDR2 R2 R31
+ST (3259730800) R2
+ADDR2 R2 R31
+ST (3345764771) R2
+ADDR2 R2 R31
+ST (3516065817) R2
+ADDR2 R2 R31
+ST (3600352804) R2
+ADDR2 R2 R31
+ST (4094571909) R2
+ADDR2 R2 R31
+ST (275423344) R2
+ADDR2 R2 R31
+ST (430227734) R2
+ADDR2 R2 R31
+ST (506948616) R2
+ADDR2 R2 R31
+ST (659060556) R2
+ADDR2 R2 R31
+ST (883997877) R2
+ADDR2 R2 R31
+ST (958139571) R2
+ADDR2 R2 R31
+ST (1322822218) R2
+ADDR2 R2 R31
+ST (1537002063) R2
+ADDR2 R2 R31
+ST (1747873779) R2
+ADDR2 R2 R31
+ST (1955562222) R2
+ADDR2 R2 R31
+ST (2024104815) R2
+ADDR2 R2 R31
+ST (2227730452) R2
+ADDR2 R2 R31
+ST (2361852424) R2
+ADDR2 R2 R31
+ST (2428436474) R2
+ADDR2 R2 R31
+ST (2756734187) R2
+ADDR2 R2 R31
+ST (3204031479) R2
+ADDR2 R2 R31
+ST (3329325298) R2
+ADDR2 R2 R31
+sha.init.h:
+RCR2 R1
+ST (1779033703) R2
+ADDR2 R2 R31
+ST (3144134277) R2
+ADDR2 R2 R31
+ST (1013904242) R2
+ADDR2 R2 R31
+ST (2773480762) R2
+ADDR2 R2 R31
+ST (1359893119) R2
+ADDR2 R2 R31
+ST (2600822924) R2
+ADDR2 R2 R31
+ST (528734635) R2
+ADDR2 R2 R31
+ST (1541459225) R2
+ADDR2 R2 R31
+ST (0) R2
+ADDR2 R2 R31
+ST (0) R2
+RET
+
+; sha.byte: R0 = byte bat laburpenera. R0 bakarrik aldatzen du
+sha.byte:
+PUSHR1
+PUSHR2
+PUSHR3
+SETR1 96
+LDR1 R1
+ADDR2 R1 (9)
+LDR2 R2
+ADDR2 R2 R1
+ADDR2 R2 (16)
+STR0 R2
+ADDR2 R1 (8)
+LDR0 R2
+ADDR0 R0 R31
+STR0 R2
+ADDR2 R1 (9)
+LDR0 R2
+ADDR0 R0 R31
+STR0 R2
+ILTR0 (64) sha.byte.done
+ST (0) R2
+C sha.block
+sha.byte.done:
+POPR3
+POPR2
+POPR1
+RET
+
+; sha.block: 64 byteko blokea egoerara. aldatzen ditu R0-R3
+sha.block:
+PUSHR8
+PUSHR9
+PUSHR10
+PUSHR11
+PUSHR12
+PUSHR13
+PUSHR14
+PUSHR15
+PUSHR16
+PUSHR17
+PUSHR18
+PUSHR19
+PUSHR20
+SETR0 96
+LDR20 R0
+; W[0..15]: blokeko byteak big-endian
+ADDR16 R20 (16)
+ADDR17 R20 (80)
+SETR18 0
+sha.block.w:
+LDR0 R16
+SHLR0 R0 (24)
+ADDR1 R16 R31
+LDR1 R1
+SHLR1 R1 (16)
+ORR0 R0 R1
+ADDR1 R16 (2)
+LDR1 R1
+SHLR1 R1 (8)
+ORR0 R0 R1
+ADDR1 R16 (3)
+LDR1 R1
+ORR0 R0 R1
+STR0 R17
+ADDR16 R16 (4)
+ADDR17 R17 R31
+ADDR18 R18 R31
+ILTR18 (16) sha.block.w
+; W[16..63] = s1(W[t-2]) + W[t-7] + s0(W[t-15]) + W[t-16]
+sha.block.x:
+SUBR3 R17 (15)
+LDR3 R3
+SHRR2 R3 (7)
+ANDR1 R3 (127)
+SHLR1 R1 (25)
+XORR2 R2 R1
+SHRR1 R3 (18)
+XORR2 R2 R1
+ANDR1 R3 (262143)
+SHLR1 R1 (14)
+XORR2 R2 R1
+SHRR1 R3 (3)
+XORR2 R2 R1
+SUBR3 R17 (2)
+LDR3 R3
+SHRR0 R3 (17)
+ANDR1 R3 (131071)
+SHLR1 R1 (15)
+XORR0 R0 R1
+SHRR1 R3 (19)
+XORR0 R0 R1
+ANDR1 R3 (524287)
+SHLR1 R1 (13)
+XORR0 R0 R1
+SHRR1 R3 (10)
+XORR0 R0 R1
+ADDR0 R0 R2
+SUBR1 R17 (7)
+LDR1 R1
+ADDR0 R0 R1
+SUBR1 R17 (16)
+LDR1 R1
+ADDR0 R0 R1
+ANDR0 R0 (4294967295)
+STR0 R17
+ADDR17 R17 R31
+ADDR18 R18 R31
+ILTR18 (64) sha.block.x
+; a..h = R8..R15; zortzi txandako taldeak, erregistroen rolak txandaka biratuta (kopiarik gabe)
+RCR0 R20
+LDR8 R0
+ADDR0 R0 R31
+LDR9 R0
+ADDR0 R0 R31
+LDR10 R0
+ADDR0 R0 R31
+LDR11 R0
+ADDR0 R0 R31
+LDR12 R0
+ADDR0 R0 R31
+LDR13 R0
+ADDR0 R0 R31
+LDR14 R0
+ADDR0 R0 R31
+LDR15 R0
+; R17 = &W[i] (K[i] 64 gelaxka aurrerago), R18 = W-ren amaiera
+ADDR17 R20 (80)
+ADDR18 R20 (144)
+sha.block.round:
+; 0. txanda: a=R8 e=R12
+SHRR0 R12 (6)
+ANDR1 R12 (63)
+SHLR1 R1 (26)
+XORR0 R0 R1
+SHRR1 R12 (11)
+XORR0 R0 R1
+ANDR1 R12 (2047)
+SHLR1 R1 (21)
+XORR0 R0 R1
+SHRR1 R12 (25)
+XORR0 R0 R1
+ANDR1 R12 (33554431)
+SHLR1 R1 (7)
+XORR0 R0 R1
+XORR1 R13 R14
+ANDR1 R1 R12
+XORR1 R1 R14
+ADDR0 R0 R1
+ADDR0 R0 R15
+LDR1 R17
+ADDR0 R0 R1
+ADDR1 R17 (64)
+LDR1 R1
+ADDR0 R0 R1
+SHRR2 R8 (2)
+ANDR1 R8 (3)
+SHLR1 R1 (30)
+XORR2 R2 R1
+SHRR1 R8 (13)
+XORR2 R2 R1
+ANDR1 R8 (8191)
+SHLR1 R1 (19)
+XORR2 R2 R1
+SHRR1 R8 (22)
+XORR2 R2 R1
+ANDR1 R8 (4194303)
+SHLR1 R1 (10)
+XORR2 R2 R1
+ANDR1 R8 R9
+ORR3 R8 R9
+ANDR3 R3 R10
+ORR1 R1 R3
+ADDR2 R2 R1
+ADDR11 R11 R0
+ANDR11 R11 (4294967295)
+ADDR15 R0 R2
+ANDR15 R15 (4294967295)
+ADDR17 R17 R31
+; 1. txanda: a=R15 e=R11
+SHRR0 R11 (6)
+ANDR1 R11 (63)
+SHLR1 R1 (26)
+XORR0 R0 R1
+SHRR1 R11 (11)
+XORR0 R0 R1
+ANDR1 R11 (2047)
+SHLR1 R1 (21)
+XORR0 R0 R1
+SHRR1 R11 (25)
+XORR0 R0 R1
+ANDR1 R11 (33554431)
+SHLR1 R1 (7)
+XORR0 R0 R1
+XORR1 R12 R13
+ANDR1 R1 R11
+XORR1 R1 R13
+ADDR0 R0 R1
+ADDR0 R0 R14
+LDR1 R17
+ADDR0 R0 R1
+ADDR1 R17 (64)
+LDR1 R1
+ADDR0 R0 R1
+SHRR2 R15 (2)
+ANDR1 R15 (3)
+SHLR1 R1 (30)
+XORR2 R2 R1
+SHRR1 R15 (13)
+XORR2 R2 R1
+ANDR1 R15 (8191)
+SHLR1 R1 (19)
+XORR2 R2 R1
+SHRR1 R15 (22)
+XORR2 R2 R1
+ANDR1 R15 (4194303)
+SHLR1 R1 (10)
+XORR2 R2 R1
+ANDR1 R15 R8
+ORR3 R15 R8
+ANDR3 R3 R9
+ORR1 R1 R3
+ADDR2 R2 R1
+ADDR10 R10 R0
+ANDR10 R10 (4294967295)
+ADDR14 R0 R2
+ANDR14 R14 (4294967295)
+ADDR17 R17 R31
+; 2. txanda: a=R14 e=R10
+SHRR0 R10 (6)
+ANDR1 R10 (63)
+SHLR1 R1 (26)
+XORR0 R0 R1
+SHRR1 R10 (11)
+XORR0 R0 R1
+ANDR1 R10 (2047)
+SHLR1 R1 (21)
+XORR0 R0 R1
+SHRR1 R10 (25)
+XORR0 R0 R1
+ANDR1 R10 (33554431)
+SHLR1 R1 (7)
+XORR0 R0 R1
+XORR1 R11 R12
+ANDR1 R1 R10
+XORR1 R1 R12
+ADDR0 R0 R1
+ADDR0 R0 R13
+LDR1 R17
+ADDR0 R0 R1
+ADDR1 R17 (64)
+LDR1 R1
+ADDR0 R0 R1
+SHRR2 R14 (2)
+ANDR1 R14 (3)
+SHLR1 R1 (30)
+XORR2 R2 R1
+SHRR1 R14 (13)
+XORR2 R2 R1
+ANDR1 R14 (8191)
+SHLR1 R1 (19)
+XORR2 R2 R1
+SHRR1 R14 (22)
+XORR2 R2 R1
+ANDR1 R14 (4194303)
+SHLR1 R1 (10)
+XORR2 R2 R1
+ANDR1 R14 R15
+ORR3 R14 R15
+ANDR3 R3 R8
+ORR1 R1 R3
+ADDR2 R2 R1
+ADDR9 R9 R0
+ANDR9 R9 (4294967295)
+ADDR13 R0 R2
+ANDR13 R13 (4294967295)
+ADDR17 R17 R31
+; 3. txanda: a=R13 e=R9
+SHRR0 R9 (6)
+ANDR1 R9 (63)
+SHLR1 R1 (26)
+XORR0 R0 R1
+SHRR1 R9 (11)
+XORR0 R0 R1
+ANDR1 R9 (2047)
+SHLR1 R1 (21)
+XORR0 R0 R1
+SHRR1 R9 (25)
+XORR0 R0 R1
+ANDR1 R9 (33554431)
+SHLR1 R1 (7)
+XORR0 R0 R1
+XORR1 R10 R11
+ANDR1 R1 R9
+XORR1 R1 R11
+ADDR0 R0 R1
+ADDR0 R0 R12
+LDR1 R17
+ADDR0 R0 R1
+ADDR1 R17 (64)
+LDR1 R1
+ADDR0 R0 R1
+SHRR2 R13 (2)
+ANDR1 R13 (3)
+SHLR1 R1 (30)
+XORR2 R2 R1
+SHRR1 R13 (13)
+XORR2 R2 R1
+ANDR1 R13 (8191)
+SHLR1 R1 (19)
+XORR2 R2 R1
+SHRR1 R13 (22)
+XORR2 R2 R1
+ANDR1 R13 (4194303)
+SHLR1 R1 (10)
+XORR2 R2 R1
+ANDR1 R13 R14
+ORR3 R13 R14
+ANDR3 R3 R15
+ORR1 R1 R3
+ADDR2 R2 R1
+ADDR8 R8 R0
+ANDR8 R8 (4294967295)
+ADDR12 R0 R2
+ANDR12 R12 (4294967295)
+ADDR17 R17 R31
+; 4. txanda: a=R12 e=R8
+SHRR0 R8 (6)
+ANDR1 R8 (63)
+SHLR1 R1 (26)
+XORR0 R0 R1
+SHRR1 R8 (11)
+XORR0 R0 R1
+ANDR1 R8 (2047)
+SHLR1 R1 (21)
+XORR0 R0 R1
+SHRR1 R8 (25)
+XORR0 R0 R1
+ANDR1 R8 (33554431)
+SHLR1 R1 (7)
+XORR0 R0 R1
+XORR1 R9 R10
+ANDR1 R1 R8
+XORR1 R1 R10
+ADDR0 R0 R1
+ADDR0 R0 R11
+LDR1 R17
+ADDR0 R0 R1
+ADDR1 R17 (64)
+LDR1 R1
+ADDR0 R0 R1
+SHRR2 R12 (2)
+ANDR1 R12 (3)
+SHLR1 R1 (30)
+XORR2 R2 R1
+SHRR1 R12 (13)
+XORR2 R2 R1
+ANDR1 R12 (8191)
+SHLR1 R1 (19)
+XORR2 R2 R1
+SHRR1 R12 (22)
+XORR2 R2 R1
+ANDR1 R12 (4194303)
+SHLR1 R1 (10)
+XORR2 R2 R1
+ANDR1 R12 R13
+ORR3 R12 R13
+ANDR3 R3 R14
+ORR1 R1 R3
+ADDR2 R2 R1
+ADDR15 R15 R0
+ANDR15 R15 (4294967295)
+ADDR11 R0 R2
+ANDR11 R11 (4294967295)
+ADDR17 R17 R31
+; 5. txanda: a=R11 e=R15
+SHRR0 R15 (6)
+ANDR1 R15 (63)
+SHLR1 R1 (26)
+XORR0 R0 R1
+SHRR1 R15 (11)
+XORR0 R0 R1
+ANDR1 R15 (2047)
+SHLR1 R1 (21)
+XORR0 R0 R1
+SHRR1 R15 (25)
+XORR0 R0 R1
+ANDR1 R15 (33554431)
+SHLR1 R1 (7)
+XORR0 R0 R1
+XORR1 R8 R9
+ANDR1 R1 R15
+XORR1 R1 R9
+ADDR0 R0 R1
+ADDR0 R0 R10
+LDR1 R17
+ADDR0 R0 R1
+ADDR1 R17 (64)
+LDR1 R1
+ADDR0 R0 R1
+SHRR2 R11 (2)
+ANDR1 R11 (3)
+SHLR1 R1 (30)
+XORR2 R2 R1
+SHRR1 R11 (13)
+XORR2 R2 R1
+ANDR1 R11 (8191)
+SHLR1 R1 (19)
+XORR2 R2 R1
+SHRR1 R11 (22)
+XORR2 R2 R1
+ANDR1 R11 (4194303)
+SHLR1 R1 (10)
+XORR2 R2 R1
+ANDR1 R11 R12
+ORR3 R11 R12
+ANDR3 R3 R13
+ORR1 R1 R3
+ADDR2 R2 R1
+ADDR14 R14 R0
+ANDR14 R14 (4294967295)
+ADDR10 R0 R2
+ANDR10 R10 (4294967295)
+ADDR17 R17 R31
+; 6. txanda: a=R10 e=R14
+SHRR0 R14 (6)
+ANDR1 R14 (63)
+SHLR1 R1 (26)
+XORR0 R0 R1
+SHRR1 R14 (11)
+XORR0 R0 R1
+ANDR1 R14 (2047)
+SHLR1 R1 (21)
+XORR0 R0 R1
+SHRR1 R14 (25)
+XORR0 R0 R1
+ANDR1 R14 (33554431)
+SHLR1 R1 (7)
+XORR0 R0 R1
+XORR1 R15 R8
+ANDR1 R1 R14
+XORR1 R1 R8
+ADDR0 R0 R1
+ADDR0 R0 R9
+LDR1 R17
+ADDR0 R0 R1
+ADDR1 R17 (64)
+LDR1 R1
+ADDR0 R0 R1
+SHRR2 R10 (2)
+ANDR1 R10 (3)
+SHLR1 R1 (30)
+XORR2 R2 R1
+SHRR1 R10 (13)
+XORR2 R2 R1
+ANDR1 R10 (8191)
+SHLR1 R1 (19)
+XORR2 R2 R1
+SHRR1 R10 (22)
+XORR2 R2 R1
+ANDR1 R10 (4194303)
+SHLR1 R1 (10)
+XORR2 R2 R1
+ANDR1 R10 R11
+ORR3 R10 R11
+ANDR3 R3 R12
+ORR1 R1 R3
+ADDR2 R2 R1
+ADDR13 R13 R0
+ANDR13 R13 (4294967295)
+ADDR9 R0 R2
+ANDR9 R9 (4294967295)
+ADDR17 R17 R31
+; 7. txanda: a=R9 e=R13
+SHRR0 R13 (6)
+ANDR1 R13 (63)
+SHLR1 R1 (26)
+XORR0 R0 R1
+SHRR1 R13 (11)
+XORR0 R0 R1
+ANDR1 R13 (2047)
+SHLR1 R1 (21)
+XORR0 R0 R1
+SHRR1 R13 (25)
+XORR0 R0 R1
+ANDR1 R13 (33554431)
+SHLR1 R1 (7)
+XORR0 R0 R1
+XORR1 R14 R15
+ANDR1 R1 R13
+XORR1 R1 R15
+ADDR0 R0 R1
+ADDR0 R0 R8
+LDR1 R17
+ADDR0 R0 R1
+ADDR1 R17 (64)
+LDR1 R1
+ADDR0 R0 R1
+SHRR2 R9 (2)
+ANDR1 R9 (3)
+SHLR1 R1 (30)
+XORR2 R2 R1
+SHRR1 R9 (13)
+XORR2 R2 R1
+ANDR1 R9 (8191)
+SHLR1 R1 (19)
+XORR2 R2 R1
+SHRR1 R9 (22)
+XORR2 R2 R1
+ANDR1 R9 (4194303)
+SHLR1 R1 (10)
+XORR2 R2 R1
+ANDR1 R9 R10
+ORR3 R9 R10
+ANDR3 R3 R11
+ORR1 R1 R3
+ADDR2 R2 R1
+ADDR12 R12 R0
+ANDR12 R12 (4294967295)
+ADDR8 R0 R2
+ANDR8 R8 (4294967295)
+ADDR17 R17 R31
+ILTR17 R18 sha.block.round
+; H += a..h
+RCR0 R20
+LDR1 R0
+ADDR1 R1 R8
+ANDR1 R1 (4294967295)
+STR1 R0
+ADDR0 R0 R31
+LDR1 R0
+ADDR1 R1 R9
+ANDR1 R1 (4294967295)
+STR1 R0
+ADDR0 R0 R31
+LDR1 R0
+ADDR1 R1 R10
+ANDR1 R1 (4294967295)
+STR1 R0
+ADDR0 R0 R31
+LDR1 R0
+ADDR1 R1 R11
+ANDR1 R1 (4294967295)
+STR1 R0
+ADDR0 R0 R31
+LDR1 R0
+ADDR1 R1 R12
+ANDR1 R1 (4294967295)
+STR1 R0
+ADDR0 R0 R31
+LDR1 R0
+ADDR1 R1 R13
+ANDR1 R1 (4294967295)
+STR1 R0
+ADDR0 R0 R31
+LDR1 R0
+ADDR1 R1 R14
+ANDR1 R1 (4294967295)
+STR1 R0
+ADDR0 R0 R31
+LDR1 R0
+ADDR1 R1 R15
+ANDR1 R1 (4294967295)
+STR1 R0
+POPR20
+POPR19
+POPR18
+POPR17
+POPR16
+POPR15
+POPR14
+POPR13
+POPR12
+POPR11
+POPR10
+POPR9
+POPR8
+RET
+
+; sha.final: betegarria (0x80, zeroak) eta luzera bitetan (8 byte, big-endian); laburpena H-n geratzen da.
+; aldatzen ditu R0-R7
+sha.final:
+SETR0 96
+LDR5 R0
+ADDR0 R5 (8)
+LDR0 R0
+MULR7 R0 (8)
+SETR0 128
+C sha.byte
+sha.final.pad:
+ADDR0 R5 (9)
+LDR0 R0
+IEQR0 (56) sha.final.len
+SETR0 0
+C sha.byte
+J sha.final.pad
+sha.final.len:
+SETR6 56
+sha.final.lb:
+SHRR0 R7 R6
+ANDR0 R0 (255)
+C sha.byte
+SUBR6 R6 (8)
+IGTR6 R29 sha.final.lb
+RET
+
+; sha.put: laburpenaren 32 byteak irteerara (big-endian). aldatzen ditu R0-R3
+sha.put:
+SETR0 96
+LDR2 R0
+ADDR3 R2 (8)
+sha.put.w:
+LDR1 R2
+SHRR0 R1 (24)
+PUTCR0
+SHRR0 R1 (16)
+ANDR0 R0 (255)
+PUTCR0
+SHRR0 R1 (8)
+ANDR0 R0 (255)
+PUTCR0
+ANDR0 R1 (255)
+PUTCR0
+ADDR2 R2 R31
+ILTR2 R3 sha.put.w
+RET
+
+; sha.hex: laburpena 64 digitu hamaseitar gisa (letra txikiz, sha256sum-ek bezala). aldatzen ditu R0-R4
+sha.hex:
+SETR0 96
+LDR2 R0
+ADDR3 R2 (8)
+sha.hex.w:
+LDR1 R2
+SETR4 28
+sha.hex.d:
+SHRR0 R1 R4
+ANDR0 R0 (15)
+ILTR0 (10) sha.hex.dig
+ADDR0 R0 (87)
+J sha.hex.out
+sha.hex.dig:
+ADDR0 R0 (48)
+sha.hex.out:
+PUTCR0
+SUBR4 R4 (4)
+IGTR4 R29 sha.hex.d
+ADDR2 R2 R31
+ILTR2 R3 sha.hex.w
+RET
+

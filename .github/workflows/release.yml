@@ -2,7 +2,7 @@
 # batean (adib. v0.4.0) GitHub argitalpen bat sortzen du haiekin:
 #
 #   qoa-<bertsioa>-<helburua>.zip / .tar.gz   helburu bakoitzeko: qoa edo qoa.exe, abiarazlea, adibideak eta
-#                                             src/qoa/asm.qoa eta asm.qg (QOAn idatzitako mihiztatzailea)
+#                                             src/qoa/: QOAn idatzitako mihiztatzailea eta desmihiztatzailea
 #   qoa-<bertsioa>-all.zip                    guztiak batera: bin/<helburua>/, run.sh, run.ps1, run.cmd
 #   SHA256SUMS                                fitxategi guztien laburpenak
 #
@@ -101,7 +101,7 @@ jobs:
           cp "target/${{ matrix.target }}/release/$exe" "bin/${{ matrix.target }}/"
           cp README.md README.eu.md LICENSE "dist/$name/"
           cp -r examples "dist/$name/"
-          mkdir -p "dist/$name/src/qoa" && cp src/qoa/asm.qoa src/qoa/asm.qg "dist/$name/src/qoa/"
+          mkdir -p "dist/$name/src/qoa" && cp src/qoa/asm.qoa src/qoa/asm.qg src/qoa/dis.qoa src/qoa/dis.qg "dist/$name/src/qoa/"
           case "${{ matrix.target }}" in
             *windows*) cp run.ps1 run.cmd "dist/$name/"; (cd dist && 7z a -tzip "$name.zip" "$name" > /dev/null) ;;
             *) cp run.sh "dist/$name/"; tar -C dist -czf "dist/$name.tar.gz" "$name" ;;
@@ -155,7 +155,7 @@ jobs:
           chmod +x "$name"/bin/*/qoa || true
           cp run.sh run.ps1 run.cmd README.md README.eu.md LICENSE "$name/"
           cp -r examples "$name/"
-          mkdir -p "$name/src/qoa" && cp src/qoa/asm.qoa src/qoa/asm.qg "$name/src/qoa/"
+          mkdir -p "$name/src/qoa" && cp src/qoa/asm.qoa src/qoa/asm.qg src/qoa/dis.qoa src/qoa/dis.qg "$name/src/qoa/"
           zip -qr "dist/$name.zip" "$name"
           (cd dist && sha256sum * > SHA256SUMS)
           cat dist/SHA256SUMS

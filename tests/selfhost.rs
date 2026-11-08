@@ -879,7 +879,7 @@ fn the_built_in_self_hosted_assembler_matches_its_source() {
     let _ = std::fs::remove_dir_all(&dir);
     let o = qoa("en", &["tools", "--write", dir.to_str().unwrap()]);
     assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
-    for f in ["asm.qoa", "asm.qg"] {
+    for f in ["asm.qoa", "asm.qg", "dis.qoa", "dis.qg"] {
         assert_eq!(
             std::fs::read(dir.join(f)).unwrap(),
             std::fs::read(root.join("src/qoa").join(f)).unwrap(),
@@ -900,4 +900,109 @@ fn the_built_in_self_hosted_assembler_matches_its_source() {
         ],
     );
     assert!(!both.status.success());
+}
+
+// src/qoa/dis.qg: desmihiztatzailea glifo-sintaxian, src/qoa/dis.qoa-tik lerroz lerro sortua
+#[test]
+fn the_disassembler_in_glyphs_is_the_same_program() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let src = std::fs::read_to_string(root.join("src/qoa/dis.qoa")).unwrap();
+    let want = qoa::convert::qoa_to_glyph(&src, "src/qoa/dis.qoa").unwrap();
+    let path = root.join("src/qoa/dis.qg");
+    let have = std::fs::read_to_string(&path).unwrap_or_default();
+    if want != have {
+        if std::env::var_os("QOA_REGENERATE").is_some() {
+            std::fs::write(&path, &want).unwrap();
+        } else {
+            panic!(
+                "src/qoa/dis.qg ez dator bat src/qoa/dis.qoa-rekin; sortu berriz: QOA_REGENERATE=1 cargo test --test selfhost"
+            );
+        }
+    }
+    let plain = qoa::asm::assemble(&src, "dis").unwrap();
+    let glyph = qoa::glyph::assemble(&want, "dis").unwrap();
+    assert_eq!(plain.to_bytes(), glyph.to_bytes());
+}
+
+// QOAn idatzitako desmihiztatzailea: programa guztiekin rust-en `to_qoa_long`-en byte berberak
+#[test]
+fn the_disassembler_written_in_qoa_matches_rust_on_every_program() {
+    qoa::lang::set(qoa::lang::Lang::En);
+    let dis = qoa::tools::find("dis").unwrap().program().unwrap();
+    let mut files = programs();
+    files.push(PathBuf::from("src/qoa/asm.qoa"));
+    files.push(PathBuf::from("src/qoa/dis.qoa"));
+    let mut n = 0;
+    for f in files {
+        let text = std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join(&f)).unwrap();
+        let name = f.to_string_lossy().to_string();
+        let Ok(p) = qoa::asm::assemble(&text, &name) else {
+            continue;
+        };
+        let want = qoa::disasm::to_qoa_long(&p).unwrap();
+        let cfg = qoa::vm::RunConfig {
+            shots: 1,
+            max_steps: u64::MAX,
+            args: vec![name.clone()],
+            input: Some(std::sync::Arc::new(p.to_bytes())),
+            ..Default::default()
+        };
+        let mut got = Vec::new();
+        let out = qoa::vm::run(&dis, &cfg, &mut got).unwrap();
+        assert_eq!(out.exit_status.unwrap_or(0), 0, "{}", name);
+        assert_eq!(String::from_utf8(got).unwrap(), want, "{}", name);
+        n += 1;
+    }
+    assert!(n > 80, "{} programs", n);
+}
+
+// fitxategi hondatuak: errore-mezu eta irteera-kode berberak bi hizkuntzetan
+#[test]
+fn the_disassembler_written_in_qoa_reports_damaged_files_like_rust() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let src = std::fs::read_to_string(root.join("examples/teleport.qoa")).unwrap();
+    let good = qoa::asm::assemble(&src, "teleport").unwrap().to_bytes();
+    let v3 = std::fs::read(root.join("tests/data/every-op-v3.qx")).unwrap();
+    let mut flip = good.clone();
+    flip[30] ^= 1;
+    let mut v9 = good.clone();
+    v9[4] = 9;
+    let mut tail = v3.clone();
+    tail.extend_from_slice(b"xyz");
+    let cases: Vec<(&str, Vec<u8>)> = vec![
+        ("flip.qx", flip),
+        ("tiny.qx", good[..4].to_vec()),
+        ("nosum.qx", good[..20].to_vec()),
+        ("old.qx", [b"QEXE".as_slice(), &good[4..]].concat()),
+        ("nope.qx", [b"ABCD".as_slice(), &good[4..]].concat()),
+        ("v9.qx", v9),
+        ("v3cut.qx", v3[..v3.len() / 2].to_vec()),
+        ("v3tail.qx", tail),
+        ("every-op-v3.qx", v3.clone()),
+        (
+            "bell-0.4.4.qx",
+            std::fs::read(root.join("tests/data/bell-0.4.4.qx")).unwrap(),
+        ),
+    ];
+    for (name, bytes) in cases {
+        let path = scratch(name);
+        std::fs::write(&path, &bytes).unwrap();
+        let f = path.to_str().unwrap();
+        for lang in ["en", "eu"] {
+            let rust = qoa(lang, &["export", "--to", "qoa", "--long-names", f]);
+            let mine = qoa(
+                lang,
+                &["export", "--to", "qoa", "--long-names", "--self-hosted", f],
+            );
+            assert_eq!(rust.status.code(), mine.status.code(), "{} {}", name, lang);
+            assert_eq!(
+                String::from_utf8_lossy(&rust.stderr),
+                String::from_utf8_lossy(&mine.stderr),
+                "{} {}",
+                name,
+                lang
+            );
+            assert_eq!(rust.stdout, mine.stdout, "{} {}", name, lang);
+        }
+    }
 }

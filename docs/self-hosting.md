@@ -51,6 +51,27 @@ cmp stage1.qx stage2.qx && cmp stage2.qx stage3.qx                       # all i
 
 The test suite runs exactly this on every build (`tests/selfhost.rs`).
 
+## The disassembler, also in QOA
+
+The way back is written in QOA too: [src/qoa/dis.qoa](../src/qoa/dis.qoa) reads a `.qx` and writes the
+plain QOA that `qoa export --to qoa --long-names` writes, byte for byte. It checks the header, the version and
+the SHA-256 (in QOA, with the assembler's SHA-256 routines), decodes every one of the 80 kinds of operation,
+rebuilds each 64-bit number exactly from its 8 bytes, and puts the `addr_0x..` labels where jumps land. A
+damaged file gets the same error, in the same words and both languages, as `qoa` gives.
+
+```sh
+qoa export --to qoa --long-names --self-hosted program.qx      # the built-in copy
+qoa export --to qoa --long-names --self-hosted program.qoa     # assembled by the QOA assembler first
+qoa run src/qoa/dis.qoa --quiet -- program.qx < program.qx     # by hand
+```
+
+With a source file, the built-in assembler written in QOA assembles it first, so the whole round trip
+(text, binary, text) runs in QOA. The tests compare it with Rust on every program in the repository (the
+assembler's own 12,600 lines among them) and on damaged files of every kind. It writes the long names for
+now; the short forms (`Hq0`, `Mq0.c0`) are the next step. Like the assembler, it does not re-assemble the
+result to check a program's contents the way `qoa` does when it loads a `.qx`; it checks the format, the
+checksum and every variant number. On the assembler's binary it takes about 0.3 s, against 0.05 s for Rust.
+
 ## What is written in QOA, and what stays in Rust
 
 | part | language | why |
@@ -59,6 +80,7 @@ The test suite runs exactly this on every build (`tests/selfhost.rs`).
 | the QOA machine: qubit states, photons, SIMD kernels, GPUs, MPI, noise | Rust | this is the numerical core; it needs 64-bit floating point at full machine speed, vector instructions and GPU drivers, which an interpreted program cannot provide |
 | `sin`, `cos`, `tan`, `exp`, `ln`, `pow` | Rust (as instructions) | the same functions `qoa compile` uses, so both give the same bits |
 | reading files, the command line | Rust | the operating system's side |
+| the disassembler: `.qx` to plain QOA with long names, the checksum, every error | **QOA** | the assembler's inverse, so the round trip needs no Rust |
 | the glyph syntax (`.qg`) and OpenQASM import | Rust, for now | see below |
 
 The assembler is written in plain QOA, not in the glyph syntax. The glyph syntax is a compact notation for

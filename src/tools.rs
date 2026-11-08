@@ -13,13 +13,22 @@ pub struct Tool {
     pub about_eu: &'static str,
 }
 
-pub const TOOLS: &[Tool] = &[Tool {
-    name: "asm",
-    file: "asm.qoa",
-    source: include_str!("qoa/asm.qoa"),
-    about_en: "QOA's assembler written in QOA: .qoa source in, .qx binary out, byte for byte what qoa compile writes, with the same errors",
-    about_eu: "QOAn idatzitako QOA-ren mihiztatzailea: .qoa iturburua sartu, .qx bitarra atera, qoa compile-k idazten dituen byte berberak, errore berberekin",
-}];
+pub const TOOLS: &[Tool] = &[
+    Tool {
+        name: "asm",
+        file: "asm.qoa",
+        source: include_str!("qoa/asm.qoa"),
+        about_en: "QOA's assembler written in QOA: .qoa source in, .qx binary out, byte for byte what qoa compile writes, with the same errors",
+        about_eu: "QOAn idatzitako QOA-ren mihiztatzailea: .qoa iturburua sartu, .qx bitarra atera, qoa compile-k idazten dituen byte berberak, errore berberekin",
+    },
+    Tool {
+        name: "dis",
+        file: "dis.qoa",
+        source: include_str!("qoa/dis.qoa"),
+        about_en: "QOA's disassembler written in QOA: .qx binary in, plain QOA out, byte for byte what qoa export --to qoa --long-names writes, with the same errors for damaged files",
+        about_eu: "QOAn idatzitako QOA-ren desmihiztatzailea: .qx bitarra sartu, QOA arrunta atera, qoa export --to qoa --long-names-ek idazten dituen byte berberak, fitxategi hondatuentzat errore berberekin",
+    },
+];
 
 pub fn find(name: &str) -> Option<&'static Tool> {
     TOOLS.iter().find(|t| t.name == name)
