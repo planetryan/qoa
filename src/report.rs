@@ -31,6 +31,8 @@ pub struct Report {
     // `--noise-model` banku batekin (docs/bench.md): haren parametroak (bestela null)
     pub bench_model: Option<BenchInfo>,
     pub method: Method,
+    // `--device`: programa exekutatu duen gailua (bestela null)
+    pub device: Option<String>,
     pub shots: u64,
     pub seed: u64,
     pub seed_given: bool,
@@ -185,6 +187,7 @@ pub fn build(input: ReportInput) -> Report {
             visibility: b.visibility,
         }),
         method: out.method,
+        device: out.device.clone(),
         shots: out.shots,
         seed: input.config.seed,
         seed_given: input.seed_given,
@@ -483,77 +486,79 @@ pub fn render(r: &Report, style: &Style) -> String {
     } else {
         String::new()
     };
-    line(
-        ts!("cpu", "cpu"),
-        if r.precision == crate::vm::Precision::Quad {
-            t!(
-                "128-bit engine (double-double on fused multiply-add), {} thread(s){}",
-                "128 biteko motorra (double-double biderketa-batuketa fusionatuaren gainean), {} hari{}",
-                r.threads,
-                ranks
-            )
-        } else {
-            t!(
-                "{} kernels, {} thread(s){}",
-                "{} kernelak, {} hari{}",
-                r.kernels,
-                r.threads,
-                ranks
-            )
-        },
-    );
-    // zenbakiak: ateak f64-n (FMA-rekin simd kerneletan), baturak double-double-n
-    let fma = if r.kernels == "scalar" {
-        String::new()
-    } else {
-        t!(
-            ", fused multiply-add in the qubit-gate kernels",
-            ", biderketa-batuketa fusionatua qubit-ateen kerneletan"
-        )
-    };
-    line(
-        ts!("numerics", "zenbakiak"),
-        if r.precision == crate::vm::Precision::Quad {
-            t!(
-                "128-bit (double-double, ~32 digits): amplitudes, gate matrices, measurement and sums; the program's angles are its 64-bit values, taken as exact; norm off by {:.1e} at the end",
-                "128 bit (double-double, ~32 digitu): anplitudeak, ateen matrizeak, neurketa eta baturak; programaren angeluak bere 64 biteko balioak dira, zehatz gisa hartuta; araua {:.1e} desbideratuta amaieran",
-                r.norm_error
-            )
-        } else {
-            t!(
-                "64-bit floats{}; sums over the state in double-double (~106 bits); norm off by {:.1e} at the end",
-                "64 biteko koma higikorra{}; egoeraren gaineko baturak double-double-n (~106 bit); araua {:.1e} desbideratuta amaieran",
-                fma,
-                r.norm_error
-            )
-        },
-    );
-    if let Some(g) = &r.gpu {
+    if r.method != Method::Device {
         line(
-            ts!("gpu", "gpu"),
-            format!("{} ({})", g.device, g.device_type),
+            ts!("cpu", "cpu"),
+            if r.precision == crate::vm::Precision::Quad {
+                t!(
+                    "128-bit engine (double-double on fused multiply-add), {} thread(s){}",
+                    "128 biteko motorra (double-double biderketa-batuketa fusionatuaren gainean), {} hari{}",
+                    r.threads,
+                    ranks
+                )
+            } else {
+                t!(
+                    "{} kernels, {} thread(s){}",
+                    "{} kernelak, {} hari{}",
+                    r.kernels,
+                    r.threads,
+                    ranks
+                )
+            },
         );
-        let work = if g.batches == 0 {
-            t!(
-                "nothing ran on it: the program applied no qubit gates",
-                "ez da ezer exekutatu bertan: programak ez du qubit-aterik aplikatu"
-            )
+        // zenbakiak: ateak f64-n (FMA-rekin simd kerneletan), baturak double-double-n
+        let fma = if r.kernels == "scalar" {
+            String::new()
         } else {
             t!(
-                "{} batch(es) of qubit gates: {} gates in {} pass(es) over the state, {:.3} s computing; the state went up and back {} time(s) ({} each way, {:.3} s). measurements, optics and noise ran on the cpu",
-                "{} qubit-ate sorta: {} ate egoeraren gaineko {} pasalditan, {:.3} s kalkulatzen; egoera {} aldiz igo eta jaitsi da ({} norabide bakoitzean, {:.3} s). neurketak, optika eta zarata cpu-an exekutatu dira",
-                g.batches,
-                g.gates,
-                g.passes,
-                g.compute_seconds,
-                g.batches,
-                crate::state::format_bytes(g.bytes_up as u128),
-                g.transfer_seconds
+                ", fused multiply-add in the qubit-gate kernels",
+                ", biderketa-batuketa fusionatua qubit-ateen kerneletan"
             )
         };
-        line(ts!("gpu work", "gpu lana"), work);
+        line(
+            ts!("numerics", "zenbakiak"),
+            if r.precision == crate::vm::Precision::Quad {
+                t!(
+                    "128-bit (double-double, ~32 digits): amplitudes, gate matrices, measurement and sums; the program's angles are its 64-bit values, taken as exact; norm off by {:.1e} at the end",
+                    "128 bit (double-double, ~32 digitu): anplitudeak, ateen matrizeak, neurketa eta baturak; programaren angeluak bere 64 biteko balioak dira, zehatz gisa hartuta; araua {:.1e} desbideratuta amaieran",
+                    r.norm_error
+                )
+            } else {
+                t!(
+                    "64-bit floats{}; sums over the state in double-double (~106 bits); norm off by {:.1e} at the end",
+                    "64 biteko koma higikorra{}; egoeraren gaineko baturak double-double-n (~106 bit); araua {:.1e} desbideratuta amaieran",
+                    fma,
+                    r.norm_error
+                )
+            },
+        );
+        if let Some(g) = &r.gpu {
+            line(
+                ts!("gpu", "gpu"),
+                format!("{} ({})", g.device, g.device_type),
+            );
+            let work = if g.batches == 0 {
+                t!(
+                    "nothing ran on it: the program applied no qubit gates",
+                    "ez da ezer exekutatu bertan: programak ez du qubit-aterik aplikatu"
+                )
+            } else {
+                t!(
+                    "{} batch(es) of qubit gates: {} gates in {} pass(es) over the state, {:.3} s computing; the state went up and back {} time(s) ({} each way, {:.3} s). measurements, optics and noise ran on the cpu",
+                    "{} qubit-ate sorta: {} ate egoeraren gaineko {} pasalditan, {:.3} s kalkulatzen; egoera {} aldiz igo eta jaitsi da ({} norabide bakoitzean, {:.3} s). neurketak, optika eta zarata cpu-an exekutatu dira",
+                    g.batches,
+                    g.gates,
+                    g.passes,
+                    g.compute_seconds,
+                    g.batches,
+                    crate::state::format_bytes(g.bytes_up as u128),
+                    g.transfer_seconds
+                )
+            };
+            line(ts!("gpu work", "gpu lana"), work);
+        }
     }
-    let noise = match (r.noise > 0.0, r.loss > 0.0) {
+    let simulated = match (r.noise > 0.0, r.loss > 0.0) {
         _ if r.bench_model.is_some() => {
             let b = r.bench_model.as_ref().unwrap();
             t!(
@@ -613,6 +618,15 @@ pub fn render(r: &Report, style: &Style) -> String {
             r.loss
         ),
     };
+
+    let noise = if r.method == Method::Device {
+        t!(
+            "the device's own: these are its measured counts",
+            "gailuarena berarena: hauek dira haren kontaketa neurtuak"
+        )
+    } else {
+        simulated
+    };
     line(ts!("noise", "zarata"), noise);
     let method = match r.method {
         Method::Sampled => t!(
@@ -628,6 +642,12 @@ pub fn render(r: &Report, style: &Style) -> String {
         Method::StateOnly if r.qubits == 0 && r.modes == 0 => t!(
             "1 run; the program has no qubits or modes (classical only)",
             "exekuzio 1; programak ez du qubit edo modurik (klasikoa bakarrik)"
+        ),
+        Method::Device => t!(
+            "{} shot(s) on the device {}: QOA sent it the program's optics and read back its counts",
+            "{} shot {} gailuan: QOA-k programaren optika bidali dio eta haren kontaketak irakurri ditu",
+            r.shots,
+            r.device.as_deref().unwrap_or("?")
         ),
         Method::StateOnly => t!(
             "1 run; the program measures nothing, so the exact final state is shown",

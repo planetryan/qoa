@@ -148,6 +148,16 @@ enum Command {
             "programak berak idazten duena bakarrik inprimatu, bytez byte, txostenik gabe; qoa programaren EXIT egoerarekin amaitzen da. tresna gisa erabiltzen diren programetarako, mihiztatzaile bat adibidez"
         ))]
         quiet: bool,
+        #[arg(long, value_name = "COMMAND", conflicts_with_all = ["noise", "loss", "noise_model", "gpu", "gpu_api", "mpi", "quiet", "state"], help = ts!(
+            "run on a bench instead of simulating: start this controller program (words split at spaces, no shell), send it the program's optics as one line of json and read the counts back (protocol qoa-device-1, docs/bench.md). qoa bench-sim is a stand-in controller that answers by simulation",
+            "simulatu ordez banku batean exekutatu: kontrolagailu-programa hau abiarazi (hitzak zuriuneetan banatuta, shell-ik gabe), programaren optika json lerro gisa bidali eta kontaketak irakurri (qoa-device-1 protokoloa, docs/bench.eu.md). qoa bench-sim simulazioz erantzuten duen ordezko kontrolagailu bat da"
+        ))]
+        device: Option<String>,
+        #[arg(long, value_name = "TARGET", requires = "device", help = ts!(
+            "with --device: the bench's profile, bench-b (default) or bench-a; the program must pass it",
+            "--device-rekin: bankuaren profila, bench-b (lehenetsia) edo bench-a; programak bete behar du"
+        ))]
+        target: Option<String>,
         #[arg(last = true, value_name = "ARGS", help = ts!(
             "arguments for the program, after --; it reads them with ARGC and ARGBYTE",
             "programarentzako argumentuak, -- ondoren; ARGC eta ARGBYTE-rekin irakurtzen ditu"
@@ -249,6 +259,17 @@ enum Command {
     Seal {
         #[arg(required = true, help = ts!(".qoa, .qg or .qasm files", ".qoa, .qg edo .qasm fitxategiak"))]
         files: Vec<PathBuf>,
+    },
+    #[command(name = "bench-sim", about = ts!(
+        "A stand-in bench controller: answer the device protocol (qoa-device-1) on standard input and output by simulation, for qoa run --device \"qoa bench-sim\" (docs/bench.md)",
+        "Ordezko banku-kontrolagailu bat: gailu-protokoloari (qoa-device-1) sarrera eta irteera estandarretan simulazioz erantzun, qoa run --device \"qoa bench-sim\"-entzat (docs/bench.eu.md)"
+    ))]
+    BenchSim {
+        #[arg(long, value_name = "FILE", help = ts!(
+            "the bench model to simulate (format qoa-bench-1); without it, an ideal bench",
+            "simulatu beharreko banku-eredua (qoa-bench-1 formatua); gabe, banku ideal bat"
+        ))]
+        model: Option<PathBuf>,
     },
     #[command(about = ts!(
         "List the tools written in QOA that are built into this binary, or write their sources out",
@@ -582,6 +603,8 @@ fn main() -> ExitCode {
             distribute,
             quiet,
             args,
+            device,
+            target,
         } => cmd_run(
             &file,
             shots,
@@ -607,8 +630,10 @@ fn main() -> ExitCode {
             distribute,
             quiet,
             args,
+            device.map(|cmd| (cmd, target.unwrap_or_else(|| "bench-b".to_string()))),
         ),
         Command::Check { file, target } => cmd_check(&file, target.as_deref()),
+        Command::BenchSim { model } => cmd_bench_sim(model.as_deref()),
         Command::Compile {
             file,
             output,
@@ -867,7 +892,12 @@ fn cmd_run(
     distribute: bool,
     quiet: bool,
     args: Vec<String>,
+    device: Option<(String, String)>,
 ) -> Result<(), String> {
+    let device = match device {
+        Some((cmd, target)) => Some((cmd, parse_target(&target)?)),
+        None => None,
+    };
     let team = join_team(mpi)?;
     let rank = team.as_ref().map_or(0, |t| t.rank());
     let program = load(file)?;
@@ -938,7 +968,9 @@ fn cmd_run(
         )),
         bytes: 0,
     };
-    let output = if json {
+    let output = if let Some((cmd, target)) = &device {
+        qoa::device::run(&program, &config, cmd, *target)
+    } else if json {
         vm::run(&program, &config, &mut captured)
     } else {
         vm::run(&program, &config, &mut printed)
@@ -1042,18 +1074,7 @@ impl<W: std::io::Write> std::io::Write for Counting<W> {
 }
 
 fn cmd_check(file: &Path, target: Option<&str>) -> Result<(), String> {
-    let target = match target {
-        None => None,
-        Some(name) => Some(qoa::target::Target::parse(name).ok_or_else(|| {
-            let names: Vec<&str> = qoa::target::Target::ALL.iter().map(|t| t.name()).collect();
-            t!(
-                "unknown target '{}' (known: {})",
-                "'{}' helburu ezezaguna (ezagunak: {})",
-                name,
-                names.join(", ")
-            )
-        })?),
-    };
+    let target = target.map(parse_target).transpose()?;
     let p = load(file)?;
     if let Some(target) = target {
         let problems = qoa::target::check(&p, target);
@@ -1280,6 +1301,38 @@ fn assemble_with(tool: &Program, label: &str, file: &Path) -> Result<(Program, V
         )
     })?;
     Ok((p, bytes))
+}
+
+fn parse_target(name: &str) -> Result<qoa::target::Target, String> {
+    qoa::target::Target::parse(name).ok_or_else(|| {
+        let names: Vec<&str> = qoa::target::Target::ALL.iter().map(|t| t.name()).collect();
+        t!(
+            "unknown target '{}' (known: {})",
+            "'{}' helburu ezezaguna (ezagunak: {})",
+            name,
+            names.join(", ")
+        )
+    })
+}
+
+// ordezko banku-kontrolagailua: lanak sarrera estandarrean, erantzunak irteera estandarrean
+fn cmd_bench_sim(model: Option<&Path>) -> Result<(), String> {
+    let model = match model {
+        None => None,
+        Some(path) => match qoa::noise::load_any(path)? {
+            qoa::noise::AnyModel::Bench(b) => Some(b),
+            qoa::noise::AnyModel::Device(_) => {
+                return Err(t!(
+                    "{} is a device calibration; bench-sim needs a bench model (format {})",
+                    "{} gailu baten kalibrazioa da; bench-sim-ek banku-eredu bat behar du ({} formatua)",
+                    path.display(),
+                    qoa::noise::BENCH_FORMAT
+                ));
+            }
+        },
+    };
+    let stdin = std::io::stdin();
+    qoa::device::serve(model.as_ref(), stdin.lock(), std::io::stdout().lock())
 }
 
 // binarioan sartutako tresnak: zerrenda, edo iturburuak karpeta batean (QOA arrunta eta glifoak)

@@ -19,6 +19,13 @@
   click) leaves its bit unwritten (`-`). The program must pass the bench's profile.
   [examples/bench-b.json](../examples/bench-b.json) has illustrative numbers; docs/bench.md says how to measure
   each one on a real bench.
+* **`qoa run --device COMMAND`** runs a program on a bench: QOA starts the bench's controller, sends it the
+  program's optics as one line of json (protocol `qoa-device-1`: photons, pairs, beamsplitters, phases,
+  one-qubit gates with their U(θ, φ, λ) angles for wave plates, measurements, detectors) and reads the counts
+  back into its usual report. The answer is checked (bits, modes, shots).
+* **`qoa bench-sim [--model FILE]`** is a stand-in controller that answers the protocol by simulation: with
+  the same seed, a device run through it gives exactly the counts of a direct simulation with the same bench
+  model.
 * **`examples/hom-clicks.qoa`** (Hong-Ou-Mandel with click detectors) and **`examples/bell-photons.qoa`**
   (a Bell test on photon polarisation, `BELL` as the pair source): both run on a single-photon bench.
 
@@ -61,6 +68,14 @@
   polarizazio-neurketa batek (fotoia galduta, klik bikoitza) bita idatzi gabe uzten du (`-`). Programak
   bankuaren profila bete behar du. [examples/bench-b.json](../examples/bench-b.json)-k zenbaki ilustratiboak
   ditu; docs/bench.eu.md-k esaten du nola neurtu bakoitza benetako banku batean.
+* **`qoa run --device KOMANDOA`**-k programa bat banku batean exekutatzen du: QOA-k bankuaren kontrolagailua
+  abiarazten du, programaren optika json lerro gisa bidaltzen dio (`qoa-device-1` protokoloa: fotoiak,
+  bikoteak, izpi-zatitzaileak, faseak, qubit bateko ateak beren U(θ, φ, λ) angeluekin xafletarako, neurketak,
+  detektagailuak) eta kontaketak bere ohiko txostenean irakurtzen ditu. Erantzuna egiaztatzen da (bitak,
+  moduak, shot-ak).
+* **`qoa bench-sim [--model FITXATEGIA]`** protokoloari simulazioz erantzuten dion ordezko kontrolagailu bat
+  da: hazi berarekin, haren bidezko gailu-exekuzio batek banku-eredu berarekin egindako simulazio zuzenaren
+  kontaketa berberak ematen ditu.
 * **`examples/hom-clicks.qoa`** (Hong-Ou-Mandel klik-detektagailuekin) eta **`examples/bell-photons.qoa`**
   (Bell proba bat fotoien polarizazioarekin, `BELL` bikote-iturri gisa): biak fotoi bakarreko banku batean
   dabiltza.

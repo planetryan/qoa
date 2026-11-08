@@ -328,3 +328,106 @@ fn bench_models_refuse_what_the_bench_cannot_do() {
         assert!(e.contains(want), "{}: {}", json, e);
     }
 }
+
+// gailu-protokoloa (src/device.rs): lana eta haren iturburua programa bera dira, eta bench-sim-en bidezko
+// exekuzioak simulazio zuzenaren kontaketa berberak ematen ditu
+#[test]
+fn device_jobs_round_trip_to_the_same_program() {
+    lang::set(Lang::En);
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    for (file, target) in [
+        ("examples/mach-zehnder.qoa", Target::BenchB),
+        ("examples/hom-clicks.qoa", Target::BenchB),
+        ("examples/bell-photons.qoa", Target::BenchB),
+        ("examples/mach-zehnder.qoa", Target::BenchA),
+    ] {
+        let src = std::fs::read_to_string(root.join(file)).unwrap();
+        let p = qoa::asm::assemble(&src, file).unwrap();
+        let job = qoa::device::job(&p, target, 100, 3).unwrap();
+        let back_src = qoa::device::job_source(&job["job"]).unwrap();
+        let back = qoa::asm::assemble(&back_src, file).unwrap();
+        assert_eq!(p.ops, back.ops, "{}\n{}", file, back_src);
+        assert_eq!(
+            (p.n_qubits, p.n_modes, p.n_bits),
+            (back.n_qubits, back.n_modes, back.n_bits),
+            "{}",
+            file
+        );
+    }
+    // gate bakoitzaren U(θ, φ, λ) angeluak: xafla bidezko bankuentzat, eta izena simulagailuarentzat
+    let p = qoa::asm::assemble("QI 1\nRXq0 0.3\nSXq0\nTq0\nMq0\n", "t").unwrap();
+    let job = qoa::device::job(&p, Target::BenchB, 10, 1).unwrap();
+    let steps = job["job"]["steps"].as_array().unwrap();
+    assert_eq!(steps[0]["gate"], "RX");
+    assert_eq!(steps[0]["u"][0], 0.3);
+    assert_eq!(steps[1]["gate"], "SX");
+    assert_eq!(steps[3]["op"], "measure");
+}
+
+#[test]
+fn a_device_run_through_bench_sim_matches_the_simulation() {
+    let qoa = env!("CARGO_BIN_EXE_qoa");
+    let run = |args: &[&str]| {
+        let o = std::process::Command::new(qoa)
+            .args(args)
+            .env("QOA_LANG", "en")
+            .output()
+            .unwrap();
+        assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+        let v: serde_json::Value = serde_json::from_slice(&o.stdout).unwrap();
+        v["counts"].clone()
+    };
+    let controller = format!("{} bench-sim --model examples/bench-b.json", qoa);
+    for file in ["examples/bell-photons.qoa", "examples/hom-clicks.qoa"] {
+        let common = ["run", file, "--shots", "3000", "--seed", "8", "--json"];
+        let mut dev: Vec<&str> = common.to_vec();
+        dev.extend(["--device", controller.as_str()]);
+        let mut sim: Vec<&str> = common.to_vec();
+        sim.extend(["--noise-model", "examples/bench-b.json"]);
+        assert_eq!(run(&dev), run(&sim), "{}", file);
+    }
+}
+
+#[test]
+fn device_answers_are_checked() {
+    lang::set(Lang::En);
+    let p = qoa::asm::assemble("QI 2\nBq0 q1\nMq0\nMq1\n", "t").unwrap();
+    let reply =
+        |v: serde_json::Value| qoa::device::read_reply(&p, &v).map(|(_, n, c)| (n, c.len()));
+    let ok = serde_json::json!({"protocol": "qoa-device-1", "device": "d", "shots": 3,
+        "counts": [{"bits": "11", "readouts": [], "count": 2}, {"bits": "-0", "readouts": [], "count": 1}]});
+    assert_eq!(reply(ok), Ok((3, 2)));
+    for (v, want) in [
+        (
+            serde_json::json!({"protocol": "qoa-device-1", "error": "laser off"}),
+            "the device says: laser off",
+        ),
+        (
+            serde_json::json!({"protocol": "other"}),
+            "did not answer in the qoa-device-1 protocol",
+        ),
+        (
+            serde_json::json!({"protocol": "qoa-device-1", "shots": 1, "counts": [{"bits": "1", "count": 1}]}),
+            "returned bits '1', but the program has 2 bit(s)",
+        ),
+        (
+            serde_json::json!({"protocol": "qoa-device-1", "shots": 5, "counts": [{"bits": "11", "count": 1}]}),
+            "counts add up to 1, but it says it ran 5 shot(s)",
+        ),
+    ] {
+        let e = reply(v).unwrap_err();
+        assert!(e.contains(want), "{}", e);
+    }
+    // bench-sim: lerro txarrek errore-erantzun bat dute, ez dute prozesua eteten
+    let mut out = Vec::new();
+    let input = b"not json\n{\"protocol\": \"qoa-device-1\", \"job\": {\"program\": \"x\", \"qubits\": 1, \"modes\": 0, \"bits\": 1, \"shots\": 1, \"steps\": [{\"op\": \"teleport\"}]}}\n";
+    qoa::device::serve(None, &input[..], &mut out).unwrap();
+    let text = String::from_utf8(out).unwrap();
+    let lines: Vec<&str> = text.lines().collect();
+    assert_eq!(lines.len(), 2, "{}", text);
+    assert!(
+        lines[0].contains("not json") && lines[1].contains("unknown step 'teleport'"),
+        "{}",
+        text
+    );
+}

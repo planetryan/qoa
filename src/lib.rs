@@ -18,6 +18,7 @@ pub mod asm; // .qoa testua -> programa
 pub mod bench; // errendimendu-proba osoa (`qoa --benchmark`, `--bm`): puntuazioa eta xehetasunak
 pub mod convert; // QOA arrunteko iturburua glifora, iruzkinak eta etiketak gordeta (`--keep-source`)
 pub mod dd; // batura zehatzak double-double aritmetikarekin (~106 bit): araua, probabilitateak
+pub mod device; // gailu-protokoloa (`qoa run --device`, `qoa bench-sim`): optika banku baten kontrolagailura
 pub mod disasm; // desmihiztatzea eta analisirako esportazioak (qoa, listing, json, dot, glyph)
 pub mod dist; // egoera-bektore bat MPI prozesuetan banatuta (`qoa run --mpi --distribute`)
 pub mod expr; // zenbakizko adierazpenak (pi/2, ...)

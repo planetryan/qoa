@@ -92,6 +92,8 @@ pub enum Method {
     Sampled,
     EveryShot,
     StateOnly,
+    // gailu batek exekutatua (`qoa run --device`): kontaketak kontrolagailuak emandakoak dira
+    Device,
 }
 
 // shot bateko emaitza klasikoa: bit klasikoak eta moduen irakurketak (idatzi gabeak None)
@@ -119,6 +121,8 @@ pub struct RunOutput {
     pub norm_error: f64,
     // lehen shot-a EXIT batekin amaitu bada, haren egoera
     pub exit_status: Option<u8>,
+    // `--device`: kontrolagailuak bere buruari ematen dion izena
+    pub device: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -687,7 +691,7 @@ pub fn run(
                     failed.get_or_insert(e);
                 }
             }
-            Method::StateOnly => unreachable!(),
+            Method::StateOnly | Method::Device => unreachable!(),
         }
     }
 
@@ -733,6 +737,7 @@ pub fn run(
         steps,
         norm_error,
         exit_status,
+        device: None,
     })
 }
 

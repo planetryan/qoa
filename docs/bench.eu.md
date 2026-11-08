@@ -114,3 +114,56 @@ batek (izpi-zatitzaile polarizatzaile bat eta bi detektagailu) ez du emaitzarik 
 bi detektagailuek klik egin badute. Haren bita idatzi gabe geratzen da eta `-` gisa agertzen da
 kontaketetan: horiek dira bankuaren koinzidentzia-kontagailuak baztertzen dituen shot-ak, eta bit guztiak
 idatzita dituztenak gordetzen dituenak.
+
+## Zure bankuan exekutatzea: gailu-protokoloa
+
+`qoa run --device KOMANDOA programa.qoa`-k programa bat banku batean exekutatzen du, simulatu beharrean.
+QOA-k bankuaren kontrolagailu-programa abiarazten du (komandoaren hitzak zuriuneetan banatuta, shell-ik
+gabe), lana haren sarrera estandarrean idazten du json lerro bakar gisa, eta json lerro bat irakurtzen du
+kontaketekin, edozein exekuzio bezala jakinarazten dituenak. Programak bankuaren profila bete behar du
+(`--target`, lehenetsia `bench-b`), eta simulazio batek bakarrik exekuta ditzakeen aginduak (inprimatzea,
+adibidez) baztertu egiten dira. Protokoloak `qoa-device-1` du izena:
+
+```
+QOA -> {"protocol": "qoa-device-1", "job": {"program": "bell-photons.qoa", "target": "bench-b",
+        "shots": 1000, "seed": 7, "qubits": 2, "modes": 0, "cutoff": 0, "bits": 2,
+        "steps": [{"op": "pair", "qubits": [0, 1]},
+                  {"op": "gate", "qubit": 0, "gate": "H", "params": [], "u": [1.5707963267948966, 0.0, 3.141592653589793]},
+                  ...,
+                  {"op": "measure", "qubit": 0, "basis": "Z", "bit": null}]}}
+<- {"protocol": "qoa-device-1", "device": "nire bankua", "shots": 1000,
+    "counts": [{"bits": "11", "readouts": [], "count": 180}, {"bits": "-0", "readouts": [], "count": 121}, ...]}
+<- edo: {"protocol": "qoa-device-1", "error": "ponpa-laserra itzalita dago"}
+```
+
+| urratsa | bankuak zer egiten duen |
+|---|---|
+| `photon` `mode` | fotoi bakar iragarri bat bide horretara |
+| `pair` `qubits` | bikote entrelazatuen iturria: bere bi fotoiak qubit horiek dira |
+| `beamsplitter` `modes` `theta` `phi` | izpi-zatitzaile bat (QOA-ren `BS`) |
+| `phase` `mode` `angle` | fase-aldaketa bat bide batean |
+| `swap` `modes` | bi bide trukatu |
+| `loss` `mode` `probability` | ahultzaile bat |
+| `displace` `mode` `re` `im` | laser-pultsu bat bidera (bench-a) |
+| `gate` `qubit` `gate` `params` `u` | qubit bateko ate bat fotoi baten polarizazioan: QOA-ren izena eta parametroak, eta ate bera U(θ, φ, λ) gisa (fase global batera arte) xaflak ezartzeko |
+| `to_basis` `qubit` `basis` | X, Y edo Z neurketa-oinarrira biratu |
+| `measure` `qubit` `basis` `bit` | polarizazio-neurketa bat bit batera (`null`: qubitaren bit propioa) |
+| `detect` `mode` `bit` | klik-detektagailu bat (`null`: moduaren irakurketa) |
+| `coincidence` `modes` `bit` | 1 zerrendako detektagailu guztiek klik egin badute |
+
+Erantzuneko `bits` c(n-1)..c0 idazten da QOA-ren kontaketetan bezala, `-` emaitzarik gabeko bit batentzat,
+eta `readouts`-ek modu bakoitzaren irakurketa du (`null` ez badago). QOA-k erantzuna egiaztatzen du: bit eta
+modu kopuru zuzena, eta gailuak exekutatu dituela dioen shot-etara batzen diren kontaketak. Zenbakiak beren
+digitu guztiekin bidaltzen dira, beraz bankuak jasotzen dituen angeluak programarenak dira zehazki.
+
+`qoa bench-sim [--model bankua.json]` protokoloari simulazioz erantzuten dion ordezko kontrolagailu bat da,
+bide osoa bankua egon aurretik eraiki eta probatu ahal izateko:
+
+```sh
+qoa run --device "qoa bench-sim --model examples/bench-b.json" examples/bell-photons.qoa
+```
+
+Hazi berarekin `qoa run --noise-model examples/bench-b.json`-en kontaketa berberak ematen ditu, eta hori
+egiaztatzen dute probek. Benetako banku baten kontrolagailua programa txiki bat da (edozein lengoaiatan):
+lana irakurtzen du, xaflak eta faseak ezartzen ditu, shot bakoitzeko klikak zenbatzen ditu, eta erantzuna
+idazten du.

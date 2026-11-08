@@ -106,3 +106,54 @@ photon clicks with probability dark; a polarisation measurement (a polarizing be
 detectors) whose photon was lost, or where both detectors clicked, has no result. Its bit is left
 unwritten and shows as `-` in the counts: those are the shots the bench's coincidence counter throws away,
 and the shots with every bit written are what it keeps.
+
+## Running on your bench: the device protocol
+
+`qoa run --device COMMAND program.qoa` runs a program on a bench instead of simulating it. QOA starts the
+bench's controller program (the command's words split at spaces, with no shell), writes the job to its
+standard input as one line of json, and reads one line of json back with the counts, which it reports like
+any run. The program must pass the bench's profile (`--target`, `bench-b` by default), and instructions
+that only a simulation can run (printing, for example) are refused. The protocol is called `qoa-device-1`:
+
+```
+QOA -> {"protocol": "qoa-device-1", "job": {"program": "bell-photons.qoa", "target": "bench-b",
+        "shots": 1000, "seed": 7, "qubits": 2, "modes": 0, "cutoff": 0, "bits": 2,
+        "steps": [{"op": "pair", "qubits": [0, 1]},
+                  {"op": "gate", "qubit": 0, "gate": "H", "params": [], "u": [1.5707963267948966, 0.0, 3.141592653589793]},
+                  ...,
+                  {"op": "measure", "qubit": 0, "basis": "Z", "bit": null}]}}
+<- {"protocol": "qoa-device-1", "device": "my bench", "shots": 1000,
+    "counts": [{"bits": "11", "readouts": [], "count": 180}, {"bits": "-0", "readouts": [], "count": 121}, ...]}
+<- or: {"protocol": "qoa-device-1", "error": "the pump laser is off"}
+```
+
+| step | what the bench does |
+|---|---|
+| `photon` `mode` | a heralded single photon into that path |
+| `pair` `qubits` | the entangled-pair source: its two photons are those qubits |
+| `beamsplitter` `modes` `theta` `phi` | a beamsplitter (QOA's `BS`) |
+| `phase` `mode` `angle` | a phase shift on one path |
+| `swap` `modes` | exchange two paths |
+| `loss` `mode` `probability` | an attenuator |
+| `displace` `mode` `re` `im` | a laser pulse into the path (bench-a) |
+| `gate` `qubit` `gate` `params` `u` | a one-qubit gate on a photon's polarisation: QOA's name and parameters, and the same gate as U(θ, φ, λ) (up to a global phase) for setting wave plates |
+| `to_basis` `qubit` `basis` | rotate X, Y or Z into the measurement basis |
+| `measure` `qubit` `basis` `bit` | a polarisation measurement into a bit (`null`: the qubit's own bit) |
+| `detect` `mode` `bit` | a click detector (`null`: the mode's reading) |
+| `coincidence` `modes` `bit` | 1 if every listed detector clicked |
+
+`bits` in the answer is written c(n-1)..c0 like QOA's counts, with `-` for a bit without a result, and
+`readouts` holds each mode's reading (`null` if none). QOA checks the answer: the right number of bits and
+modes, and counts that add up to the shots the device says it ran. Numbers are sent with all their digits,
+so the angles a bench receives are exactly the program's.
+
+`qoa bench-sim [--model bench.json]` is a stand-in controller that answers the protocol by simulation, so
+the whole path can be built and tested before the bench exists:
+
+```sh
+qoa run --device "qoa bench-sim --model examples/bench-b.json" examples/bell-photons.qoa
+```
+
+With the same seed it gives exactly the counts of `qoa run --noise-model examples/bench-b.json`, which is
+what the tests check. A controller for a real bench is a small program (in any language) that reads the
+job, sets the wave plates and phases, counts the clicks for each shot, and writes the answer.
