@@ -19,10 +19,11 @@ qoa compile --self-hosted programa.qoa                   # mihiztatzaile bera, q
 
 Mihiztatzailearen iturburua biltegiko `src/qoa/asm.qoa` da, eta QOA 0.4.4-tik aurrera argitalpen-pakete
 guztiek ere badakarte (`tools/`-en 0.4.7 arte). `src/qoa/`-k QOAn idatzitako QOA-ren zatiak ditu, rust-en
-iturburuen ondoan, `qoa` binarioan konpilatzen direlako; `tools/`-ek python eta shell laguntza-scriptak ditu. QOA 0.4.7-tik `qoa` binarioan ere sartuta dago: `--self-hosted`-ek kopia hori
+iturburuen ondoan, `qoa` binarioan konpilatzen direlako; `tools/`-ek python eta shell laguntza-scriptak
+ditu. QOA 0.4.7-tik mihiztatzailea `qoa` binarioan ere sartuta dago: `--self-hosted`-ek kopia hori
 erabiltzen du, beraz ez da fitxategirik behar, `qoa tools`-ek binarioak daramatzan QOAn idatzitako tresnak
 zerrendatzen ditu, eta `qoa tools --write KARPETA`-k haien iturburuak idazten ditu (`asm.qoa`, eta hartatik
-sortutako `asm.qg`). Proba batek egiaztatzen du binarioko kopia `tools/`-eko fitxategia dela, eta rust-en
+sortutako `asm.qg`). Proba batek egiaztatzen du binarioko kopia `src/qoa/`-ko fitxategia dela, eta rust-en
 mihiztatzailearen byte eta errore berberak ematen dituela.
 
 `--assembler`-ek edozein QOA programa hartzen du, iturburu gisa edo `.qx` konpilatu gisa. QOA-k exekutatzen

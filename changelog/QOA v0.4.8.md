@@ -1,6 +1,10 @@
 # QOA v0.4.8 Release Notes
 
-**Status:** in progress, not released yet (euskaraz behean)
+**Status:** released 2026-11-08 (euskaraz behean)
+
+Builds on [0.4.7](<QOA v0.4.7.md>): QOA on a tabletop quantum-optics bench of your own. What a single-photon
+bench needs and costs, a check of which programs it can run, a simulation of a given bench's imperfections,
+and a protocol for running programs on it.
 
 ## Added
 
@@ -41,7 +45,11 @@
 
 # QOA v0.4.8 bertsio-oharrak
 
-**Egoera:** lanean, oraindik argitaratu gabe
+**Egoera:** 2026-11-08an argitaratua
+
+[0.4.7](<QOA v0.4.7.md>)-ren gainean: QOA mahai gaineko optika kuantikoko banku propio batean. Fotoi bakarreko
+banku batek zer behar duen eta zenbat balio duen, zer programa exekuta ditzakeen egiaztatzea, banku jakin
+baten akatsen simulazioa, eta bertan programak exekutatzeko protokolo bat.
 
 ## Gehitua
 

@@ -121,4 +121,5 @@ izendunak QOA arruntean, MPI ezer eraiki gabe, eta QOA edozein sarrerarekin segu
 agindu guztientzako forma laburrak, eta glifo trinkoagoak ([glyph.eu.md](glyph.eu.md)). 0.4.6-n: glifoak
 ahalik eta trinkoenak (`qoa export --to glyph --dense`). 0.4.7-n: OpenQASM 3 irteera eta sarrera, `if`/`else`,
 `while` eta `for` blokeekin ([hardware.eu.md](hardware.eu.md#openqasm-3)), eta QOA-ren mihiztatzaile propioa
-`qoa`-n sartuta.
+`qoa`-n sartuta. 0.4.8-n: mahai gaineko fotoi bakarreko banku bat, pieza-zerrendatik gailu-protokoloraino
+([bench.eu.md](bench.eu.md)).

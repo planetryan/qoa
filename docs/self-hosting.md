@@ -20,10 +20,10 @@ qoa compile --self-hosted program.qoa                    # the same assembler, b
 The assembler's source is `src/qoa/asm.qoa` in the repository, and from QOA 0.4.4 every release package
 includes it too (in `tools/` until 0.4.7). `src/qoa/` holds the parts of QOA written in QOA, next to the
 Rust sources, because they are compiled into the `qoa` binary; `tools/` holds helper scripts in Python and
-shell. From QOA 0.4.7 it is also built into the `qoa` binary: `--self-hosted` uses that copy, so
-no file is needed, `qoa tools` lists the tools written in QOA that the binary carries, and
+shell. From QOA 0.4.7 the assembler is also built into the `qoa` binary: `--self-hosted` uses that copy,
+so no file is needed, `qoa tools` lists the tools written in QOA that the binary carries, and
 `qoa tools --write DIR` writes their sources out (`asm.qoa`, and `asm.qg` generated from it). A test checks
-that the built-in copy is the file in `tools/`, and that it gives the same bytes and errors as the Rust
+that the built-in copy is the file in `src/qoa/`, and that it gives the same bytes and errors as the Rust
 assembler.
 
 `--assembler` takes any QOA program, as source or as a compiled `.qx`. QOA runs it with the source file on
