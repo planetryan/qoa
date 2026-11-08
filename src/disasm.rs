@@ -369,6 +369,11 @@ fn instr(op: &Op, addr: usize) -> Result<Instr, String> {
     })
 }
 
+// eragiketa baten QOA izena, desmihiztatzaileak idatziko lukeen bezala (mezuetarako)
+pub fn op_name(op: &Op) -> Option<&'static str> {
+    instr(op, 0).ok().map(|i| i.name)
+}
+
 fn plain_tok(t: &Tok) -> String {
     match t {
         Tok::Q(k) => format!("q{}", k),

@@ -242,6 +242,7 @@ suite against what its comments claim:
 | `grover`, `grover-key` | Grover search; a toy key search (and why AES is out of reach) |
 | `qpe`, `shor15` | phase estimation; Shor's algorithm factoring 15, classical part included |
 | `hom`, `mach-zehnder` | two-photon interference; single-photon interferometer |
+| `hom-clicks`, `bell-photons` | Hong-Ou-Mandel with click detectors, and a Bell test on photon polarisation: both run on a tabletop bench ([docs/bench.md](docs/bench.md)) |
 | `coherent`, `squeezed` | laser light (Poisson statistics); squeezed vacuum (only even photon numbers) |
 | `emitter`, `cat` | qubit-photon entanglement; a Schrodinger cat state made with a qubit |
 | `heralded-entanglement` | entangling two distant emitters by interfering their photons |
@@ -254,14 +255,16 @@ suite against what its comments claim:
 
 ## Real hardware
 
-The qubit part of a program exports to OpenQASM 2.0 or IonQ's JSON, including counted loops and
+The qubit part of a program exports to OpenQASM 2.0 or 3, or IonQ's JSON, including counted loops and
 feed-forward on measured bits, and runs the same in Qiskit. Transpiled for IBM's Heron and Eagle devices
 with their measured noise, small circuits keep 75-98% of the right answers and an 8-qubit Grover key search
 drops to 30%. The linear-optics part matches Quandela's Perceval to 1e-15. With a free IBM Quantum account
 (10 minutes of real-device time per 28 days), `tools/run_on_ibm.py examples/bell.qoa` runs a program on a
 real quantum computer and compares the result with QOA's. Next to it, QOA predicts what the device will
 return from the device's own calibration ([docs/noise.md](docs/noise.md)). Measurements, limits and details:
-[docs/hardware.md](docs/hardware.md).
+[docs/hardware.md](docs/hardware.md). To build a tabletop single-photon bench of your own instead, what it
+needs (with prices) and which programs run on it: [docs/bench.md](docs/bench.md); `qoa check --target bench-b`
+checks a program against it.
 
 ## Testing
 

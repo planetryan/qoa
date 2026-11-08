@@ -1,0 +1,11 @@
+; bell proba bat fotoien polarizazioarekin, b mailako banku batean bezala (docs/bench.md): BELL bikote-iturria
+; da (polarizazioan entrelazatutako bi fotoi), xaflek oinarria aldatzen dute, eta PBS batek neurtzen du.
+; bi fotoiak X oinarrian: emaitzak beti berdinak (00 edo 11), Z oinarrian bezala.
+; qoa check --target bench-b examples/bell-photons.qoa
+; expect-only: 00 11
+QI 2
+Bq0 q1
+Hq0                     ; uhin erdiko xafla 22.5°-tan: X oinarria
+Hq1
+Mq0
+Mq1

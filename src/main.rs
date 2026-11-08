@@ -158,6 +158,11 @@ enum Command {
     Check {
         #[arg(help = ts!("program file", "programa-fitxategia"))]
         file: PathBuf,
+        #[arg(long, value_name = "TARGET", help = ts!(
+            "also check that the program runs on this hardware: bench-a (classical-light bench) or bench-b (single photons, a pair source, click detectors); each instruction it cannot run is an error, with the line and why (docs/bench.md)",
+            "egiaztatu programa hardware honetan dabilela ere: bench-a (argi klasikoko bankua) edo bench-b (fotoi bakarrak, bikote-iturri bat, klik-detektagailuak); exekutatu ezin duen agindu bakoitza errore bat da, lerroa eta zergatia esanda (docs/bench.eu.md)"
+        ))]
+        target: Option<String>,
     },
     #[command(about = ts!("Assemble a program into a .qx binary", "Programa bat .qx bitar batean mihiztatu"))]
     Compile {
@@ -603,7 +608,7 @@ fn main() -> ExitCode {
             quiet,
             args,
         ),
-        Command::Check { file } => cmd_check(&file),
+        Command::Check { file, target } => cmd_check(&file, target.as_deref()),
         Command::Compile {
             file,
             output,
@@ -1031,8 +1036,35 @@ impl<W: std::io::Write> std::io::Write for Counting<W> {
     }
 }
 
-fn cmd_check(file: &Path) -> Result<(), String> {
+fn cmd_check(file: &Path, target: Option<&str>) -> Result<(), String> {
+    let target = match target {
+        None => None,
+        Some(name) => Some(qoa::target::Target::parse(name).ok_or_else(|| {
+            let names: Vec<&str> = qoa::target::Target::ALL.iter().map(|t| t.name()).collect();
+            t!(
+                "unknown target '{}' (known: {})",
+                "'{}' helburu ezezaguna (ezagunak: {})",
+                name,
+                names.join(", ")
+            )
+        })?),
+    };
     let p = load(file)?;
+    if let Some(target) = target {
+        let problems = qoa::target::check(&p, target);
+        if !problems.is_empty() {
+            let mut msg = t!(
+                "{} cannot run on {} (docs/bench.md):\n",
+                "{} ezin da {}-n exekutatu (docs/bench.eu.md):\n",
+                p.name,
+                target.name()
+            );
+            for e in problems {
+                msg.push_str(&format!("  {}\n", e));
+            }
+            return Err(msg.trim_end().to_string());
+        }
+    }
     let dim = p.state_dim().unwrap_or(0);
     let style = Style::detect();
     let label = |s: &str| {
@@ -1151,6 +1183,17 @@ fn cmd_check(file: &Path) -> Result<(), String> {
             t!(
                 "uses simulator-only inspection (DUMPSTATE/EXPECT/BELLCHECK/MEANPHOTON); a real device cannot do this",
                 "simulagailuko ikuskapena erabiltzen du (DUMPSTATE/EXPECT/BELLCHECK/MEANPHOTON); benetako gailu batek ezin du hori egin"
+            )
+        );
+    }
+    if let Some(target) = target {
+        println!(
+            "{}  {}",
+            label(ts!("target", "helburua")),
+            t!(
+                "runs on {} (docs/bench.md)",
+                "{}-n dabil (docs/bench.eu.md)",
+                target.name()
             )
         );
     }

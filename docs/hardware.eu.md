@@ -94,6 +94,10 @@ ukatzen du. IBM-k alda dezake, beraz egiaztatu gida horretan oinarritu aurretik.
 
 ## Programa optikoak
 
+Banku propio bat da fotoi errealetara iristeko beste bidea: [bench.eu.md](bench.eu.md)-k mahai gaineko fotoi
+bakarreko banku batek behar duena zerrendatzen du, prezioekin, eta `qoa check --target bench-b`-k esaten du
+programa bat bertan dabilen.
+
 OpenQASM-ek ez du modu optikorik, eta qubit-makinek ezin dituzte exekutatu. Prozesadore fotonikoek zati
 lineala exekuta dezakete: fotoi bakarrak izpi-zatitzaile eta faseetatik, amaieran kontatuta.
 `tools/hardware_check.py`-k QOA sare bat hartzen du, bere fotoi bakarreko transferentzia-matrizea QOA-tik

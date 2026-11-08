@@ -1,0 +1,13 @@
+; hong-ou-mandel klik-detektagailuekin, b mailako banku batean bezala (docs/bench.md): bi fotoi berdin
+; 50:50 izpi-zatitzaile batera, eta bi irteerak batera klik egiten ez dutela ikusten da (sakonunea).
+; COUNT-ek fotoiak zenbatuko lituzke (c maila); hemen DETECT-ek klik bat ematen du detektagailu bakoitzean,
+; eta sakonunea bi detektagailuek inoiz batera klik egiten ez dutela da.
+; qoa check --target bench-b examples/hom-clicks.qoa
+; expect-only: o0=0_o1=1 o0=1_o1=0
+; expect-share: o0=0_o1=1 0.5 0.03
+QO 2 3
+SPo0
+SPo1
+BSo0 o1 pi/4            ; 50:50
+PDo0
+PDo1

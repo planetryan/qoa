@@ -252,6 +252,7 @@ egiaztatua bere iruzkinek diotenaren aurka:
 | `grover`, `grover-key` | grover-en bilaketa; jostailu-gako baten bilaketa (eta zergatik ez den aes-en eskura) |
 | `qpe`, `shor15` | fasearen estimazioa; shor-en algoritmoa 15 faktorizatzen, zati klasikoa barne |
 | `hom`, `mach-zehnder` | bi fotoiren interferentzia; fotoi bakarreko interferometroa |
+| `hom-clicks`, `bell-photons` | Hong-Ou-Mandel klik-detektagailuekin, eta Bell proba bat fotoien polarizazioarekin: biak mahai gaineko banku batean dabiltza ([docs/bench.eu.md](docs/bench.eu.md)) |
 | `coherent`, `squeezed` | laser-argia (poisson estatistika); huts estutua (fotoi-kopuru bikoitiak bakarrik) |
 | `emitter`, `cat` | qubit-fotoi entrelazamendua; qubit batekin egindako Schrödinger-en katua |
 | `heralded-entanglement` | urrutiko bi igorle entrelazatu haien fotoiak interferentzian jarriz |
@@ -264,7 +265,7 @@ egiaztatua bere iruzkinek diotenaren aurka:
 
 ## Hardware erreala
 
-Programa baten qubit-zatia OpenQASM 2.0 edo IonQ-ren JSON gisa esportatzen da, kopuru finkoko begiztak
+Programa baten qubit-zatia OpenQASM 2.0 edo 3 gisa, edo IonQ-ren JSON gisa esportatzen da, kopuru finkoko begiztak
 eta neurtutako biten araberako aurrera-elikadura barne, eta qiskit-en berdin exekutatzen da. IBM-ren Heron
 eta Eagle gailuetarako transpilatuta eta haien zarata neurtuarekin, zirkuitu txikiek erantzun zuzenen % 75-98
 gordetzen dute eta 8 qubiteko grover gako-bilaketa bat % 30era jaisten da. Optika linealeko zatia
@@ -272,7 +273,9 @@ Quandela-ren Perceval-ekin bat dator 1e-15-raino. IBM Quantum-en doako kontu bat
 28 egunean), `tools/run_on_ibm.py examples/bell.qoa`-k programa bat ordenagailu kuantiko erreal batean
 exekutatzen du eta emaitza QOA-renarekin konparatzen du. Ondoan, QOA-k gailuak zer itzuliko duen aurreikusten
 du gailuaren kalibraziotik bertatik ([docs/noise.eu.md](docs/noise.eu.md)). Neurketak, mugak eta xehetasunak:
-[docs/hardware.eu.md](docs/hardware.eu.md).
+[docs/hardware.eu.md](docs/hardware.eu.md). Horren ordez mahai gaineko fotoi bakarreko banku propio bat
+eraikitzeko, zer behar duen (prezioekin) eta zer programa dabiltzan bertan: [docs/bench.eu.md](docs/bench.eu.md);
+`qoa check --target bench-b`-k programa bat harekin egiaztatzen du.
 
 ## Probak
 

@@ -45,6 +45,7 @@ pub mod simd; // kernel beroak mihiztaduran: avx-512, avx2, neon, rvv
 pub mod state; // egoera-bektorea: qubitak eta modu optikoak
 #[cfg(any(feature = "opencl", feature = "mpi"))]
 pub(crate) mod syslib; // sistemaren liburutegiak kargatzea, uneko karpetatik inoiz ez
+pub mod target; // hardware-profilak (`qoa check --target`): mahai gaineko optika-banku batek exekuta dezakeena
 pub mod team; // prozesu-taldeak: shot-ak rank-en artean (MPI edo hariak)
 pub mod term; // terminalerako testua: programen kontrol-sekuentziak ikusgai (ez exekutatuta)
 pub mod tools; // qoa binarioan sartutako QOA tresnak (QOAn idatzitako mihiztatzailea): `qoa tools`

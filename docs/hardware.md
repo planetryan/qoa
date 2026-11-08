@@ -89,6 +89,9 @@ relying on it. As of this writing:
 
 ## Optical programs
 
+A bench of your own is the other way onto real photons: [bench.md](bench.md) lists what a tabletop
+single-photon bench needs, with prices, and `qoa check --target bench-b` says whether a program runs on it.
+
 OpenQASM has no optical modes, and no qubit machine can run them. Photonic processors can run the linear
 part: single photons through beamsplitters and phases, counted at the end. `tools/hardware_check.py` takes a
 QOA network, gets its single-photon transfer matrix from QOA, and runs the multi-photon input through
