@@ -771,6 +771,13 @@ pub struct Program {
 
 pub const DEFAULT_CUTOFF: u32 = 8;
 
+// programa baten qubit eta bit klasiko gehienak (q0..q65535, c0..c65535): qubit bakoitza bere bitean neur
+// daiteke, eta 2026ko ordenagailu kuantiko handienak baino askoz gehiago dira. simulatzeko muga ez da hau,
+// memoria baizik: `qoa check`-ek esaten du zenbat qubit dabiltzan ondo makina batean, eta handiagoa den egoera
+// batek abisu bat jasotzen du (ikus state::state_memory)
+pub const MAX_QUBITS: u32 = 65536;
+pub const MAX_BITS: u32 = 65536;
+
 impl Program {
     // egoera-bektoreak behar dituen anplitude konplexuak: 2^qubitak * muga^moduak
     pub fn state_dim(&self) -> Option<u128> {

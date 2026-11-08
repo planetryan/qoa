@@ -1,3 +1,3 @@
-; nahita huts egiten duen proba
-; expect-error: more than 64 qubits cannot be simulated
-QINIT 65
+; nahita huts egiten duen proba: qoa programa batek gehienez 65536 qubit ditu
+; expect-error: a QOA program has at most 65536 qubits
+QINIT 65537

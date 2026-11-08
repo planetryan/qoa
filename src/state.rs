@@ -35,7 +35,9 @@ pub const DEFAULT_MEMORY: u128 = 1 << 36;
 
 // egoera-bektorearentzat erabil daitekeen memoria, bytetan, eta nondik datorren: QOA_MAX_MEMORY (adib. "512G",
 // "1.5T", byteak), bestela linux-en memoria erabilgarriaren % 90 (MemAvailable, eta cgroup-aren muga, slurm
-// bezalako lan-kudeatzaileek ezartzen dutena, txikiagoa bada), bestela DEFAULT_MEMORY. behin kalkulatzen da
+// bezalako lan-kudeatzaileek ezartzen dutena, txikiagoa bada), bestela DEFAULT_MEMORY. behin kalkulatzen da.
+// egoerarentzat neurketa bat da, ez muga bat: handiagoa den egoera batek abisu bat jasotzen du eta saiatu
+// egiten da (ikus state_memory). QOA_MAX_MEMORY ezarrita badago bakarrik da muga zorrotza
 pub fn memory_limit() -> (u128, String) {
     static LIMIT: std::sync::OnceLock<(u128, String)> = std::sync::OnceLock::new();
     LIMIT.get_or_init(find_memory_limit).clone()
@@ -97,6 +99,92 @@ fn find_memory_limit() -> (u128, String) {
             crate::ts!("the default", "lehenetsia").into(),
         ),
     }
+}
+
+// QOA_MAX_MEMORY ezarrita dago: erabiltzaileak aukeratutako muga zorrotza, ez neurketa bat
+pub fn limit_is_hard() -> bool {
+    memory_limit().1 == "QOA_MAX_MEMORY"
+}
+
+// 64 biteko helbide-espazio batek gorde dezakeen objektu handiena (isize::MAX byte): hortik gora egoera ezin da
+// inongo makinaren memorian egon, ez da muga bat aukeran
+pub const ADDRESSABLE: u128 = isize::MAX as u128;
+
+// hemen ondo sartzen den qubit-kopuru handiena, anplitude bakoitzeko `per` byterekin (egoera eta haren
+// laguntza-zerrendak): 2^n * per <= memoria
+pub fn qubits_that_fit(per: u128) -> u32 {
+    let (limit, _) = memory_limit();
+    (1..127u32)
+        .take_while(|&n| (1u128 << n).checked_mul(per).is_some_and(|b| b <= limit))
+        .last()
+        .unwrap_or(0)
+}
+
+// egoera baten memoria: `what`-ek `bytes` behar ditu, anplitude bakoitzeko `per`. errorea bakarrik ezinezkoa
+// denean: 64 biteko helbide-espazioa gainditzen du, edo QOA_MAX_MEMORY-k (muga zorrotza) ez du uzten.
+// makinan sartzen ez bada, abisu bat (Some): zenbat qubit dabiltzan ondo hemen eta gainetik zer gerta
+// daitekeen; exekuzioa saiatu egiten da hala ere
+pub fn state_memory(what: &str, bytes: u128, per: u128) -> Result<Option<String>, String> {
+    if bytes > ADDRESSABLE {
+        return Err(unaddressable(what, Some(bytes)));
+    }
+    let (limit, source) = memory_limit();
+    if bytes <= limit {
+        return Ok(None);
+    }
+    if limit_is_hard() {
+        return check_memory(what, bytes).map(|_| None);
+    }
+    Ok(Some(t!(
+        "{} need {}, more than this machine has room for ({}: {}). Up to {} qubits run well here; above that the run can be very slow (the system moves memory to disk) or be stopped for lack of memory. Going ahead; QOA_MAX_MEMORY makes the limit strict instead",
+        "{}-k {} behar dute, makina honek lekua duena baino gehiago ({}: {}). {} qubit arte ondo dabiltza hemen; hortik gora exekuzioa oso motela izan daiteke (sistemak memoria diskora darama) edo memoria faltagatik geldiaraz daiteke. aurrera; QOA_MAX_MEMORY-k muga zorrotz bihurtzen du",
+        what,
+        format_bytes(bytes),
+        source,
+        format_bytes(limit),
+        qubits_that_fit(per)
+    )))
+}
+
+// egoera ezin da memorian egon inon: 64 biteko makina batek helbideratu dezakeena baino handiagoa
+pub fn unaddressable(what: &str, bytes: Option<u128>) -> String {
+    let need = match bytes {
+        Some(b) => t!("need {}", "{} behar dute", format_bytes(b)),
+        None => t!("need more bytes than fit in a number", "zenbaki batean sartzen direnak baino byte gehiago behar dituzte"),
+    };
+    t!(
+        "{} {}, more than a 64-bit computer can address ({}), so this state cannot be held in any machine's memory. Use fewer qubits or modes, split a qubit state over many machines (qoa run --mpi --distribute), or run the program on quantum hardware (qoa export --to qasm3)",
+        "{}-k {}, 64 biteko ordenagailu batek helbideratu dezakeena baino gehiago ({}), beraz egoera hau ezin da inongo makinaren memorian egon. erabili qubit edo modu gutxiago, banatu qubit-egoera bat makina askotan (qoa run --mpi --distribute), edo exekutatu programa hardware kuantikoan (qoa export --to qasm3)",
+        what,
+        need,
+        format_bytes(ADDRESSABLE + 1)
+    )
+}
+
+// egoera baterako memoria eskatu sistemari: ematen ez badu, errore argi bat (ez programaren amaiera
+// bortitza). linux-ek memoria agindu dezake eta gero, erabiltzean, falta: horretarako da state_memory-ren abisua
+pub fn alloc_state<T: Clone>(len: usize, fill: T, what: &str, per: u128) -> Result<Vec<T>, String> {
+    let mut v = Vec::new();
+    if v.try_reserve_exact(len).is_err() {
+        return Err(t!(
+            "the system did not give QOA the {0} of memory that {1} need. Up to {2} qubits run well here",
+            "sistemak ez dio QOA-ri eman {1}-k behar duten {0} memoria. {2} qubit arte ondo dabiltza hemen",
+            format_bytes(len as u128 * std::mem::size_of::<T>() as u128),
+            what,
+            qubits_that_fit(per)
+        ));
+    }
+    v.resize(len, fill);
+    Ok(v)
+}
+
+// laginketaren probabilitate-zerrenda mezuetan
+pub fn probabilities_of(len: usize) -> String {
+    t!(
+        "the probabilities of {} amplitudes",
+        "{} anplituderen probabilitateek",
+        len
+    )
 }
 
 // "512G", "1.5T", "64GiB", "4096M", "123456" -> byteak (bi-ren berreturak: K = 1024)
@@ -213,6 +301,15 @@ pub fn check_memory(what: &str, bytes: u128) -> Result<(), String> {
     if bytes <= limit {
         return Ok(());
     }
+    if limit_is_hard() {
+        return Err(t!(
+            "{} need {}, more than QOA_MAX_MEMORY allows ({}). Raise it, or unset it to let QOA try anyway",
+            "{}-k {} behar dute, QOA_MAX_MEMORY-k uzten duena baino gehiago ({}). handitu, edo kendu QOA-k hala ere saia dadin",
+            what,
+            format_bytes(bytes),
+            format_bytes(limit)
+        ));
+    }
     Err(t!(
         "{} need {}, more than QOA may use here ({}: {}). On a machine with more memory, set QOA_MAX_MEMORY (e.g. QOA_MAX_MEMORY=512G)",
         "{}-k {} behar dute, QOA-k hemen erabil dezakeena baino gehiago ({}: {}). memoria gehiagoko makina batean, ezarri QOA_MAX_MEMORY (adib. QOA_MAX_MEMORY=512G)",
@@ -244,8 +341,8 @@ impl State {
     // |0...0> qubitetan, hutsa modu guztietan
     pub fn new(n_qubits: usize, n_modes: usize, cutoff: usize) -> Result<State, String> {
         let dim = Self::check(n_qubits, n_modes, cutoff)?;
-        let mut amps = vec![C::new(0.0, 0.0); dim as usize];
-        amps[0] = C::new(1.0, 0.0);
+        let mut amps = alloc_state(dim as usize, ZERO, &Self::describe(n_qubits, n_modes, cutoff, dim), 16)?;
+        amps[0] = ONE;
         Ok(State {
             n_qubits,
             n_modes,
@@ -256,24 +353,25 @@ impl State {
         })
     }
 
-    // egoera bat sor daitekeen, ezer erreserbatu gabe: tamaina (anplitudeak) edo zergatik ez
+    // egoera bat sor daitekeen, ezer erreserbatu gabe: tamaina (anplitudeak) edo zergatik ez. makinan sartzen
+    // ez den egoera bat sor daiteke (abisua state_memory-k ematen du); ezinezkoa dena bakarrik da errorea
     pub fn check(n_qubits: usize, n_modes: usize, cutoff: usize) -> Result<u128, String> {
-        let dim = Self::dim_for(n_qubits, n_modes, cutoff).ok_or_else(|| {
-            t!(
-                "the state is too large to index",
-                "egoera handiegia da indexatzeko"
-            )
-        })?;
-        check_memory(
-            &t!(
-                "{} qubits and {} modes (cutoff {}): {} amplitudes",
-                "{} qubit eta {} modu ({} muga): {} anplitude",
-                n_qubits,
-                n_modes,
-                cutoff,
-                dim
-            ),
+        let Some(dim) = Self::dim_for(n_qubits, n_modes, cutoff) else {
+            return Err(unaddressable(
+                &t!(
+                    "{} qubits and {} modes (cutoff {})",
+                    "{} qubit eta {} modu ({} muga)",
+                    n_qubits,
+                    n_modes,
+                    cutoff
+                ),
+                None,
+            ));
+        };
+        state_memory(
+            &Self::describe(n_qubits, n_modes, cutoff, dim),
             dim.saturating_mul(16),
+            16,
         )?;
         if n_modes > 0 && cutoff < 2 {
             return Err(t!(
@@ -282,6 +380,27 @@ impl State {
             ));
         }
         Ok(dim)
+    }
+
+    // egoeraren deskribapena mezuetarako: "40 qubits: 1099511627776 amplitudes"
+    pub fn describe(n_qubits: usize, n_modes: usize, cutoff: usize, dim: u128) -> String {
+        if n_modes == 0 {
+            t!(
+                "{} qubits ({} amplitudes)",
+                "{} qubit ({} anplitude)",
+                n_qubits,
+                dim
+            )
+        } else {
+            t!(
+                "{0} qubits and {1} modes of cutoff {2} ({3} amplitudes)",
+                "{0} qubit eta {2} muga duten {1} modu ({3} anplitude)",
+                n_qubits,
+                n_modes,
+                cutoff,
+                dim
+            )
+        }
     }
 
     pub fn dim_for(n_qubits: usize, n_modes: usize, cutoff: usize) -> Option<u128> {
@@ -537,12 +656,19 @@ impl State {
     }
 
     // oinarri-egoera bakoitzaren probabilitatea (shot guztiak simulazio bakarretik lagintzeko)
-    pub fn probabilities(&self) -> Vec<f64> {
+    // (zerrenda egoera bezain luzea da: sistemak memoria ematen ez badu, errore argi bat)
+    pub fn probabilities(&self) -> Result<Vec<f64>, String> {
+        let mut p = alloc_state(self.amps.len(), 0.0, &probabilities_of(self.amps.len()), 24)?;
         if self.amps.len() >= PARALLEL_MIN {
-            self.amps.par_iter().map(|a| a.norm_sqr()).collect()
+            p.par_iter_mut()
+                .zip(self.amps.par_iter())
+                .for_each(|(p, a)| *p = a.norm_sqr());
         } else {
-            self.amps.iter().map(|a| a.norm_sqr()).collect()
+            for (p, a) in p.iter_mut().zip(&self.amps) {
+                *p = a.norm_sqr();
+            }
         }
+        Ok(p)
     }
 
     // ------------------------------------------------------------------ ikuskapena
@@ -826,7 +952,7 @@ pub fn sample_index(weights: &[f64], r: f64) -> usize {
 }
 
 pub fn format_bytes(b: u128) -> String {
-    const UNITS: [&str; 5] = ["B", "KiB", "MiB", "GiB", "TiB"];
+    const UNITS: [&str; 7] = ["B", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB"];
     let mut v = b as f64;
     let mut u = 0;
     while v >= 1024.0 && u < UNITS.len() - 1 {

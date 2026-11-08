@@ -381,19 +381,24 @@ pub struct QuadState {
 impl QuadState {
     // |0...0>
     pub fn new(n_qubits: usize) -> Result<QuadState, String> {
-        let dim = 1u128.checked_shl(n_qubits as u32).unwrap_or(u128::MAX);
-        crate::state::check_memory(
-            &t!(
-                "{} qubits in 128-bit precision: {} amplitudes",
-                "{} qubit 128 biteko doitasunean: {} anplitude",
-                n_qubits,
-                dim
-            ),
-            dim.saturating_mul(32),
-        )?;
-        let mut amps = vec![Qc::ZERO; dim as usize];
+        let what = Self::describe(n_qubits);
+        let dim = 1u128
+            .checked_shl(n_qubits as u32)
+            .ok_or_else(|| crate::state::unaddressable(&what, None))?;
+        let what = format!("{} ({})", what, t!("{} amplitudes", "{} anplitude", dim));
+        crate::state::state_memory(&what, dim.saturating_mul(32), 32)?;
+        let mut amps = crate::state::alloc_state(dim as usize, Qc::ZERO, &what, 32)?;
         amps[0] = Qc::ONE;
         Ok(QuadState { n_qubits, amps })
+    }
+
+    // "40 qubits in 128-bit precision" mezuetan
+    pub fn describe(n_qubits: usize) -> String {
+        t!(
+            "{} qubits in 128-bit precision",
+            "{} qubit 128 biteko doitasunean",
+            n_qubits
+        )
     }
 
     pub fn n_qubits(&self) -> usize {
@@ -518,8 +523,13 @@ impl QuadState {
         outcome
     }
 
-    pub fn probabilities(&self) -> Vec<f64> {
-        self.amps.par_iter().map(|a| a.norm_sqr().value()).collect()
+    pub fn probabilities(&self) -> Result<Vec<f64>, String> {
+        let what = crate::state::probabilities_of(self.amps.len());
+        let mut p = crate::state::alloc_state(self.amps.len(), 0.0, &what, 40)?;
+        p.par_iter_mut()
+            .zip(self.amps.par_iter())
+            .for_each(|(p, a)| *p = a.norm_sqr().value());
+        Ok(p)
     }
 
     // q qubitaren <X>, <Y>, <Z>

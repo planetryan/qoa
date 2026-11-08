@@ -26,7 +26,7 @@ use rayon::prelude::*;
 use std::sync::Arc;
 
 // trukearen zatiak: 2^22 anplitude = 64 MiB
-const CHUNK: usize = 1 << 22;
+pub const CHUNK: usize = 1 << 22;
 
 // txostenerako egoera osoa 0. prozesuan biltzen da hau baino txikiagoa bada (2^24 anplitude = 256 MiB)
 pub const GATHER_MAX: usize = 1 << 24;
@@ -74,18 +74,26 @@ impl DistState {
             ));
         }
         let local_bits = n_qubits - global;
-        let len = 1u128 << local_bits;
-        crate::state::check_memory(
-            &t!(
-                "{} qubits over {} processes: {} amplitudes in each",
-                "{} qubit {} prozesutan: {} anplitude bakoitzean",
-                n_qubits,
-                ranks,
-                len
-            ),
-            len * 16 + 2 * (CHUNK as u128) * 16,
-        )?;
+        let what = Self::describe(n_qubits, ranks);
+        let len = 1u128
+            .checked_shl(local_bits as u32)
+            .ok_or_else(|| crate::state::unaddressable(&what, None))?;
+        crate::state::state_memory(&what, len * 16 + 2 * (CHUNK as u128) * 16, 16)?;
         Ok(local_bits)
+    }
+
+    // "40 qubits over 4 processes: 274877906944 amplitudes in each" mezuetan
+    pub fn describe(n_qubits: usize, ranks: usize) -> String {
+        let global = ranks.trailing_zeros() as usize;
+        let local = n_qubits.saturating_sub(global);
+        let len = 1u128.checked_shl(local as u32).map_or("?".to_string(), |l| l.to_string());
+        t!(
+            "{} qubits over {} processes ({} amplitudes in each)",
+            "{} qubit {} prozesutan ({} anplitude bakoitzean)",
+            n_qubits,
+            ranks,
+            len
+        )
     }
 
     pub fn new(
@@ -95,7 +103,8 @@ impl DistState {
     ) -> Result<DistState, String> {
         let local_bits = Self::check(n_qubits, team.size())?;
         let len = 1usize << local_bits;
-        let mut amps = vec![ZERO; len];
+        let mut amps =
+            crate::state::alloc_state(len, ZERO, &Self::describe(n_qubits, team.size()), 16)?;
         if team.rank() == 0 {
             amps[0] = C::new(1.0, 0.0);
         }
@@ -326,11 +335,16 @@ impl DistState {
     }
 
     // prozesu honen probabilitateak eta prozesu guztien batura, rank-en ordenan
-    pub fn local_probabilities(&self) -> (Vec<f64>, Vec<f64>) {
-        let probs: Vec<f64> = self.amps.par_iter().map(|a| a.norm_sqr()).collect();
+    pub fn local_probabilities(&self) -> Result<(Vec<f64>, Vec<f64>), String> {
+        let what = crate::state::probabilities_of(self.amps.len());
+        let mut probs = crate::state::alloc_state(self.amps.len(), 0.0, &what, 24)?;
+        probs
+            .par_iter_mut()
+            .zip(self.amps.par_iter())
+            .for_each(|(p, a)| *p = a.norm_sqr());
         let mine = dd::sum(probs.iter().copied());
         let totals = self.team.allgather_f64(&[mine]);
-        (probs, totals.into_iter().map(|v| v[0]).collect())
+        Ok((probs, totals.into_iter().map(|v| v[0]).collect()))
     }
 
     pub fn local_bits(&self) -> usize {

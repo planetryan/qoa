@@ -88,15 +88,18 @@ The state takes 16 bytes per amplitude (32 with `--precision quad`), so `n` qubi
 30 qubits need 16 GiB, 34 qubits 256 GiB. A run whose shots are sampled from one simulation needs 8 more
 bytes per amplitude for the probabilities.
 
-Before it allocates anything, QOA checks that the state fits in the memory it may use:
+Before it allocates anything, QOA works out whether the state fits in the memory there is:
 
-- `QOA_MAX_MEMORY`, if set (`512G`, `1.5T`, `64GiB` or a number of bytes);
-- otherwise, on Linux, 90% of the memory available at start, or of the job's own limit when a job manager
-  (Slurm and others, through cgroups) sets a smaller one;
+- on Linux, 90% of the memory available at start, or of the job's own limit when a job manager (Slurm and
+  others, through cgroups) sets a smaller one;
 - otherwise 64 GiB.
 
-A state that does not fit is an error that says how much it needs and how much there is. It does not crash
-the node. `qoa check` shows the same numbers without running anything.
+A state that does not fit is not refused: QOA warns before the run, saying how much it needs, how much there
+is and how many qubits run well on this node, then tries. Past that point the run may be very slow or be
+stopped for lack of memory, and on a cluster the job manager may end the job. Memory the system refuses is a
+clear error, not a crash. On a shared node, set `QOA_MAX_MEMORY` (`512G`, `1.5T`, `64GiB` or a number of
+bytes) to make the limit firm: a state above it is then an error before anything is allocated. `qoa check`
+shows the same numbers, and how many qubits fit, without running anything.
 
 ## GPUs
 

@@ -93,15 +93,19 @@ Egoerak 16 byte behar ditu anplitude bakoitzeko (32 `--precision quad`-ekin), be
 behar dituzte: 30 qubitek 16 GiB, 34 qubitek 256 GiB. Shot-ak simulazio bakar batetik laginkatzen dituen
 exekuzio batek 8 byte gehiago behar ditu anplitude bakoitzeko, probabilitateetarako.
 
-Ezer erreserbatu aurretik, QOA-k egiaztatzen du egoera erabil dezakeen memorian sartzen dela:
+Ezer erreserbatu aurretik, QOA-k kalkulatzen du egoera dagoen memorian sartzen den:
 
-- `QOA_MAX_MEMORY`, ezarrita badago (`512G`, `1.5T`, `64GiB` edo byte-kopuru bat);
-- bestela, linux-en, hasieran erabilgarri dagoen memoriaren % 90, edo lanaren beraren mugarena, lan-kudeatzaile
-  batek (slurm eta beste batzuk, cgroup-en bidez) txikiagoa ezartzen duenean;
+- linux-en, hasieran erabilgarri dagoen memoriaren % 90, edo lanaren beraren mugarena, lan-kudeatzaile batek
+  (slurm eta beste batzuk, cgroup-en bidez) txikiagoa ezartzen duenean;
 - bestela 64 GiB.
 
-Sartzen ez den egoera bat errore bat da, zenbat behar duen eta zenbat dagoen esaten duena. Ez du nodoa
-eroriarazten. `qoa check`-ek zenbaki berak erakusten ditu ezer exekutatu gabe.
+Sartzen ez den egoera bat ez da baztertzen: QOA-k exekuzioaren aurretik abisatzen du, zenbat behar duen, zenbat
+dagoen eta nodo honetan zenbat qubit dabiltzan ondo esanez, eta gero saiatu egiten da. Hortik aurrera
+exekuzioa oso motela izan daiteke edo memoria faltagatik geldiaraz daiteke, eta kluster batean lan-kudeatzaileak
+lana amai dezake. Sistemak ukatzen duen memoria errore argi bat da, ez erortze bat. Nodo partekatu batean,
+ezarri `QOA_MAX_MEMORY` (`512G`, `1.5T`, `64GiB` edo byte-kopuru bat) muga zorrotz bihurtzeko: horren gaineko
+egoera bat errore bat da orduan, ezer erreserbatu aurretik. `qoa check`-ek zenbaki berak erakusten ditu, eta
+zenbat qubit sartzen diren, ezer exekutatu gabe.
 
 ## GPUak
 

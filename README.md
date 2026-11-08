@@ -193,6 +193,29 @@ runs a program as a tool. What is in QOA, what stays in Rust and why: [docs/self
 
 The report always says which of these happened.
 
+### How many qubits
+
+QOA has no fixed limit on how many qubits you simulate: a program can name up to 65,536 qubits, and how many
+of them run is set by your computer's memory. A state of n qubits takes 2^n × 16 bytes (24 when the shots
+are sampled from one simulation), so each extra qubit doubles it:
+
+| memory free | qubits that run well |
+|---|---|
+| 8 GiB | 28 |
+| 16 GiB | 29 |
+| 32 GiB | 30 |
+| 64 GiB | 31 |
+| 256 GiB | 33 |
+| 1 TiB | 35 |
+
+`qoa check program.qoa` tells you how many run well on the machine you are using. A program above that still
+runs: `qoa run` first warns, with that number, then goes ahead, and the run may be very slow (the system
+moves memory to disk) or be stopped by the system for lack of memory. Setting `QOA_MAX_MEMORY` (for example
+`QOA_MAX_MEMORY=64G`) turns this into a firm limit instead, which is useful on shared machines or for programs
+you did not write. `qoa run --mpi --distribute` splits a larger state over many machines. Only a state that
+no 64-bit computer can hold at all (from about 59 qubits on one machine) is refused outright, and such a
+program can still be checked and exported to quantum hardware.
+
 ### Photons and the cutoff
 
 A mode stores photon numbers 0 to cutoff-1 (`QMODE modes cutoff`, default 8). Operations that create photons
@@ -211,13 +234,15 @@ in [docs/precision.md](docs/precision.md).
 
 `qoa run --mpi` spreads the shots over MPI processes (start it with `mpirun` or `srun`; QOA loads the
 machine's Open MPI or MPICH-family library itself, nothing to build), with the same counts as one process,
-and `--mpi --distribute` splits one state too large for a single node over them. QOA checks that a state fits
-in the memory it may use before it starts (`QOA_MAX_MEMORY` to change it). See [docs/hpc.md](docs/hpc.md).
+and `--mpi --distribute` splits one state too large for a single node over them. Before it starts, QOA says
+whether a state fits in each process's memory, and warns if it does not (`QOA_MAX_MEMORY` makes that a firm
+limit). See [docs/hpc.md](docs/hpc.md).
 
 ### Safe with any input
 
 Whatever you give QOA, it runs it or stops with a clear message: no crash, no hang without a limit, no
-filling the memory. Every `.qx` ends with a SHA-256 of itself, so a damaged or altered file is refused before
+filling the memory behind your back. The one thing QOA lets you try is a state larger than your machine (see
+[How many qubits](#how-many-qubits)): it warns first, and `QOA_MAX_MEMORY` makes it refuse instead. Every `.qx` ends with a SHA-256 of itself, so a damaged or altered file is refused before
 it runs; `qoa seal program.qoa` stamps a source the same way, and a sealed file that changed afterwards is
 refused too. Every resource a program asks for is checked first, files are written whole or not at all, and
 every build feeds QOA thousands of damaged and garbled programs to prove it. `unsafe` Rust

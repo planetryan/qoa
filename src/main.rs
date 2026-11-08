@@ -943,6 +943,18 @@ fn cmd_run(
         args,
         input: None,
     };
+    // egoera makina honetan sartzen ez bada, abisua exekutatu aurretik (motela izan edo gelditu badaiteke ere,
+    // erabiltzaileak jakin dezan zergatik), eta aurrera
+    if device.is_none()
+        && rank == 0
+        && let Some(warning) = vm::memory_advice(&program, &config)
+    {
+        eprintln!(
+            "{} {}",
+            ts!("warning:", "abisua:"),
+            qoa::term::for_stderr(&warning)
+        );
+    }
     if quiet {
         // programaren irteera bakarrik, bufferrean (byte bakoitza idazketa bat ez izateko)
         let stdout = std::io::stdout();
@@ -1099,7 +1111,6 @@ fn cmd_check(file: &Path, target: Option<&str>) -> Result<(), String> {
             return Err(msg.trim_end().to_string());
         }
     }
-    let dim = p.state_dim().unwrap_or(0);
     let style = Style::detect();
     let label = |s: &str| {
         let padded = format!("{:<9}", s);
@@ -1154,26 +1165,46 @@ fn cmd_check(file: &Path, target: Option<&str>) -> Result<(), String> {
             )
         });
     }
-    system.push_str(&t!(
-        " = {} amplitudes, {}",
-        " = {} anplitude, {}",
-        dim,
-        format_bytes(dim * 16)
-    ));
-    println!("{}  {}", label(ts!("system", "sistema")), system);
-    let (limit, source) = qoa::state::memory_limit();
-    if dim * 16 > limit {
-        println!(
-            "{}  {}",
-            label(""),
-            t!(
-                "too large to simulate here ({}: {}; QOA_MAX_MEMORY changes it)",
-                "handiegia hemen simulatzeko ({}: {}; QOA_MAX_MEMORY-k aldatzen du)",
-                source,
-                format_bytes(limit)
-            )
-        );
+    let bytes = p.state_dim().and_then(|d| d.checked_mul(16));
+    match (p.state_dim(), bytes) {
+        (Some(d), Some(b)) => system.push_str(&t!(
+            " = {} amplitudes, {}",
+            " = {} anplitude, {}",
+            d,
+            format_bytes(b)
+        )),
+        _ => system.push_str(&t!(
+            " = more amplitudes than fit in a number",
+            " = zenbaki batean sartzen direnak baino anplitude gehiago"
+        )),
     }
+    println!("{}  {}", label(ts!("system", "sistema")), system);
+    // makina honetan zenbat qubit dabiltzan ondo, beti; programa gainetik badago, zer gerta daitekeen
+    let (limit, source) = qoa::state::memory_limit();
+    let fit = qoa::state::qubits_that_fit(24);
+    let mut here = t!(
+        "up to {} qubits run well on this machine ({}: {})",
+        "{} qubit arte ondo dabiltza makina honetan ({}: {})",
+        fit,
+        source,
+        format_bytes(limit)
+    );
+    match bytes {
+        _ if bytes.is_none_or(|b| b > qoa::state::ADDRESSABLE) => here.push_str(&t!(
+            "; this state is larger than any 64-bit computer can hold, so it cannot be simulated, only exported (qoa export --to qasm3)",
+            "; egoera hau 64 biteko ordenagailu batek gorde dezakeena baino handiagoa da, beraz ezin da simulatu, esportatu bakarrik (qoa export --to qasm3)"
+        )),
+        Some(b) if b > limit && qoa::state::limit_is_hard() => here.push_str(&t!(
+            "; this program is above QOA_MAX_MEMORY, so qoa run refuses it",
+            "; programa hau QOA_MAX_MEMORY-ren gainetik dago, beraz qoa run-ek ez du onartzen"
+        )),
+        Some(b) if b > limit => here.push_str(&t!(
+            "; this program is above that: qoa run tries it, but it can be very slow or be stopped for lack of memory",
+            "; programa hau horren gainetik dago: qoa run saiatu egiten da, baina oso motela izan daiteke edo memoria faltagatik geldiaraz daiteke"
+        )),
+        _ => {}
+    }
+    println!("{}  {}", label(ts!("memory", "memoria")), here);
     println!(
         "{}  {}",
         label(ts!("ops", "eragik.")),

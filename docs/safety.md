@@ -10,7 +10,7 @@ limits are, how that is tested, and which small parts of the code still need Rus
 
 Whatever the input, QOA does one of two things: it runs the program, or it stops with a clear message that
 says what is wrong, in English or in Basque. It does not crash, panic, hang without a limit, or fill the
-memory until the system kills it. This covers:
+memory until the system kills it without telling you first. This covers:
 
 - **Sources**: `.qoa`, `.qg` (glyph syntax) and `.qasm` (OpenQASM), including invalid UTF-8, random bytes,
   absurd numbers and nesting thousands of levels deep.
@@ -21,6 +21,12 @@ memory until the system kills it. This covers:
   absurd size is refused as corrupt, so the machine never sees it.
 - **Running programs**: every resource a program can ask for is checked before it is used (see the limits
   below), and numbers that are not finite stop the program instead of quietly turning the state into NaN.
+- **Large states**: the one thing QOA lets you try on purpose is a quantum state larger than the machine's
+  memory, because only you know whether a slow run is worth it. `qoa run` warns before it starts, saying how
+  many qubits run well on this machine, then goes ahead; the run may then be very slow or be stopped by the
+  system for lack of memory. Memory the system refuses is a clear error, not a crash. Set `QOA_MAX_MEMORY`
+  to refuse such states instead, for example on a shared machine or for programs you did not write: then
+  nothing is allocated past that limit.
 - **Output**: if the output cannot be written (a full disk), QOA stops and says so instead of losing it
   silently; if the reader goes away (`qoa ... | head`), QOA ends quietly like any command-line tool.
 
@@ -78,11 +84,13 @@ library.
 
 | what | limit | past it |
 |---|---|---|
-| memory for the state, optical operators, memory cells and results together | what QOA may use: 90% of the memory available when it starts, or `QOA_MAX_MEMORY` | a message with the size needed and the limit, before anything is allocated |
-| qubits | 64 (and the state must fit in memory) | assembler error |
+| memory for the quantum state | what fits: 90% of the memory available when QOA starts (`qoa check` says how many qubits that is) | a warning before the run, which then goes ahead; with `QOA_MAX_MEMORY` set, a message with the size needed and the limit, before anything is allocated |
+| a state no 64-bit computer can address (from 2^59 amplitudes, about 8 EiB) | none can be held anywhere | a message before anything is allocated; the program can still be checked and exported |
+| memory for optical operators, memory cells and results | 90% of the memory available when QOA starts, or `QOA_MAX_MEMORY` | a message with the size needed and the limit, before anything is allocated |
+| qubits | q0 to q65535, one for each classical bit (how many simulate well depends on memory, above) | assembler error |
 | optical modes | indices 0 to 63 (and the state must fit) | assembler error |
-| classical bits | c0 to c4095 | assembler error |
-| named registers (`QREG`, `CREG`, `OREG`, `RREG`, glyph `{n}`) | 1 to 4096 elements, first index 0 to 4095 | assembler error |
+| classical bits | c0 to c65535 | assembler error |
+| named registers (`QREG`, `CREG`, `OREG`, `RREG`, glyph `{n}`) | 1 to 65536 elements, first index 0 to 65535 | assembler error |
 | expression nesting (parentheses, functions, signs, `^` chains) | 100 levels | assembler error, in both assemblers |
 | steps of one shot | 100,000,000 (`--max-steps` changes it) | runtime error naming the limit |
 | `PUSH` stack | 1,048,576 values | runtime error |
@@ -100,8 +108,8 @@ outcomes needs a few kilobytes for its counts.
   indices, NaN and infinity in place of numbers; a third with the checksum recomputed after the damage, and a
   third in the older format without one, so the reader itself is tested too), 10,000 garbled `.qoa`, `.qg` and `.qasm` programs, and
   programs nested 200,000 levels deep. Each one goes through loading, assembling, running (with small limits)
-  and every export (QOA text, listing, json, dot, glyph, OpenQASM, IonQ). Any panic, abort or hang fails the
-  test. Searching with other seeds (`QOA_HOSTILE_SEED`) found and fixed the problems listed in the 0.4.4
+  and every export (QOA text, listing, json, dot, glyph, OpenQASM, IonQ), with `QOA_MAX_MEMORY` set so that
+  no garbled size can make it allocate more than a little. Any panic, abort or hang fails the test. Searching with other seeds (`QOA_HOSTILE_SEED`) found and fixed the problems listed in the 0.4.4
   release notes; seventeen seeds, about half a million inputs, now pass.
 - Every program in `tests/programs/failures` must fail with its expected message, in both assemblers.
 - The rest of the suite checks that what does run is right: every gate against an independent simulator,

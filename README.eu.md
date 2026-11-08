@@ -202,6 +202,31 @@ dagoen QOAn, zer geratzen den rust-en eta zergatik: [docs/self-hosting.eu.md](do
 
 Txostenak beti esaten du hauetako zein gertatu den.
 
+### Zenbat qubit
+
+QOA-k ez du muga finkorik zenbat qubit simulatzen dituzun: programa batek 65.536 qubit arte izenda ditzake, eta
+horietako zenbat dabiltzan zure ordenagailuaren memoriak erabakitzen du. n qubiteko egoera batek 2^n × 16 byte
+behar ditu (24 shot-ak simulazio bakar batetik laginkatzen direnean), beraz qubit gehigarri bakoitzak bikoiztu
+egiten du:
+
+| memoria librea | ondo dabiltzan qubitak |
+|---|---|
+| 8 GiB | 28 |
+| 16 GiB | 29 |
+| 32 GiB | 30 |
+| 64 GiB | 31 |
+| 256 GiB | 33 |
+| 1 TiB | 35 |
+
+`qoa check programa.qoa`-k esaten dizu zenbat dabiltzan ondo erabiltzen ari zaren makinan. Horren gainetik
+dagoen programa batek ere exekutatzen da: `qoa run`-ek lehenik abisatzen du, zenbaki horrekin, eta gero aurrera
+egiten du, eta exekuzioa oso motela izan daiteke (sistemak memoria diskora darama) edo sistemak memoria
+faltagatik geldiaraz dezake. `QOA_MAX_MEMORY` ezartzeak (adibidez `QOA_MAX_MEMORY=64G`) muga zorrotz bihurtzen
+du hori, makina partekatuetan edo zuk idatzi ez dituzun programetarako erabilgarria. `qoa run --mpi
+--distribute`-k egoera handiago bat makina askotan banatzen du. 64 biteko inongo ordenagailuk gorde ezin duen
+egoera bat bakarrik baztertzen da zuzenean (makina bakarrean 59 qubit ingurutik aurrera), eta programa hori
+egiaztatu eta hardware kuantikora esporta daiteke hala ere.
+
 ### Fotoiak eta muga
 
 Modu batek 0tik muga-1era arteko fotoi-kopuruak gordetzen ditu (`QMODE moduak muga`, lehenetsia 8). Fotoiak
@@ -221,13 +246,15 @@ neurketa. 10 eta 20 aldiz artean motelagoa da. Xehetasunak: [docs/precision.eu.m
 `qoa run --mpi`-k shot-ak MPI prozesuetan banatzen ditu (abiarazi `mpirun` edo `srun`-ekin; QOA-k berak
 kargatzen du makinaren open mpi edo mpich familiako liburutegia, ez dago ezer konpilatzeko), prozesu batek
 bezalako zenbaketekin, eta `--mpi --distribute`-k nodo bakarrerako handiegia den egoera bat haien artean
-banatzen du. QOA-k egiaztatzen du egoera bat erabil dezakeen memorian sartzen dela hasi aurretik
-(`QOA_MAX_MEMORY` aldatzeko). Ikus [docs/hpc.eu.md](docs/hpc.eu.md).
+banatzen du. Hasi aurretik, QOA-k esaten du egoera bat prozesu bakoitzaren memorian sartzen den, eta abisatu
+egiten du sartzen ez bada (`QOA_MAX_MEMORY`-k muga zorrotz bihurtzen du). Ikus [docs/hpc.eu.md](docs/hpc.eu.md).
 
 ### Seguru edozein sarrerarekin
 
 QOA-ri ematen diozuna edozein dela ere, exekutatu egiten du edo mezu argi batekin gelditzen da: ez da
-erortzen, ez da mugarik gabe geratzen, ez du memoria betetzen. `.qx` bakoitza bere buruaren SHA-256 batekin
+erortzen, ez da mugarik gabe geratzen, ez du memoria betetzen zuk jakin gabe. QOA-k saiatzen uzten dizun gauza
+bakarra zure makina baino handiagoa den egoera bat da (ikus [Zenbat qubit](#zenbat-qubit)): lehenik abisatzen
+du, eta `QOA_MAX_MEMORY`-rekin baztertu egiten du. `.qx` bakoitza bere buruaren SHA-256 batekin
 amaitzen da, beraz fitxategi hondatu edo aldatu bat exekutatu aurretik baztertzen da; `qoa seal programa.qoa`-k
 iturburu bat modu berean zigilatzen du, eta ondoren aldatutako fitxategi zigilatu bat ere baztertzen da.
 Programa batek eskatzen duen baliabide bakoitza lehenik egiaztatzen da, fitxategiak osorik idazten dira edo

@@ -369,34 +369,13 @@ pub fn run(
     }
     // egoera sortzean huts egin dezakeena orain, edozein komunikazioren aurretik: rank guztiek berdin kalkulatzen
     // dute, beraz denek huts egiten dute batera eta inor ez da zain geratzen
-    let precheck = if cfg.precision == Precision::Quad {
-        let dim = 1u128.checked_shl(prog.n_qubits).unwrap_or(u128::MAX);
-        crate::state::check_memory(
-            &t!(
-                "{} qubits in 128-bit precision: {} amplitudes",
-                "{} qubit 128 biteko doitasunean: {} anplitude",
-                prog.n_qubits,
-                dim
-            ),
-            dim.saturating_mul(32),
-        )
-    } else if cfg.distribute {
-        DistState::check(
-            prog.n_qubits as usize,
-            cfg.team.as_ref().map_or(1, |t| t.size()),
-        )
-        .map(|_| ())
-    } else {
-        State::check(
-            prog.n_qubits as usize,
-            prog.n_modes as usize,
-            prog.cutoff as usize,
-        )
-        .map(|_| ())
-    };
-    precheck.map_err(|message| RuntimeError { line: 0, message })?;
+    // makinan sartzen ez den egoera bat saiatu egiten da (CLI-ak memory_advice-ren abisua inprimatzen du
+    // lehenago); ezinezkoa dena bakarrik da errorea
+    memory_need(prog, cfg)
+        .and_then(|(what, bytes, per)| crate::state::state_memory(&what, bytes, per))
+        .map_err(|message| RuntimeError { line: 0, message })?;
     let has_readout = prog.has_readout();
-    let ideal = cfg.noise == 0.0 && cfg.loss == 0.0 && cfg.model.is_none() && cfg.bench.is_none();
+    let ideal = is_ideal(cfg);
     let split = if has_readout && ideal {
         prog.sampling_split()
     } else {
@@ -409,30 +388,6 @@ pub fn run(
     } else {
         Method::EveryShot
     };
-    // laginketak probabilitate-zerrenda bat behar du egoeraren ondoan (8 byte anplitude bakoitzeko)
-    if method == Method::Sampled
-        && let Some(dim) = prog.state_dim()
-    {
-        let per = if cfg.precision == Precision::Quad {
-            40
-        } else {
-            24
-        };
-        let dim = if cfg.distribute {
-            dim / cfg.team.as_ref().map_or(1, |t| t.size() as u128)
-        } else {
-            dim
-        };
-        crate::state::check_memory(
-            &t!(
-                "sampling {} amplitudes (the state and its probabilities)",
-                "{} anplitude laginkatzeak (egoera eta haren probabilitateak)",
-                dim
-            ),
-            dim.saturating_mul(per),
-        )
-        .map_err(|message| RuntimeError { line: 0, message })?;
-    }
     let shots = if method == Method::StateOnly {
         1
     } else {
@@ -806,6 +761,53 @@ fn decode_part(bytes: &[u8]) -> (HashMap<Record, u64>, f64, Option<RuntimeError>
     (counts, leakage, err)
 }
 
+// zaratarik gabeko exekuzioa: shot guztiak simulazio bakarretik lagin daitezke
+fn is_ideal(cfg: &RunConfig) -> bool {
+    cfg.noise == 0.0 && cfg.loss == 0.0 && cfg.model.is_none() && cfg.bench.is_none()
+}
+
+// exekuzio baten egoerak behar duen memoria: deskribapena, byteak eta anplitude bakoitzeko byteak (egoera,
+// eta shot-ak egoera bakarretik laginkatzen badira, haren probabilitate-zerrenda: 8 byte gehiago). errorea
+// egoera ezinezkoa denean bakarrik (indexatu ezin dena, prozesu-kopuru okerra, 2 baino txikiagoa den muga)
+fn memory_need(prog: &Program, cfg: &RunConfig) -> Result<(String, u128, u128), String> {
+    let n = prog.n_qubits as usize;
+    let sampled = prog.has_readout() && is_ideal(cfg) && prog.sampling_split().is_some();
+    if cfg.precision == Precision::Quad {
+        let what = crate::quad::QuadState::describe(n);
+        let dim = 1u128
+            .checked_shl(prog.n_qubits)
+            .ok_or_else(|| crate::state::unaddressable(&what, None))?;
+        let per = if sampled { 40 } else { 32 };
+        let what = format!("{} ({})", what, t!("{} amplitudes", "{} anplitude", dim));
+        Ok((what, dim.saturating_mul(per), per))
+    } else if cfg.distribute {
+        let ranks = cfg.team.as_ref().map_or(1, |t| t.size());
+        let local = DistState::check(n, ranks)?;
+        let per = if sampled { 24 } else { 16 };
+        let len = 1u128 << local;
+        let extra = 2 * (crate::dist::CHUNK as u128) * 16;
+        Ok((DistState::describe(n, ranks), len * per + extra, per))
+    } else {
+        let modes = prog.n_modes as usize;
+        let cutoff = prog.cutoff as usize;
+        let dim = State::check(n, modes, cutoff)?;
+        let per = if sampled { 24 } else { 16 };
+        Ok((
+            State::describe(n, modes, cutoff, dim),
+            dim.saturating_mul(per),
+            per,
+        ))
+    }
+}
+
+// exekuzio honen egoera makina honetan sartzen ez bada, erabiltzaileari esateko abisua: zenbat qubit
+// dabiltzan ondo hemen, eta gainetik exekuzioa oso motela izan edo memoria faltagatik geldiaraz daitekeela.
+// CLI-ak exekutatu aurretik inprimatzen du; exekuzioa saiatu egiten da hala ere (QOA_MAX_MEMORY gabe)
+pub fn memory_advice(prog: &Program, cfg: &RunConfig) -> Option<String> {
+    let (what, bytes, per) = memory_need(prog, cfg).ok()?;
+    crate::state::state_memory(&what, bytes, per).ok().flatten()
+}
+
 // shot-en emaitza desberdinak: memorian gorde daitekeen kopurua. emaitza bakoitzak bere bitak eta
 // irakurketak ditu zenbaketa-taulan, eta txostenak beste kopia batzuk egiten ditu (ordenatzea, json-a);
 // neurtuta, 1 KiB inguru emaitza bakoitzeko 48 bitekin. muga gainditzean errore bat, memoria bete beharrean
@@ -999,14 +1001,15 @@ impl<'a> Machine<'a> {
             if Some(pc) == self.capture_at && self.captured.is_none() {
                 self.flush();
                 if let Some(d) = &self.dist {
-                    let (local, totals) = d.local_probabilities();
+                    let (local, totals) = d.local_probabilities().map_err(|m| self.err(pc, m))?;
                     self.captured = Some(local);
                     self.captured_totals = Some(totals);
                 } else {
-                    self.captured = Some(match self.qd() {
+                    let probs = match self.qd() {
                         Some(q) => q.probabilities(),
                         None => self.st().probabilities(),
-                    });
+                    };
+                    self.captured = Some(probs.map_err(|m| self.err(pc, m))?);
                 }
             }
             self.steps += 1;

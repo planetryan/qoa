@@ -427,27 +427,27 @@ impl Parser {
             );
             return false;
         }
-        // QOA arruntaren QREG/CREG/OREG-en muga berak: 4096 elementu, eta lehena 0..4095
-        if size > 4096 {
+        // QOA arruntaren QREG/CREG/OREG-en muga berak: 65536 elementu, eta lehena 0..65535
+        if size > crate::program::MAX_BITS as usize {
             self.error(
                 pos,
                 name.len() as u32,
                 t!(
-                    "{} has {} elements, more than the 4096 a register can hold",
-                    "{}-k {} elementu ditu, erregistro batek izan ditzakeen 4096 baino gehiago",
+                    "{} has {} elements, more than the 65536 a register can hold",
+                    "{}-k {} elementu ditu, erregistro batek izan ditzakeen 65536 baino gehiago",
                     name,
                     size
                 ),
             );
             return false;
         }
-        if at.is_some_and(|a| a > 4095) {
+        if at.is_some_and(|a| a >= crate::program::MAX_BITS as usize) {
             self.error(
                 pos,
                 name.len() as u32,
                 t!(
-                    "{} starts at {}, but a register starts at 0 to 4095",
-                    "{} {}-n hasten da, baina erregistro bat 0 eta 4095 artean hasten da",
+                    "{} starts at {}, but a register starts at 0 to 65535",
+                    "{} {}-n hasten da, baina erregistro bat 0 eta 65535 artean hasten da",
                     name,
                     at.unwrap_or(0)
                 ),

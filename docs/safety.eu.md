@@ -11,7 +11,8 @@ zein zati txikik behar duten oraindik rust-en `unsafe`, eta zergatik.
 
 Sarrera edozein dela ere, QOA-k bi gauzetako bat egiten du: programa exekutatzen du, edo gelditu egiten da
 zer dagoen gaizki esaten duen mezu argi batekin, ingelesez edo euskaraz. Ez da erortzen, ez du panic
-egiten, ez da mugarik gabe geratzen, eta ez du memoria betetzen sistemak hil arte. Hau hartzen du:
+egiten, ez da mugarik gabe geratzen, eta ez du memoria betetzen sistemak hil arte zuri lehenik esan gabe. Hau
+hartzen du:
 
 - **Iturburuak**: `.qoa`, `.qg` (glifo-sintaxia) eta `.qasm` (OpenQASM), utf-8 baliogabea, ausazko byteak,
   zenbaki zentzugabeak eta milaka mailako habiaraketak barne.
@@ -24,6 +25,13 @@ egiten, ez da mugarik gabe geratzen, eta ez du memoria betetzen sistemak hil art
 - **Exekutatzen ari diren programak**: programa batek eska dezakeen baliabide bakoitza erabili aurretik
   egiaztatzen da (ikus behean mugak), eta finituak ez diren zenbakiek programa gelditzen dute, egoera
   isilik NaN bihurtu beharrean.
+- **Egoera handiak**: QOA-k nahita saiatzen uzten dizun gauza bakarra makinaren memoria baino handiagoa den
+  egoera kuantiko bat da, zuk bakarrik dakizulako exekuzio motel batek merezi duen. `qoa run`-ek hasi aurretik
+  abisatzen du, makina honetan zenbat qubit dabiltzan ondo esanez, eta gero aurrera egiten du; exekuzioa oso
+  motela izan daiteke orduan, edo sistemak memoria faltagatik geldiaraz dezake. Sistemak ukatzen duen memoria
+  errore argi bat da, ez erortze bat. Ezarri `QOA_MAX_MEMORY` egoera horiek baztertzeko, adibidez makina
+  partekatu batean edo zuk idatzi ez dituzun programetarako: orduan ez da ezer erreserbatzen muga horretatik
+  gora.
 - **Irteera**: irteera ezin bada idatzi (disko betea), QOA gelditu egiten da eta hala esaten du, isilik
   galdu beharrean; irakurlea joaten bada (`qoa ... | head`), QOA isilik amaitzen da edozein komando-lerroko
   tresna bezala.
@@ -92,11 +100,13 @@ kontrolatzaileak, eta MPI liburutegia.
 
 | zer | muga | gainditzean |
 |---|---|---|
-| egoerarako, eragile optikoetarako, memoria-gelaxketarako eta emaitzetarako memoria, guztira | QOA-k erabil dezakeena: hastean erabilgarri dagoen memoriaren % 90, edo `QOA_MAX_MEMORY` | behar den tamaina eta muga esaten dituen mezu bat, ezer erreserbatu aurretik |
-| qubitak | 64 (eta egoerak memorian sartu behar du) | mihiztatzailearen errorea |
+| egoera kuantikoaren memoria | sartzen dena: QOA hastean erabilgarri dagoen memoriaren % 90 (`qoa check`-ek esaten du zenbat qubit diren) | abisu bat exekuzioaren aurretik, eta gero aurrera; `QOA_MAX_MEMORY` ezarrita, behar den tamaina eta muga esaten dituen mezu bat, ezer erreserbatu aurretik |
+| 64 biteko inongo ordenagailuk helbideratu ezin duen egoera (2^59 anplitudetik aurrera, 8 EiB inguru) | inon ezin da gorde | mezu bat ezer erreserbatu aurretik; programa egiaztatu eta esporta daiteke hala ere |
+| eragile optikoetarako, memoria-gelaxketarako eta emaitzetarako memoria | QOA hastean erabilgarri dagoen memoriaren % 90, edo `QOA_MAX_MEMORY` | behar den tamaina eta muga esaten dituen mezu bat, ezer erreserbatu aurretik |
+| qubitak | q0-tik q65535-era, bit klasiko bakoitzeko bat (zenbat simulatzen diren ondo memoriaren araberakoa da, goian) | mihiztatzailearen errorea |
 | modu optikoak | 0tik 63ra arteko indizeak (eta egoerak sartu behar du) | mihiztatzailearen errorea |
-| bit klasikoak | c0-tik c4095-era | mihiztatzailearen errorea |
-| izendun erregistroak (`QREG`, `CREG`, `OREG`, `RREG`, glifoen `{n}`) | 1etik 4096ra elementu, lehen indizea 0tik 4095era | mihiztatzailearen errorea |
+| bit klasikoak | c0-tik c65535-era | mihiztatzailearen errorea |
+| izendun erregistroak (`QREG`, `CREG`, `OREG`, `RREG`, glifoen `{n}`) | 1etik 65536ra elementu, lehen indizea 0tik 65535era | mihiztatzailearen errorea |
 | adierazpenen habiaraketa (parentesiak, funtzioak, zeinuak, `^` kateak) | 100 maila | mihiztatzailearen errorea, bi mihiztatzaileetan |
 | shot baten urratsak | 100.000.000 (`--max-steps`-ek aldatzen du) | muga aipatzen duen exekuzio-errorea |
 | `PUSH` pila | 1.048.576 balio | exekuzio-errorea |
@@ -116,7 +126,8 @@ Emaitzak emaitza desberdin bakoitzeko gordetzen dira, inoiz ez shot bakoitzeko: 
   ere proba dadin), 10.000 `.qoa`,
   `.qg` eta `.qasm` programa nahasi, eta 200.000 mailako habiaraketak dituzten programak. Bakoitza kargatu,
   mihiztatu, exekutatu (muga txikiekin) eta esportazio guztietatik pasatzen da (QOA testua, zerrenda, json,
-  dot, glifoak, OpenQASM, IonQ). Edozein panic, bertan behera uzte edo geldialdik huts eginarazten du proba.
+  dot, glifoak, OpenQASM, IonQ), `QOA_MAX_MEMORY` ezarrita, tamaina nahasi batek ezin dezan gutxi baino
+  gehiago erreserbatu. Edozein panic, bertan behera uzte edo geldialdik huts eginarazten du proba.
   Beste hazi batzuekin bilatzeak (`QOA_HOSTILE_SEED`) 0.4.4-ko bertsio-oharretan zerrendatutako arazoak
   aurkitu eta konpondu zituen; hamazazpi hazi, milioi erdi sarrera inguru, igarotzen dira orain.
 - `tests/programs/failures`-eko programa bakoitzak espero den mezuarekin huts egin behar du, bi

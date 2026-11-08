@@ -3307,7 +3307,7 @@ SETR1 10
 C diagtext
 J declq.done
 declq.num:
-SETR2 64
+SETR2 65536
 IGTR1 R2 declq.many
 SETR0 25
 STR1 R0
@@ -3484,7 +3484,7 @@ C parseint
 IEQR0 R30 register.badsize
 IGTR1 R30 register.badsize
 ILTR2 R31 register.badsize
-SETR0 4096
+SETR0 65536
 IGTR2 R0 register.badsize
 RCR16 R2
 J register.first
@@ -3505,7 +3505,7 @@ LDR1 R1
 C parseint
 IEQR0 R30 register.badfirst
 IGTR1 R30 register.badfirst
-SETR0 4096
+SETR0 65536
 ILTR2 R0 register.firstok
 register.badfirst:
 RCR0 R15
@@ -5705,7 +5705,7 @@ J index.fail
 index.q:
 SETR0 25
 LDR11 R0
-IEQR11 R29 index.q64
+IEQR11 R29 index.qtop
 ILTR10 R11 index.qmax
 SETR0 34
 LDR0 R0
@@ -5738,8 +5738,8 @@ SETR1 16
 ADDR2 R10 R31
 C dset
 J index.fail
-index.q64:
-SETR0 64
+index.qtop:
+SETR0 65536
 ILTR10 R0 index.qmax
 RCR0 R8
 SETR1 47
@@ -5774,7 +5774,7 @@ index.omax:
 SETR0 30
 J index.max
 index.c:
-SETR0 4096
+SETR0 65536
 ILTR10 R0 index.cmax
 RCR0 R8
 SETR1 50
@@ -11258,10 +11258,10 @@ PRINT "QINIT behin baino gehiagotan agertzen da"
 RET
 message.9:
 IEQR28 R31 message.9.eu
-PRINT "more than 64 qubits cannot be simulated as a state vector"
+PRINT "a QOA program has at most 65536 qubits (q0..q65535), one for each classical bit; how many of them a computer can simulate depends on its memory (qoa check tells)"
 RET
 message.9.eu:
-PRINT "64 qubit baino gehiago ezin dira egoera-bektore gisa simulatu"
+PRINT "QOA programa batek gehienez 65536 qubit ditu (q0..q65535), bit klasiko bakoitzeko bat; ordenagailu batek horietako zenbat simula ditzakeen haren memoriaren araberakoa da (qoa check-ek esaten du)"
 RET
 message.10:
 IEQR28 R31 message.10.eu
@@ -11349,26 +11349,26 @@ PRINT "' erregistroa bi aldiz adierazita dago"
 RET
 message.18:
 IEQR28 R31 message.18.eu
-PRINT "expected a size from 1 to 4096, found '"
+PRINT "expected a size from 1 to 65536, found '"
 SETR0 4
 C mtext
 PRINT "'"
 RET
 message.18.eu:
-PRINT "1 eta 4096 arteko tamaina bat espero zen, baina '"
+PRINT "1 eta 65536 arteko tamaina bat espero zen, baina '"
 SETR0 4
 C mtext
 PRINT "' dago"
 RET
 message.19:
 IEQR28 R31 message.19.eu
-PRINT "expected a first index from 0 to 4095, found '"
+PRINT "expected a first index from 0 to 65535, found '"
 SETR0 4
 C mtext
 PRINT "'"
 RET
 message.19.eu:
-PRINT "0 eta 4095 arteko lehen indize bat espero zen, baina '"
+PRINT "0 eta 65535 arteko lehen indize bat espero zen, baina '"
 SETR0 4
 C mtext
 PRINT "' dago"
@@ -11845,10 +11845,10 @@ PRINT ")"
 RET
 message.47:
 IEQR28 R31 message.47.eu
-PRINT "qubit index too large (a state vector cannot hold more than 64 qubits)"
+PRINT "qubit index too large (q0..q65535)"
 RET
 message.47.eu:
-PRINT "qubit-indize handiegia (egoera-bektore batek ezin ditu 64 qubit baino gehiago gorde)"
+PRINT "qubit-indize handiegia (q0..q65535)"
 RET
 message.48:
 IEQR28 R31 message.48.eu
@@ -11877,10 +11877,10 @@ PRINT "modu-indize handiegia"
 RET
 message.50:
 IEQR28 R31 message.50.eu
-PRINT "classical bit index too large (c0..c4095)"
+PRINT "classical bit index too large (c0..c65535)"
 RET
 message.50.eu:
-PRINT "bit klasikoaren indize handiegia (c0..c4095)"
+PRINT "bit klasikoaren indize handiegia (c0..c65535)"
 RET
 message.51:
 IEQR28 R31 message.51.eu

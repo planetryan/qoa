@@ -5,7 +5,8 @@
 use crate::expr;
 use crate::isa::{self, OperandSpec, Repeat, Spec};
 use crate::program::{
-    Basis, BinOp, Cmp, Count, DEFAULT_CUTOFF, Dest, Gate, NUM_REGS, Op, Program, Source, UnOp, Val,
+    Basis, BinOp, Cmp, Count, DEFAULT_CUTOFF, Dest, Gate, MAX_BITS, MAX_QUBITS, NUM_REGS, Op, Program,
+    Source, UnOp, Val,
 };
 use crate::{t, ts};
 use std::collections::HashMap;
@@ -635,15 +636,15 @@ impl Asm {
             }
             match args {
                 [t] => match parse_int(t) {
-                    Some(n) if n <= 64 => {
+                    Some(n) if n <= MAX_QUBITS => {
                         self.declared_qubits = Some(n);
                         self.qinit_token = Some(t.clone());
                     }
                     Some(_) => self.error(Diagnostic::at(
                         t,
                         t!(
-                            "more than 64 qubits cannot be simulated as a state vector",
-                            "64 qubit baino gehiago ezin dira egoera-bektore gisa simulatu"
+                            "a QOA program has at most 65536 qubits (q0..q65535), one for each classical bit; how many of them a computer can simulate depends on its memory (qoa check tells)",
+                            "QOA programa batek gehienez 65536 qubit ditu (q0..q65535), bit klasiko bakoitzeko bat; ordenagailu batek horietako zenbat simula ditzakeen haren memoriaren araberakoa da (qoa check-ek esaten du)"
                         ),
                     )),
                     None => self.error(Diagnostic::at(
@@ -756,13 +757,13 @@ impl Asm {
             ));
             return;
         }
-        let size = parse_int(&size_tok.text).filter(|n| (1..=4096).contains(n));
+        let size = parse_int(&size_tok.text).filter(|n| (1..=MAX_BITS as u64).contains(n));
         let Some(size) = size.map(|n| n as u32) else {
             self.error(Diagnostic::at(
                 size_tok,
                 t!(
-                    "expected a size from 1 to 4096, found '{}'",
-                    "1 eta 4096 arteko tamaina bat espero zen, baina '{}' dago",
+                    "expected a size from 1 to 65536, found '{}'",
+                    "1 eta 65536 arteko tamaina bat espero zen, baina '{}' dago",
                     size_tok.text
                 ),
             ));
@@ -771,14 +772,14 @@ impl Asm {
         let next = *self.named_next.get(&kind).unwrap_or(&0);
         let start = match first_tok {
             None => next,
-            Some(f) => match parse_int(&f.text).filter(|&n| n < 4096) {
+            Some(f) => match parse_int(&f.text).filter(|&n| n < MAX_BITS as u64) {
                 Some(n) => n as u32,
                 None => {
                     self.error(Diagnostic::at(
                         f,
                         t!(
-                            "expected a first index from 0 to 4095, found '{}'",
-                            "0 eta 4095 arteko lehen indize bat espero zen, baina '{}' dago",
+                            "expected a first index from 0 to 65535, found '{}'",
+                            "0 eta 65535 arteko lehen indize bat espero zen, baina '{}' dago",
                             f.text
                         ),
                     ));
@@ -1535,10 +1536,10 @@ impl Asm {
                         }
                         return None;
                     }
-                } else if n >= 64 {
+                } else if n >= MAX_QUBITS {
                     self.error(Diagnostic::at(tk, t!(
-                        "qubit index too large (a state vector cannot hold more than 64 qubits)",
-                        "qubit-indize handiegia (egoera-bektore batek ezin ditu 64 qubit baino gehiago gorde)"
+                        "qubit index too large (q0..q65535)",
+                        "qubit-indize handiegia (q0..q65535)"
                     )));
                     return None;
                 }
@@ -1568,12 +1569,12 @@ impl Asm {
                 self.max_mode = Some(self.max_mode.map_or(n, |m| m.max(n)));
             }
             'c' => {
-                if n >= 4096 {
+                if n >= MAX_BITS {
                     self.error(Diagnostic::at(
                         tk,
                         t!(
-                            "classical bit index too large (c0..c4095)",
-                            "bit klasikoaren indize handiegia (c0..c4095)"
+                            "classical bit index too large (c0..c65535)",
+                            "bit klasikoaren indize handiegia (c0..c65535)"
                         ),
                     ));
                     return None;

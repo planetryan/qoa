@@ -15,6 +15,18 @@
 
 ## Changed
 
+* **No fixed limit on how many qubits you simulate.** `qoa run` no longer refuses a state larger than the
+  machine's memory: it warns first, saying how many qubits run well on this machine, then goes ahead, and
+  the run may be very slow or be stopped by the system for lack of memory. Memory the system refuses is a
+  clear error, not a crash. `qoa check` always says how many qubits run well here. `QOA_MAX_MEMORY` is now a
+  firm limit you choose (a state above it is refused before anything is allocated) instead of a way to raise
+  the old one. Only a state no 64-bit computer can address (from about 59 qubits on one machine) is refused
+  outright, and such a program can still be checked and exported to hardware. README, docs/hpc.md and
+  docs/safety.md explain it, with a table of memory against qubits.
+* **Programs can have up to 65,536 qubits and 65,536 classical bits** (q0..q65535, c0..c65535), instead of 64
+  qubits and 4,096 bits, so every qubit can still be measured into its own bit and programs for the largest
+  quantum computers can be written, checked and exported. Named registers hold up to 65,536 elements. Both
+  assemblers and the glyph syntax have the same limits and messages.
 * **The tools written in QOA are built into the binary as bytecode:** [src/qoa/asm.qx](../src/qoa/asm.qx)
   and [src/qoa/dis.qx](../src/qoa/dis.qx), built from their sources by the assembler written in QOA. `qoa`
   runs that bytecode directly, so the Rust assembler plays no part when `--self-hosted` assembles or
@@ -43,6 +55,20 @@
 
 ## Aldatua
 
+* **Ez dago muga finkorik zenbat qubit simulatzen dituzun.** `qoa run`-ek jada ez du baztertzen makinaren
+  memoria baino handiagoa den egoera bat: lehenik abisatzen du, makina honetan zenbat qubit dabiltzan ondo
+  esanez, eta gero aurrera egiten du, eta exekuzioa oso motela izan daiteke edo sistemak memoria faltagatik
+  geldiaraz dezake. Sistemak ukatzen duen memoria errore argi bat da, ez erortze bat. `qoa check`-ek beti
+  esaten du zenbat qubit dabiltzan ondo hemen. `QOA_MAX_MEMORY` zuk aukeratzen duzun muga zorrotza da orain
+  (horren gaineko egoera bat baztertu egiten da ezer erreserbatu aurretik), ez muga zaharra handitzeko modu
+  bat. 64 biteko inongo ordenagailuk helbideratu ezin duen egoera bat bakarrik baztertzen da zuzenean (makina
+  bakarrean 59 qubit ingurutik aurrera), eta programa hori egiaztatu eta hardwarera esporta daiteke hala ere.
+  README-ak, docs/hpc.eu.md-k eta docs/safety.eu.md-k azaltzen dute, memoria eta qubitak alderatzen dituen
+  taula batekin.
+* **Programek 65.536 qubit eta 65.536 bit klasiko izan ditzakete** (q0..q65535, c0..c65535), 64 qubit eta
+  4.096 biten ordez, beraz qubit bakoitza bere bitean neur daiteke oraindik eta ordenagailu kuantiko
+  handienetarako programak idatzi, egiaztatu eta esporta daitezke. Izendun erregistroek 65.536 elementu arte
+  dituzte. Bi mihiztatzaileek eta glifo-sintaxiak muga eta mezu berberak dituzte.
 * **QOAn idatzitako tresnak bytecode gisa daude binarioan:** [src/qoa/asm.qx](../src/qoa/asm.qx) eta
   [src/qoa/dis.qx](../src/qoa/dis.qx), QOAn idatzitako mihiztatzaileak beren iturburuetatik eraikiak. `qoa`-k
   bytecode hori zuzenean exekutatzen du, beraz rust-en mihiztatzaileak ez du parterik `--self-hosted`-ek

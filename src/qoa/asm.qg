@@ -3307,7 +3307,7 @@ IEQ#0,#31,declq_num;
 &diagtext;
 >declq_done;
 declq_num:
-#2<=64;
+#2<=65536;
 IGT#1,#2,declq_many;
 #0<=25;
 LXP@(#0)<=#1;
@@ -3484,7 +3484,7 @@ register_size:
 IEQ#0,#30,register_badsize;
 IGT#1,#30,register_badsize;
 ILT#2,#31,register_badsize;
-#0<=4096;
+#0<=65536;
 IGT#2,#0,register_badsize;
 #16<=#2;
 >register_first;
@@ -3505,7 +3505,7 @@ ILT#10,#0,register_overlap;
 &parseint;
 IEQ#0,#30,register_badfirst;
 IGT#1,#30,register_badfirst;
-#0<=4096;
+#0<=65536;
 ILT#2,#0,register_firstok;
 register_badfirst:
 #0<=#15;
@@ -5705,7 +5705,7 @@ ILT#10,#0,index_ok;
 index_q:
 #0<=25;
 #11<=LXP@(#0);
-IEQ#11,#29,index_q64;
+IEQ#11,#29,index_qtop;
 ILT#10,#11,index_qmax;
 #0<=34;
 #0<=LXP@(#0);
@@ -5738,8 +5738,8 @@ index_qmsg:
 #2<=#10+#31;
 &dset;
 >index_fail;
-index_q64:
-#0<=64;
+index_qtop:
+#0<=65536;
 ILT#10,#0,index_qmax;
 #0<=#8;
 #1<=47;
@@ -5774,7 +5774,7 @@ index_omax:
 #0<=30;
 >index_max;
 index_c:
-#0<=4096;
+#0<=65536;
 ILT#10,#0,index_cmax;
 #0<=#8;
 #1<=50;
@@ -11258,10 +11258,10 @@ PRINT"QINIT behin baino gehiagotan agertzen da";
 ^;
 message_9:
 IEQ#28,#31,message_9_eu;
-PRINT"more than 64 qubits cannot be simulated as a state vector";
+PRINT"a QOA program has at most 65536 qubits (q0..q65535), one for each classical bit; how many of them a computer can simulate depends on its memory (qoa check tells)";
 ^;
 message_9_eu:
-PRINT"64 qubit baino gehiago ezin dira egoera-bektore gisa simulatu";
+PRINT"QOA programa batek gehienez 65536 qubit ditu (q0..q65535), bit klasiko bakoitzeko bat; ordenagailu batek horietako zenbat simula ditzakeen haren memoriaren araberakoa da (qoa check-ek esaten du)";
 ^;
 message_10:
 IEQ#28,#31,message_10_eu;
@@ -11349,26 +11349,26 @@ PRINT"' erregistroa bi aldiz adierazita dago";
 ^;
 message_18:
 IEQ#28,#31,message_18_eu;
-PRINT"expected a size from 1 to 4096, found '";
+PRINT"expected a size from 1 to 65536, found '";
 #0<=4;
 &mtext;
 PRINT"'";
 ^;
 message_18_eu:
-PRINT"1 eta 4096 arteko tamaina bat espero zen, baina '";
+PRINT"1 eta 65536 arteko tamaina bat espero zen, baina '";
 #0<=4;
 &mtext;
 PRINT"' dago";
 ^;
 message_19:
 IEQ#28,#31,message_19_eu;
-PRINT"expected a first index from 0 to 4095, found '";
+PRINT"expected a first index from 0 to 65535, found '";
 #0<=4;
 &mtext;
 PRINT"'";
 ^;
 message_19_eu:
-PRINT"0 eta 4095 arteko lehen indize bat espero zen, baina '";
+PRINT"0 eta 65535 arteko lehen indize bat espero zen, baina '";
 #0<=4;
 &mtext;
 PRINT"' dago";
@@ -11845,10 +11845,10 @@ PRINT")";
 ^;
 message_47:
 IEQ#28,#31,message_47_eu;
-PRINT"qubit index too large (a state vector cannot hold more than 64 qubits)";
+PRINT"qubit index too large (q0..q65535)";
 ^;
 message_47_eu:
-PRINT"qubit-indize handiegia (egoera-bektore batek ezin ditu 64 qubit baino gehiago gorde)";
+PRINT"qubit-indize handiegia (q0..q65535)";
 ^;
 message_48:
 IEQ#28,#31,message_48_eu;
@@ -11877,10 +11877,10 @@ PRINT"modu-indize handiegia";
 ^;
 message_50:
 IEQ#28,#31,message_50_eu;
-PRINT"classical bit index too large (c0..c4095)";
+PRINT"classical bit index too large (c0..c65535)";
 ^;
 message_50_eu:
-PRINT"bit klasikoaren indize handiegia (c0..c4095)";
+PRINT"bit klasikoaren indize handiegia (c0..c65535)";
 ^;
 message_51:
 IEQ#28,#31,message_51_eu;

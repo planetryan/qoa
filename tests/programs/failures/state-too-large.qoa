@@ -1,4 +1,5 @@
-; nahita huts egiten duen proba
-; expect-error: more than QOA may use here
-QINIT 40
-H q39
+; nahita huts egiten duen proba: 60 qubitek 2^60 anplitude behar dituzte (16 EiB), 64 biteko ordenagailu batek
+; helbideratu dezakeena baino gehiago, beraz ezin da saiatu ere egin
+; expect-error: more than a 64-bit computer can address
+QINIT 60
+H q59

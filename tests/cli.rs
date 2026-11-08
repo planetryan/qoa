@@ -1120,3 +1120,64 @@ fn program_output_stays_raw_through_a_pipe_and_hostile_names_are_refused() {
     let e = qoa::program::Program::from_bytes(&bytes).unwrap_err();
     assert!(e.contains("control characters"), "{}", e);
 }
+
+// qubit-kopuruak ez du muga aukerakorik: makinan sartzen ez den egoera batek abisu bat jasotzen du (zenbat qubit
+// dabiltzan ondo hemen) eta saiatu egiten da; sistemak memoria ematen ez badu, errore argi bat. ezinezkoa
+// dena bakarrik (64 biteko helbide-espaziotik gorakoa) da errorea saiatu gabe. QOA_MAX_MEMORY muga zorrotza da
+#[test]
+fn any_qubit_count_runs_with_a_warning_above_what_fits() {
+    let big = scratch("q56.qoa");
+    // 2^56 anplitude: 1 EiB, edozein makinaren helbide-espazio birtuala baino gehiago (57 bit gehienez), beraz
+    // sistemak beti ukatzen du eta proba ez da inoiz memoria betetzen saiatzen
+    std::fs::write(&big, "QINIT 56\nH q0\nMEASURE q0 -> c0\n").unwrap();
+    for (lang, warning, refused) in [
+        ("en", "warning: 56 qubits", "the system did not give QOA"),
+        ("eu", "abisua: 56 qubit", "sistemak ez dio QOA-ri eman"),
+    ] {
+        let o = qoa(lang, &["run", big.to_str().unwrap()]);
+        assert!(!o.status.success());
+        let e = stderr(&o);
+        assert!(e.contains(warning), "{}", e);
+        assert!(e.contains(refused), "{}", e);
+        assert!(!e.contains("panicked"), "{}", e);
+    }
+    let o = qoa("en", &["run", big.to_str().unwrap()]);
+    let e = stderr(&o);
+    assert!(e.contains("qubits run well here"), "{}", e);
+    // 100 qubit: muntatu, egiaztatu eta esportatu daiteke; simulatzea ezinezkoa da, eta hala dio
+    let huge = scratch("q100.qoa");
+    std::fs::write(&huge, "QINIT 100\nH q0\nCNOT q0 q99\nMEASUREALL\n").unwrap();
+    let o = qoa("en", &["check", huge.to_str().unwrap()]);
+    assert!(o.status.success(), "{}", stderr(&o));
+    assert!(stdout(&o).contains("cannot be simulated, only exported"), "{}", stdout(&o));
+    let o = qoa("en", &["export", huge.to_str().unwrap(), "--to", "qasm3"]);
+    assert!(o.status.success(), "{}", stderr(&o));
+    assert!(stdout(&o).contains("qubit[100] q;"), "{}", stdout(&o));
+    let o = qoa("en", &["run", huge.to_str().unwrap()]);
+    assert!(!o.status.success());
+    assert!(stderr(&o).contains("more than a 64-bit computer can address"), "{}", stderr(&o));
+    // qoa check-ek beti esaten du zenbat qubit dabiltzan ondo makina honetan
+    let o = qoa("en", &["check", "examples/bell.qoa"]);
+    assert!(stdout(&o).contains("qubits run well on this machine"), "{}", stdout(&o));
+    // QOA_MAX_MEMORY: muga zorrotza, abisurik gabe
+    let o = Command::new(env!("CARGO_BIN_EXE_qoa"))
+        .args(["run", "examples/grover.qoa"])
+        .env("QOA_LANG", "en")
+        .env("QOA_MAX_MEMORY", "16")
+        .current_dir(env!("CARGO_MANIFEST_DIR"))
+        .output()
+        .unwrap();
+    assert!(!o.status.success());
+    assert!(stderr(&o).contains("more than QOA_MAX_MEMORY allows"), "{}", stderr(&o));
+    assert!(!stderr(&o).contains("warning:"), "{}", stderr(&o));
+    // 65536 qubit: programa batek izan ditzakeen gehienak, bat gehiago errorea da
+    let most = scratch("q65536.qoa");
+    std::fs::write(&most, "QINIT 65536\nX q65535\nMEASURE q65535 -> c65535\n").unwrap();
+    let o = qoa("en", &["check", most.to_str().unwrap()]);
+    assert!(o.status.success(), "{}", stderr(&o));
+    let qx = scratch("q65536.qx");
+    let o = qoa("en", &["compile", most.to_str().unwrap(), "-o", qx.to_str().unwrap()]);
+    assert!(o.status.success(), "{}", stderr(&o));
+    let o = qoa("en", &["export", qx.to_str().unwrap(), "--to", "qoa"]);
+    assert!(o.status.success(), "{}", stderr(&o));
+}
