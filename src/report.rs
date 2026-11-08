@@ -28,6 +28,8 @@ pub struct Report {
     pub loss: f64,
     // `--noise-model`: gailua eta haren kalibrazioa (bestela null)
     pub noise_model: Option<ModelInfo>,
+    // `--noise-model` banku batekin (docs/bench.md): haren parametroak (bestela null)
+    pub bench_model: Option<BenchInfo>,
     pub method: Method,
     pub shots: u64,
     pub seed: u64,
@@ -53,6 +55,18 @@ pub struct Report {
     pub registers_first_shot: Vec<f64>,
     pub state: Option<Vec<AmpEntry>>,
     pub warnings: Vec<String>,
+}
+
+// mahai gaineko bankuaren eredua txostenean
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct BenchInfo {
+    pub device: String,
+    pub target: String,
+    pub efficiency: f64,
+    pub dark: f64,
+    pub heralding: f64,
+    pub two_photon: f64,
+    pub visibility: f64,
 }
 
 #[derive(Serialize, Debug)]
@@ -160,6 +174,15 @@ pub fn build(input: ReportInput) -> Report {
                 .take(p.n_qubits as usize)
                 .map(|q| q.physical)
                 .collect(),
+        }),
+        bench_model: input.config.bench.as_ref().map(|b| BenchInfo {
+            device: b.device.clone(),
+            target: b.target.name().to_string(),
+            efficiency: b.efficiency,
+            dark: b.dark,
+            heralding: b.heralding,
+            two_photon: b.two_photon,
+            visibility: b.visibility,
         }),
         method: out.method,
         shots: out.shots,
@@ -531,6 +554,20 @@ pub fn render(r: &Report, style: &Style) -> String {
         line(ts!("gpu work", "gpu lana"), work);
     }
     let noise = match (r.noise > 0.0, r.loss > 0.0) {
+        _ if r.bench_model.is_some() => {
+            let b = r.bench_model.as_ref().unwrap();
+            t!(
+                "{} model of {}: detector efficiency {}, dark clicks {}; heralded source {}, two photons {}; pair visibility {}",
+                "{} eredua, {}: detektagailuen eraginkortasuna {}, iluneko klikak {}; iturri iragarria {}, bi fotoi {}; bikoteen ikusgarritasuna {}",
+                b.target,
+                b.device,
+                b.efficiency,
+                b.dark,
+                b.heralding,
+                b.two_photon,
+                b.visibility
+            )
+        }
         _ if r.noise_model.is_some() => {
             let m = r.noise_model.as_ref().unwrap();
             let physical: Vec<String> = m

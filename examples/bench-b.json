@@ -1,0 +1,7 @@
+{
+  "format": "qoa-bench-1",
+  "device": "example single-photon bench (illustrative numbers, see docs/bench.md)",
+  "target": "bench-b",
+  "detector": {"efficiency": 0.6, "dark": 1e-6},
+  "source": {"heralding": 0.5, "two_photon": 0.002, "visibility": 0.95}
+}

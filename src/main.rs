@@ -103,8 +103,8 @@ enum Command {
         ))]
         loss: f64,
         #[arg(long, value_name = "FILE", conflicts_with_all = ["noise", "loss"], help = ts!(
-            "a real device's noise model (json, from tools/run_on_ibm.py --save-model): after each native gate its depolarizing error and T1/T2 relaxation, and readout errors on measurements. The program must use only the device's native gates",
-            "benetako gailu baten zarata-eredua (json, tools/run_on_ibm.py --save-model-etik): ate natibo bakoitzaren ondoren haren depolarizazio-errorea eta T1/T2 erlaxazioa, eta irakurketa-erroreak neurketetan. programak gailuaren ate natiboak bakarrik erabil ditzake"
+            "a real device's noise model (json, from tools/run_on_ibm.py --save-model): after each native gate its depolarizing error and T1/T2 relaxation, and readout errors on measurements. The program must use only the device's native gates. Or a tabletop bench's model (format qoa-bench-1, docs/bench.md): detector efficiency and dark clicks, heralded-source efficiency and two-photon emission, pair visibility",
+            "benetako gailu baten zarata-eredua (json, tools/run_on_ibm.py --save-model-etik): ate natibo bakoitzaren ondoren haren depolarizazio-errorea eta T1/T2 erlaxazioa, eta irakurketa-erroreak neurketetan. programak gailuaren ate natiboak bakarrik erabil ditzake. edo mahai gaineko banku baten eredua (qoa-bench-1 formatua, docs/bench.eu.md): detektagailuen eraginkortasuna eta iluneko klikak, iturri iragarriaren eraginkortasuna eta bi fotoiko igorpena, bikoteen ikusgarritasuna"
         ))]
         noise_model: Option<PathBuf>,
         #[arg(long, help = ts!("also show the exact state at the end of the first shot", "lehen shot-aren amaierako egoera zehatza ere erakutsi"))]
@@ -882,9 +882,13 @@ fn cmd_run(
         }
         None => None,
     };
-    let model = match noise_model {
-        Some(path) => Some(std::sync::Arc::new(qoa::noise::NoiseModel::load(path)?)),
-        None => None,
+    // gailu baten kalibrazioa (qoa-noise-1) ala mahai gaineko banku bat (qoa-bench-1)
+    let (model, bench) = match noise_model {
+        Some(path) => match qoa::noise::load_any(path)? {
+            qoa::noise::AnyModel::Device(m) => (Some(std::sync::Arc::new(m)), None),
+            qoa::noise::AnyModel::Bench(b) => (None, Some(std::sync::Arc::new(b))),
+        },
+        None => (None, None),
     };
     let config = RunConfig {
         shots: shots.unwrap_or(1024),
@@ -894,6 +898,7 @@ fn cmd_run(
         max_steps,
         gpu,
         model,
+        bench,
         precision,
         team: team.clone(),
         distribute,

@@ -79,3 +79,30 @@ line that does not and why:
 
 `--target bench-a` checks the same way for a classical-light bench: one photon at most, one qubit (the
 polarisation of the beam) at most, and nothing that needs two photons.
+
+## Simulating your bench
+
+A bench model (a json file, format `qoa-bench-1`) describes a bench's imperfections, and
+`qoa run --noise-model bench.json program.qoa` simulates the program the way that bench would run it. The
+program must pass the bench's profile first. [examples/bench-b.json](../examples/bench-b.json) has
+illustrative numbers:
+
+```sh
+qoa run --noise-model examples/bench-b.json examples/bell-photons.qoa
+```
+
+| field | what it is | how to get it for your bench |
+|---|---|---|
+| `detector.efficiency` | probability that a photon reaching a detector makes it click | the detector's data sheet (silicon SPADs at 810 nm: about 0.6), or calibrate against a known source |
+| `detector.dark` | probability of a click with no photon, within one coincidence window | the dark-count rate times the window, e.g. 100 per second × 10 ns = 1e-6 |
+| `source.heralding` | probability that the heralded path really holds the photon (coupling and filter losses) | coincidences divided by herald counts, then divided by the detector efficiency |
+| `source.two_photon` | probability of two photons instead of one; it grows with pump power | from a Hanbury Brown-Twiss measurement of the heralded photons |
+| `source.visibility` | quality of the entangled pairs: the state is V\|Φ+⟩⟨Φ+\| + (1 − V) I/4 | the visibility of the polarisation-correlation fringes |
+| `target` | `bench-b` (default) or `bench-a` | |
+
+Every field is optional and defaults to ideal. The effects are applied in every shot, with their exact
+probabilities: a photon reaching a detector is lost with probability 1 − efficiency; a detector with no
+photon clicks with probability dark; a polarisation measurement (a polarizing beamsplitter and two
+detectors) whose photon was lost, or where both detectors clicked, has no result. Its bit is left
+unwritten and shows as `-` in the counts: those are the shots the bench's coincidence counter throws away,
+and the shots with every bit written are what it keeps.

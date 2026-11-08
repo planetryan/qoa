@@ -11,7 +11,7 @@ use crate::dist::DistState;
 use crate::fock::{self, Mat};
 use crate::gpu::Gpu;
 use crate::kernel::QGate;
-use crate::noise::{GateNoise, Native, NoiseModel, Relax};
+use crate::noise::{BenchModel, GateNoise, Native, NoiseModel, Relax};
 use crate::program::{
     Basis, BinOp, Cmp, Count, Dest, Gate, NUM_REGS, Op, Program, Source, UnOp, Val,
 };
@@ -43,6 +43,9 @@ pub struct RunConfig {
     // benetako gailu baten zarata-eredua (`qoa run --noise-model`, ikus src/noise.rs): ate natiboak
     // bakarrik, bakoitza bere errore, erlaxazio eta irakurketa-errorearekin
     pub model: Option<Arc<NoiseModel>>,
+    // mahai gaineko banku baten eredua (`qoa run --noise-model`, "qoa-bench-1" formatua, src/noise.rs):
+    // detektagailuak, iturri iragarria eta bikote entrelazatuak
+    pub bench: Option<Arc<BenchModel>>,
     // qubit-egoeraren doitasuna: 64 bit (lehenetsia) edo 128 bit (`--precision quad`, src/quad.rs)
     pub precision: Precision,
     // prozesu-taldea (`--mpi`): shot-ak rank-en artean banatzen dira eta 0. rank-ean biltzen dira
@@ -73,6 +76,7 @@ impl Default for RunConfig {
             max_steps: 100_000_000,
             gpu: None,
             model: None,
+            bench: None,
             precision: Precision::Double,
             team: None,
             distribute: false,
@@ -271,6 +275,32 @@ pub fn run(
             ),
         });
     }
+    if let Some(b) = &cfg.bench {
+        let problems = crate::target::check(prog, b.target);
+        if !problems.is_empty() {
+            let mut message = t!(
+                "the bench model ({}) describes a {} bench, and the program cannot run on it (docs/bench.md):",
+                "banku-ereduak ({}) {} banku bat deskribatzen du, eta programa ezin da bertan exekutatu (docs/bench.eu.md):",
+                b.device,
+                b.target.name()
+            );
+            for e in problems {
+                message.push_str(&format!("\n  {}", e));
+            }
+            return Err(RuntimeError { line: 0, message });
+        }
+        if b.two_photon > 0.0 && prog.n_modes > 0 && prog.cutoff < 3 {
+            return Err(RuntimeError {
+                line: 0,
+                message: t!(
+                    "the bench model emits two photons at times (two_photon = {}), which needs a photon cutoff of at least 3 (QMODE {} 3)",
+                    "banku-ereduak bi fotoi igortzen ditu batzuetan (two_photon = {}), eta horrek gutxienez 3ko fotoi-muga behar du (QMODE {} 3)",
+                    b.two_photon,
+                    prog.n_modes
+                ),
+            });
+        }
+    }
     if cfg.distribute {
         let why = if cfg.team.is_none() {
             Some(ts!("it needs --mpi", "--mpi behar du"))
@@ -284,7 +314,7 @@ pub fn run(
                 "it runs in 64 bits, not with --precision quad",
                 "64 bitetan dabil, ez --precision quad-ekin"
             ))
-        } else if cfg.model.is_some() {
+        } else if cfg.model.is_some() || cfg.bench.is_some() {
             Some(ts!(
                 "device noise models are not distributed",
                 "gailuen zarata-ereduak ez daude banatuta"
@@ -314,7 +344,7 @@ pub fn run(
                 "--gpu computes in 64 bits",
                 "--gpu-k 64 bitetan kalkulatzen du"
             ))
-        } else if cfg.model.is_some() {
+        } else if cfg.model.is_some() || cfg.bench.is_some() {
             Some(ts!(
                 "device noise models run in 64 bits",
                 "gailuen zarata-ereduak 64 bitetan dabiltza"
@@ -362,7 +392,7 @@ pub fn run(
     };
     precheck.map_err(|message| RuntimeError { line: 0, message })?;
     let has_readout = prog.has_readout();
-    let ideal = cfg.noise == 0.0 && cfg.loss == 0.0 && cfg.model.is_none();
+    let ideal = cfg.noise == 0.0 && cfg.loss == 0.0 && cfg.model.is_none() && cfg.bench.is_none();
     let split = if has_readout && ideal {
         prog.sampling_split()
     } else {
@@ -1278,6 +1308,50 @@ impl<'a> Machine<'a> {
     }
 
     // emaitza helmugan idatzi; `own` neurtutako objektuaren irakurketa da
+    // bankuko polarizazio-neurketa bat (PBS eta bi detektagailu): emaitza, edo None fotoia galdu bada edo
+    // bi detektagailuek klik egin badute (bankuak shot hori baztertzen du). eredurik gabe, emaitza bera
+    fn bench_reading(&mut self, v: u8) -> Option<u8> {
+        let Some((eff, dark)) = self.cfg.bench.as_ref().map(|b| (b.efficiency, b.dark)) else {
+            return Some(v);
+        };
+        if self.uniform() < eff {
+            if self.uniform() < dark { None } else { Some(v) }
+        } else {
+            match (self.uniform() < dark, self.uniform() < dark) {
+                (true, false) => Some(0),
+                (false, true) => Some(1),
+                _ => None,
+            }
+        }
+    }
+
+    // klik-detekzio bat moduan: bankuarekin, fotoi bakoitza galtzen da 1 - efficiency probabilitatez, eta
+    // fotoirik gabe detektagailuak klik egiten du dark probabilitatez
+    fn click(&mut self, o: u32) -> u8 {
+        let model = self.cfg.bench.as_ref().map(|b| (b.efficiency, b.dark));
+        if let Some((eff, _)) = model
+            && eff < 1.0
+        {
+            let r = self.uniform();
+            self.st().photon_loss(o as usize, 1.0 - eff, r);
+        }
+        let r = self.uniform();
+        let v = self.st().measure_click(o as usize, r);
+        match model {
+            Some((_, dark)) if v == 0 && self.uniform() < dark => 1,
+            _ => v,
+        }
+    }
+
+    // emaitzarik gabeko neurketa: bita idatzi gabe (`-` txostenean)
+    fn unwrite_bit(&mut self, dest: Dest, q: u32) {
+        match dest {
+            Dest::Own => self.bits[q as usize] = None,
+            Dest::Bit(k) => self.bits[k as usize] = None,
+            Dest::Reg(r) => self.regs[r as usize] = -1.0,
+        }
+    }
+
     fn write_bit(&mut self, dest: Dest, own_bit: Option<u32>, own_mode: Option<u32>, v: u32) {
         match dest {
             Dest::Own => {
@@ -1785,6 +1859,17 @@ impl<'a> Machine<'a> {
                 self.gate(*a, Gate::H, 0);
                 self.gate(*b, Gate::X, 1 << a);
                 self.depolarize(&[*a, *b]);
+                // bankuko iturria: 1 - V probabilitatez pauli ausazko bat lehen qubitean (werner egoera)
+                if let Some(v) = self.cfg.bench.as_ref().map(|m| m.visibility)
+                    && self.uniform() >= v
+                {
+                    match (self.uniform() * 4.0) as u32 {
+                        1 => self.gate(*a, Gate::X, 0),
+                        2 => self.gate(*a, Gate::Y, 0),
+                        3 => self.gate(*a, Gate::Z, 0),
+                        _ => {}
+                    }
+                }
             }
             Op::Ghz { qubits } => {
                 let first = qubits[0];
@@ -1822,13 +1907,16 @@ impl<'a> Machine<'a> {
             Op::Measure { q, basis, dest } => {
                 let v = self.measure_basis(*q, *basis);
                 let v = self.readout(*q, v);
-                self.write_bit(*dest, Some(*q), None, v as u32);
+                match self.bench_reading(v) {
+                    Some(v) => self.write_bit(*dest, Some(*q), None, v as u32),
+                    None => self.unwrite_bit(*dest, *q),
+                }
             }
             Op::MeasureAll => {
                 for q in 0..self.prog.n_qubits {
                     let v = self.measure_z(q);
                     let v = self.readout(q, v);
-                    self.bits[q as usize] = Some(v);
+                    self.bits[q as usize] = self.bench_reading(v);
                 }
             }
             Op::Reset { q } => {
@@ -1867,8 +1955,7 @@ impl<'a> Machine<'a> {
                 }
             }
             Op::PhotonDetect { o, dest } => {
-                let r = self.uniform();
-                let v = self.st().measure_click(*o as usize, r);
+                let v = self.click(*o);
                 self.write_bit(*dest, None, Some(*o), v as u32);
             }
             Op::Parity { o, dest } => {
@@ -1879,8 +1966,7 @@ impl<'a> Machine<'a> {
             Op::Coincidence { modes, dest } => {
                 let mut all = 1u32;
                 for &m in modes {
-                    let r = self.uniform();
-                    if self.st().measure_click(m as usize, r) == 0 {
+                    if self.click(m) == 0 {
                         all = 0;
                     }
                 }
@@ -1976,6 +2062,22 @@ impl<'a> Machine<'a> {
                 let r = self.uniform();
                 let m = self.st().measure_photons(*o as usize, r);
                 self.st().move_photons(*o as usize, m, *n as usize);
+                // bankuko iturri iragarria: bi fotoi, edo bat ere ez, beren probabilitateekin
+                if *n == 1
+                    && let Some((h, p2)) = self.cfg.bench.as_ref().map(|b| (b.heralding, b.two_photon))
+                {
+                    let r = self.uniform();
+                    let got = if r < p2 {
+                        2
+                    } else if self.uniform() >= h {
+                        0
+                    } else {
+                        1
+                    };
+                    if got != 1 {
+                        self.st().move_photons(*o as usize, 1, got);
+                    }
+                }
             }
             Op::Dispersive { q, o, theta } => {
                 self.st().dispersive(*q as usize, *o as usize, *theta);

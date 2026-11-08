@@ -12,6 +12,13 @@
   cannot run is an error with its line and the reason: simulator-only inspection, nonlinear optics, two-qubit
   gates on photons, number-resolving detection, jumps and loops (a bench runs a fixed sequence per shot),
   more photons, qubits or detectors than the bench has, a photon used after it was detected.
+* **Bench models: `qoa run --noise-model bench.json`** with a file in the new `qoa-bench-1` format
+  simulates a program the way a given bench would run it: detector efficiency and dark clicks, the heralded
+  source's efficiency and two-photon emission, and the visibility of the entangled pairs, each applied with its
+  exact probability in every shot. A polarisation measurement the bench would discard (photon lost, double
+  click) leaves its bit unwritten (`-`). The program must pass the bench's profile.
+  [examples/bench-b.json](../examples/bench-b.json) has illustrative numbers; docs/bench.md says how to measure
+  each one on a real bench.
 * **`examples/hom-clicks.qoa`** (Hong-Ou-Mandel with click detectors) and **`examples/bell-photons.qoa`**
   (a Bell test on photon polarisation, `BELL` as the pair source): both run on a single-photon bench.
 
@@ -40,6 +47,20 @@
   optika ez-lineala, bi qubiteko ateak fotoiekin, kopurua bereizten duen detekzioa, jauziak eta begiztak
   (banku batek sekuentzia finko bat exekutatzen du shot bakoitzean), bankuak dituenak baino fotoi, qubit edo
   detektagailu gehiago, detektatu ondoren erabilitako fotoi bat.
+* **Bench models: `qoa run --noise-model bench.json`** with a file in the new `qoa-bench-1` format
+  simulates a program the way a given bench would run it: detector efficiency and dark clicks, the heralded
+  source's efficiency and two-photon emission, and the visibility of the entangled pairs, each applied with its
+  exact probability in every shot. A polarisation measurement the bench would discard (photon lost, double
+  click) leaves its bit unwritten (`-`). The program must pass the bench's profile.
+  [examples/bench-b.json](../examples/bench-b.json) has illustrative numbers; docs/bench.md says how to measure
+  each one on a real bench.
+* **Banku-ereduak: `qoa run --noise-model bankua.json`**-k, `qoa-bench-1` formatu berriko fitxategi batekin,
+  programa bat banku jakin batek exekutatuko lukeen bezala simulatzen du: detektagailuen eraginkortasuna eta
+  iluneko klikak, iturri iragarriaren eraginkortasuna eta bi fotoiko igorpena, eta bikote entrelazatuen
+  ikusgarritasuna, bakoitza bere probabilitate zehatzarekin shot bakoitzean. Bankuak baztertuko lukeen
+  polarizazio-neurketa batek (fotoia galduta, klik bikoitza) bita idatzi gabe uzten du (`-`). Programak
+  bankuaren profila bete behar du. [examples/bench-b.json](../examples/bench-b.json)-k zenbaki ilustratiboak
+  ditu; docs/bench.eu.md-k esaten du nola neurtu bakoitza benetako banku batean.
 * **`examples/hom-clicks.qoa`** (Hong-Ou-Mandel klik-detektagailuekin) eta **`examples/bell-photons.qoa`**
   (Bell proba bat fotoien polarizazioarekin, `BELL` bikote-iturri gisa): biak fotoi bakarreko banku batean
   dabiltza.

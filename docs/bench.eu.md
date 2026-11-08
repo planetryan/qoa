@@ -86,3 +86,31 @@ den, eta sartzen ez den lerro bakoitza eta zergatia izendatzen ditu:
 
 `--target bench-a`-k modu berean egiaztatzen du argi klasikoko banku baterako: fotoi bat gehienez, qubit
 bat (izpiaren polarizazioa) gehienez, eta bi fotoi behar dituen ezer ez.
+
+## Zure bankua simulatzea
+
+Banku-eredu batek (json fitxategi bat, `qoa-bench-1` formatua) banku baten akatsak deskribatzen ditu, eta
+`qoa run --noise-model bankua.json programa.qoa`-k programa banku horrek exekutatuko lukeen bezala
+simulatzen du. Programak bankuaren profila bete behar du lehenik.
+[examples/bench-b.json](../examples/bench-b.json)-k zenbaki ilustratiboak ditu:
+
+```sh
+qoa run --noise-model examples/bench-b.json examples/bell-photons.qoa
+```
+
+| eremua | zer den | nola lortu zure bankurako |
+|---|---|---|
+| `detector.efficiency` | detektagailu batera iristen den fotoi batek klik eragiteko probabilitatea | detektagailuaren datu-orria (siliziozko SPADak 810 nm-n: 0.6 inguru), edo kalibratu iturri ezagun baten aurka |
+| `detector.dark` | fotoirik gabeko klik baten probabilitatea, koinzidentzia-leiho baten barruan | iluneko kontaketen tasa bider leihoa, adib. segundoko 100 × 10 ns = 1e-6 |
+| `source.heralding` | bide iragarriak benetan fotoia izateko probabilitatea (akoplamendu- eta iragazki-galerak) | koinzidentziak zati iragarpen-kontaketak, eta gero zati detektagailuaren eraginkortasuna |
+| `source.two_photon` | fotoi baten ordez bi izateko probabilitatea; ponparen potentziarekin hazten da | fotoi iragarrien Hanbury Brown-Twiss neurketa batetik |
+| `source.visibility` | bikote entrelazatuen kalitatea: egoera V\|Φ+⟩⟨Φ+\| + (1 − V) I/4 da | polarizazio-korrelazioko franjen ikusgarritasuna |
+| `target` | `bench-b` (lehenetsia) edo `bench-a` | |
+
+Eremu guztiak aukerakoak dira, eta lehenetsia ideala da. Efektuak shot bakoitzean aplikatzen dira, beren
+probabilitate zehatzekin: detektagailu batera iristen den fotoi bat galtzen da 1 − efficiency
+probabilitatez; fotoirik gabeko detektagailu batek klik egiten du dark probabilitatez; polarizazio-neurketa
+batek (izpi-zatitzaile polarizatzaile bat eta bi detektagailu) ez du emaitzarik bere fotoia galdu bada edo
+bi detektagailuek klik egin badute. Haren bita idatzi gabe geratzen da eta `-` gisa agertzen da
+kontaketetan: horiek dira bankuaren koinzidentzia-kontagailuak baztertzen dituen shot-ak, eta bit guztiak
+idatzita dituztenak gordetzen dituenak.

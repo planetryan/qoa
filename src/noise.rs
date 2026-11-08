@@ -465,3 +465,177 @@ fn gate_name(g: &Gate) -> &'static str {
         g => g.qasm_name(),
     }
 }
+
+// ---------------------------------------------------------------- mahai gaineko bankua (docs/bench.md)
+//
+// optika-banku baten eredua (`qoa run --noise-model bankua.json`, formatua "qoa-bench-1"): detektagailuen
+// eraginkortasuna eta iluneko klikak, iturri iragarriaren eraginkortasuna eta bi fotoiko igorpena, eta bikote
+// entrelazatuen ikusgarritasuna. programak bankuaren profila bete behar du (`qoa check --target`):
+//
+//   {"format": "qoa-bench-1", "device": "nire bankua", "target": "bench-b",
+//    "detector": {"efficiency": 0.6, "dark": 1e-5},
+//    "source": {"heralding": 0.9, "two_photon": 0.01, "visibility": 0.97}}
+//
+// eremu guztiak aukerakoak dira (lehenetsia: ideala). kanalak shot bakoitzean aplikatzen dira, beren
+// probabilitate zehatzekin:
+//
+//   DETECT, COINCIDENCE  fotoi bakoitza galtzen da 1 - efficiency probabilitatez detektatu aurretik; fotoirik
+//                        gabe, detektagailuak klik egiten du dark probabilitatez
+//   MEASURE (fotoi bat)  polarizazioa neurtzen da (PBS bat eta bi detektagailu); fotoia iristen da efficiency
+//                        probabilitatez, eta orduan beste detektagailuaren klik ilun batek (dark) emaitza
+//                        anbiguo bihurtzen du; galtzen bada, klik ilun bakar batek emaitza bat ematen du.
+//                        emaitzarik gabe bita idatzi gabe geratzen da (`-` txostenean): bankuak baztertzen
+//                        dituen shot-ak
+//   SINGLEPHOTON         iragarpenaren ondoren: bi fotoi two_photon probabilitatez, bestela fotoirik ez
+//                        1 - heralding probabilitatez, bestela fotoi bat
+//   BELL                 1 - visibility probabilitatez lehen qubitak pauli ausazko bat jasotzen du (I, X, Y, Z
+//                        berdin): egoera werner-ena da, V|Φ+><Φ+| + (1 - V) I/4
+
+pub const BENCH_FORMAT: &str = "qoa-bench-1";
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawBench {
+    format: String,
+    #[serde(default)]
+    device: String,
+    #[serde(default)]
+    target: Option<String>,
+    #[serde(default)]
+    detector: RawDetector,
+    #[serde(default)]
+    source: RawSource,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawDetector {
+    #[serde(default = "one")]
+    efficiency: f64,
+    #[serde(default)]
+    dark: f64,
+}
+
+impl Default for RawDetector {
+    fn default() -> Self {
+        RawDetector {
+            efficiency: 1.0,
+            dark: 0.0,
+        }
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawSource {
+    #[serde(default = "one")]
+    heralding: f64,
+    #[serde(default)]
+    two_photon: f64,
+    #[serde(default = "one")]
+    visibility: f64,
+}
+
+impl Default for RawSource {
+    fn default() -> Self {
+        RawSource {
+            heralding: 1.0,
+            two_photon: 0.0,
+            visibility: 1.0,
+        }
+    }
+}
+
+fn one() -> f64 {
+    1.0
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct BenchModel {
+    pub device: String,
+    pub target: crate::target::Target,
+    pub efficiency: f64,
+    pub dark: f64,
+    pub heralding: f64,
+    pub two_photon: f64,
+    pub visibility: f64,
+}
+
+impl BenchModel {
+    pub fn parse(text: &str) -> Result<BenchModel, String> {
+        let raw: RawBench = serde_json::from_str(text).map_err(|e| {
+            t!(
+                "not a QOA bench model ({}): {}",
+                "ez da QOA banku-eredu bat ({}): {}",
+                BENCH_FORMAT,
+                e
+            )
+        })?;
+        if raw.format != BENCH_FORMAT {
+            return Err(t!(
+                "bench model format '{}' is not supported (this QOA reads {})",
+                "'{}' banku-ereduaren formatua ez da onartzen (QOA honek {} irakurtzen du)",
+                raw.format,
+                BENCH_FORMAT
+            ));
+        }
+        let target = match raw.target.as_deref() {
+            None => crate::target::Target::BenchB,
+            Some(name) => crate::target::Target::parse(name).ok_or_else(|| {
+                t!(
+                    "unknown target '{}' in the bench model (known: bench-a, bench-b)",
+                    "'{}' helburu ezezaguna banku-ereduan (ezagunak: bench-a, bench-b)",
+                    name
+                )
+            })?,
+        };
+        for (name, v) in [
+            ("detector.efficiency", raw.detector.efficiency),
+            ("detector.dark", raw.detector.dark),
+            ("source.heralding", raw.source.heralding),
+            ("source.two_photon", raw.source.two_photon),
+            ("source.visibility", raw.source.visibility),
+        ] {
+            if !(0.0..=1.0).contains(&v) {
+                return Err(t!(
+                    "{} is {}, but it is a probability (0 to 1)",
+                    "{} {} da, baina probabilitate bat da (0tik 1era)",
+                    name,
+                    v
+                ));
+            }
+        }
+        Ok(BenchModel {
+            device: if raw.device.is_empty() {
+                t!("bench", "bankua")
+            } else {
+                raw.device
+            },
+            target,
+            efficiency: raw.detector.efficiency,
+            dark: raw.detector.dark,
+            heralding: raw.source.heralding,
+            two_photon: raw.source.two_photon,
+            visibility: raw.source.visibility,
+        })
+    }
+}
+
+// eredu-fitxategi bat: gailu baten kalibrazioa ala banku bat, "format" eremuaren arabera
+pub enum AnyModel {
+    Device(NoiseModel),
+    Bench(BenchModel),
+}
+
+pub fn load_any(path: &Path) -> Result<AnyModel, String> {
+    let text = crate::state::read_text(path).map_err(|e| format!("{}: {}", path.display(), e))?;
+    let format = serde_json::from_str::<serde_json::Value>(&text)
+        .ok()
+        .and_then(|v| v.get("format").and_then(|f| f.as_str()).map(String::from));
+    let r = if format.as_deref() == Some(BENCH_FORMAT) {
+        BenchModel::parse(&text).map(AnyModel::Bench)
+    } else {
+        NoiseModel::parse(&text).map(AnyModel::Device)
+    };
+    r.map_err(|e| format!("{}: {}", path.display(), e))
+}

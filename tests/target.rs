@@ -181,3 +181,150 @@ fn the_cli_refuses_with_lines_in_both_languages() {
             .contains("unknown target 'nope' (known: bench-a, bench-b)")
     );
 }
+
+// banku-eredua (src/noise.rs, "qoa-bench-1"): banaketak forma itxiko formulekin bat datoz
+fn bench_run(file: &str, json: &str, shots: u64) -> Vec<(qoa::vm::Record, u64)> {
+    lang::set(Lang::En);
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let src = std::fs::read_to_string(root.join(file)).unwrap();
+    let p = qoa::asm::assemble(&src, file).unwrap();
+    let cfg = qoa::vm::RunConfig {
+        shots,
+        seed: 11,
+        bench: Some(std::sync::Arc::new(
+            qoa::noise::BenchModel::parse(json).unwrap(),
+        )),
+        ..Default::default()
+    };
+    qoa::vm::run(&p, &cfg, &mut std::io::sink()).unwrap().counts
+}
+
+fn share(counts: &[(qoa::vm::Record, u64)], f: impl Fn(&qoa::vm::Record) -> bool) -> f64 {
+    let total: u64 = counts.iter().map(|(_, n)| n).sum();
+    counts
+        .iter()
+        .filter(|(r, _)| f(r))
+        .map(|(_, n)| *n)
+        .sum::<u64>() as f64
+        / total as f64
+}
+
+#[test]
+fn bench_models_give_the_closed_form_shares() {
+    let shots = 100_000;
+    // ±4 desbideratze estandar shot-kopuru honetarako
+    let tol = 4.0 * (0.25 / shots as f64).sqrt();
+    // mach-zehnder: fotoia h probabilitatez, detektatua η probabilitatez; π/3 fasearekin o1-era 3/4
+    let (eta, h) = (0.6, 0.5);
+    let json = format!(
+        r#"{{"format": "qoa-bench-1", "detector": {{"efficiency": {}}}, "source": {{"heralding": {}}}}}"#,
+        eta, h
+    );
+    let c = bench_run("examples/mach-zehnder.qoa", &json, shots);
+    let o =
+        |r: &qoa::vm::Record, a: u32, b: u32| r.readouts[0] == Some(a) && r.readouts[1] == Some(b);
+    for (a, b, want) in [
+        (0, 0, 1.0 - h * eta),
+        (0, 1, h * eta * 0.75),
+        (1, 0, h * eta * 0.25),
+    ] {
+        let got = share(&c, |r| o(r, a, b));
+        assert!(
+            (got - want).abs() < tol,
+            "o0={} o1={}: {} vs {}",
+            a,
+            b,
+            got,
+            want
+        );
+    }
+    // bell: bi emaitzak η² probabilitatez; haien artean, berdinak (1 + V)/2 (werner egoera)
+    let (eta, v) = (0.7, 0.8);
+    let json = format!(
+        r#"{{"format": "qoa-bench-1", "detector": {{"efficiency": {}}}, "source": {{"visibility": {}}}}}"#,
+        eta, v
+    );
+    let c = bench_run("examples/bell-photons.qoa", &json, shots);
+    let both = share(&c, |r| r.bits.iter().all(|b| b.is_some()));
+    assert!((both - eta * eta).abs() < tol, "{} vs {}", both, eta * eta);
+    let equal = share(&c, |r| {
+        r.bits.iter().all(|b| b.is_some()) && r.bits[0] == r.bits[1]
+    }) / both;
+    assert!(
+        (equal - (1.0 + v) / 2.0).abs() < 2.0 * tol,
+        "{} vs {}",
+        equal,
+        (1.0 + v) / 2.0
+    );
+    // klik ilunak: fotoia beti iristen da, eta beste detektagailuaren klik ilun batek emaitza baztertzen du
+    let d = 0.1;
+    let json = format!(
+        r#"{{"format": "qoa-bench-1", "detector": {{"dark": {}}}}}"#,
+        d
+    );
+    let c = bench_run("examples/bell-photons.qoa", &json, shots);
+    let first = share(&c, |r| r.bits[0].is_none());
+    assert!((first - d).abs() < tol, "{} vs {}", first, d);
+    // hong-ou-mandel bi fotoiko igorpenarekin: |2,1> sarrerak bi irteerak batera piztu ditzake
+    let json = r#"{"format": "qoa-bench-1", "source": {"two_photon": 0.2}}"#;
+    let c = bench_run("examples/hom-clicks.qoa", json, 20_000);
+    assert!(share(&c, |r| o(r, 1, 1)) > 0.02);
+    let c = bench_run(
+        "examples/hom-clicks.qoa",
+        r#"{"format": "qoa-bench-1"}"#,
+        20_000,
+    );
+    assert_eq!(share(&c, |r| o(r, 1, 1)), 0.0);
+}
+
+#[test]
+fn bench_models_refuse_what_the_bench_cannot_do() {
+    lang::set(Lang::En);
+    let run = |src: &str, json: &str| {
+        let p = qoa::asm::assemble(src, "t").unwrap();
+        let cfg = qoa::vm::RunConfig {
+            bench: Some(std::sync::Arc::new(
+                qoa::noise::BenchModel::parse(json).unwrap(),
+            )),
+            ..Default::default()
+        };
+        qoa::vm::run(&p, &cfg, &mut std::io::sink())
+            .unwrap_err()
+            .message
+    };
+    let e = run(
+        "QI 2\nHq0\nCXq0 q1\nMq0\nMq1\n",
+        r#"{"format": "qoa-bench-1"}"#,
+    );
+    assert!(
+        e.contains("describes a bench-b bench") && e.contains("line 3: CNOT"),
+        "{}",
+        e
+    );
+    let e = run(
+        "QO 1 2\nSPo0\nPDo0\n",
+        r#"{"format": "qoa-bench-1", "source": {"two_photon": 0.1}}"#,
+    );
+    assert!(e.contains("photon cutoff of at least 3"), "{}", e);
+    for (json, want) in [
+        (
+            r#"{"format": "qoa-bench-1", "detector": {"efficiency": 1.5}}"#,
+            "detector.efficiency is 1.5",
+        ),
+        (
+            r#"{"format": "qoa-bench-1", "target": "bench-z"}"#,
+            "unknown target 'bench-z'",
+        ),
+        (
+            r#"{"format": "qoa-bench-1", "detector": {"eff": 0.5}}"#,
+            "unknown field",
+        ),
+        (
+            r#"{"format": "qoa-bench-2"}"#,
+            "bench model format 'qoa-bench-2' is not supported",
+        ),
+    ] {
+        let e = qoa::noise::BenchModel::parse(json).unwrap_err();
+        assert!(e.contains(want), "{}: {}", json, e);
+    }
+}
