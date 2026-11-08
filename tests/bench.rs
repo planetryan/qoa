@@ -1,183 +1,120 @@
-// fitxategi honek hardware-profilak probatzen ditu (`qoa check --target`, src/target.rs, docs/bench.md):
-// banku batek exekuta dezakeena onartzen da, eta ezin duen eragiketa bakoitzak bere lerroa eta arrazoia ditu
+// fitxategi honek errendimendu-proba (src/bench.rs, `qoa --benchmark`) egiaztatzen du bertsio azkarrean: atal
+// guztiak exekutatzen direla, puntuazioak finituak eta positiboak direla, guztizkoa haien batez besteko
+// geometrikoa dela, txostenak atal bakoitza bere xehetasunekin erakusten duela, eta json-a irakurgarria dela. CLI-ak forma guztiak onartzen ditu: --benchmark, --bm, benchmark, bench eta bm.
 
 use qoa::lang::{self, Lang};
-use qoa::target::{Target, check};
-
-fn problems(src: &str, t: Target) -> Vec<String> {
-    lang::set(Lang::En);
-    let p = qoa::asm::assemble(src, "t")
-        .unwrap_or_else(|d| panic!("{}", qoa::asm::render(&d, src, "t")));
-    check(&p, t).iter().map(|e| e.to_string()).collect()
-}
+use std::process::Command;
 
 #[test]
-fn bench_programs_pass_and_the_rest_say_why() {
+fn the_quick_benchmark_measures_every_part() {
     lang::set(Lang::En);
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-    // b mailako bankuan dabiltzan adibideak, eta bakoitzaren lehen arrazoia gainerakoentzat
-    let runs_b = [
-        "mach-zehnder.qoa",
-        "hom-clicks.qoa",
-        "bell-photons.qoa",
-        "hello.qoa",
-    ];
-    for e in std::fs::read_dir(root.join("examples")).unwrap() {
-        let path = e.unwrap().path();
-        if path.extension().is_none_or(|x| x != "qoa") {
-            continue;
-        }
-        let name = path.file_name().unwrap().to_string_lossy().to_string();
-        let src = std::fs::read_to_string(&path).unwrap();
-        let p = qoa::asm::assemble(&src, &name).unwrap();
-        let found = check(&p, Target::BenchB);
-        if runs_b.contains(&name.as_str()) {
-            assert!(found.is_empty(), "{}: {:?}", name, found);
-        } else {
-            assert!(!found.is_empty(), "{} runs on bench-b?", name);
-        }
-    }
-}
-
-#[test]
-fn each_refusal_names_the_line_and_the_reason() {
-    let b = Target::BenchB;
-    let a = Target::BenchA;
-    let cases: [(&str, Target, &str); 16] = [
-        (
-            "QI 1\nHq0\nDUMPSTATE\n",
-            b,
-            "line 3: DUMPSTATE reads the exact quantum state",
-        ),
-        (
-            "QO 1 3\nKo0 0.1\n",
-            b,
-            "line 2: KERR: a nonlinearity at the single-photon level",
-        ),
-        (
-            "QO 1 3\nSPo0\nNo0\n",
-            b,
-            "line 3: COUNT: counting photons needs number-resolving",
-        ),
-        (
-            "QI 2\nHq0\nCXq0 q1\n",
-            b,
-            "line 3: CNOT: two-qubit gates on photons",
-        ),
-        (
-            "QI 1\nagain:\nHq0\nJ again\n",
-            b,
-            "line 4: JUMP: the bench runs the same fixed sequence",
-        ),
-        ("QI 1\nMq0\nHq0\n", b, "line 3: q0 was measured already"),
-        (
-            "QI 2\nHq0\nBq0 q1\n",
-            b,
-            "line 3: BELL is the photon-pair source on bench-b",
-        ),
-        (
-            "QO 3 3\nSPo0\nSPo1\nSPo2\n",
-            b,
-            "line 4: bench-b makes 2 photon(s) per shot at most",
-        ),
-        ("QO 1 3\nDo0 0.5\n", b, "line 2: DISPLACE needs a laser"),
-        (
-            "QO 2 3\nSPo0\nCDo0 o1.c0\n",
-            a,
-            "line 3: COINCIDENCE needs two photons",
-        ),
-        (
-            "QI 1\nQO 1 3\nHq0\nSPo0\n",
-            b,
-            "qubits are photon polarisations and the modes are photon paths",
-        ),
-        (
-            "QO 1 3\nFo0 2\n",
-            b,
-            "line 2: FOCK 2: the source makes single photons",
-        ),
-        (
-            "QO 5 3\nPDo0\nPDo1\nPDo2\nPDo3\nPDo4\n",
-            b,
-            "the program reads 5 detectors; bench-b has 4",
-        ),
-        (
-            "QI 2\nBq0 q1\n",
-            a,
-            "line 2: BELL needs an entangled photon pair",
-        ),
-        (
-            "QI 3\nHq0\n",
-            b,
-            "the program has 3 qubits; bench-b has 2 at most",
-        ),
-        (
-            "QI 1\nRSTq0\n",
-            b,
-            "line 2: RESET: a photon cannot be put back",
-        ),
-    ];
-    for (src, t, want) in cases {
-        let got = problems(src, t);
-        assert!(
-            got.iter().any(|g| g.contains(want)),
-            "{:?} on {}: {:?}",
-            src,
-            t.name(),
-            got
-        );
-    }
-    // eta onartzen direnak
-    for (src, t) in [
-        ("QO 1 3\nDo0 0.5\nPDo0\n", a),
-        ("QI 1\nRYq0 0.3\nMI q0 X\n", a),
-        ("QO 2 3\nSPo0\nSPo1\nBSo0 o1 pi/4\nCDo0 o1.c0\n", b),
-        ("QI 2\nBq0 q1\nRYq0 0.4\nTBq1 X\nMq0\nMq1\n", b),
+    let mut seen = Vec::new();
+    let r = qoa::bench::run(true, false, |name| seen.push(name.to_string()));
+    let keys: Vec<&str> = r.items.iter().map(|i| i.key).collect();
+    for want in [
+        "memory",
+        "assembler",
+        "machine",
+        "gates20",
+        "sampling",
+        "shots",
+        "optics",
+        "quad",
+        "sums",
+        "light",
+        "wigner",
     ] {
+        assert!(keys.contains(&want), "{} falta da: {:?}", want, keys);
+    }
+    assert_eq!(seen.len(), r.items.len());
+    // QOA makinak QOAn idatzitako mihiztatzailea exekutatzen du, eta haren irteerak rust-enaren berdina izan behar du
+    let machine = r.items.iter().find(|i| i.key == "machine").unwrap();
+    assert!(
+        machine
+            .details
+            .iter()
+            .any(|d| d == "same bytes as qoa compile"),
+        "{:?}",
+        machine.details
+    );
+    for i in &r.items {
         assert!(
-            problems(src, t).is_empty(),
-            "{:?} on {}: {:?}",
-            src,
-            t.name(),
-            problems(src, t)
+            i.score.is_finite() && i.score > 0.0,
+            "{}: {}",
+            i.key,
+            i.score
+        );
+        assert!(
+            i.value > 0.0 && i.best_s > 0.0 && i.best_s <= i.median_s,
+            "{:?}",
+            i
+        );
+        assert!(!i.details.is_empty());
+    }
+    let geo = (r.items.iter().map(|i| i.score.ln()).sum::<f64>() / r.items.len() as f64).exp();
+    assert!((r.score - geo).abs() < 1e-9 * geo);
+    assert!(r.gpu.is_none() && r.gpu_note.is_some());
+
+    let style = qoa::report::Style { color: false };
+    let text = qoa::bench::render(&r, &style);
+    for i in &r.items {
+        assert!(
+            text.contains(&i.name) && text.contains(i.unit),
+            "{}",
+            i.name
         );
     }
+    assert!(text.contains("score") && text.contains("geometric mean") && text.contains("1000 ="));
+
+    let json: serde_json::Value =
+        serde_json::from_str(&serde_json::to_string(&r).unwrap()).unwrap();
+    assert_eq!(json["items"].as_array().unwrap().len(), r.items.len());
+    assert!(json["score"].as_f64().unwrap() > 0.0);
 }
 
 #[test]
-fn the_cli_refuses_with_lines_in_both_languages() {
+fn every_way_of_asking_starts_it() {
     let qoa = env!("CARGO_BIN_EXE_qoa");
-    let run = |lang: &str, args: &[&str]| {
-        std::process::Command::new(qoa)
-            .args(args)
-            .env("QOA_LANG", lang)
+    let help = Command::new(qoa)
+        .args(["--help"])
+        .env("QOA_LANG", "en")
+        .output()
+        .unwrap();
+    let help = String::from_utf8_lossy(&help.stdout);
+    assert!(
+        help.contains("--benchmark") && help.contains("bm"),
+        "{}",
+        help
+    );
+    for form in [
+        &["bench", "--help"][..],
+        &["bm", "--help"],
+        &["benchmark", "--help"],
+    ] {
+        let o = Command::new(qoa)
+            .args(form)
+            .env("QOA_LANG", "en")
             .output()
-            .unwrap()
-    };
-    let o = run("en", &["check", "--target", "bench-b", "examples/bell.qoa"]);
+            .unwrap();
+        assert!(o.status.success(), "{:?}", form);
+        assert!(
+            String::from_utf8_lossy(&o.stdout).contains("--quick"),
+            "{:?}",
+            form
+        );
+    }
+    // euskaraz ere (hizkuntza prozesu bakoitzeko behin finkatzen da, beraz CLI-tik)
+    let eu = Command::new(qoa)
+        .args(["bm", "--help"])
+        .env("QOA_LANG", "eu")
+        .output()
+        .unwrap();
+    assert!(
+        String::from_utf8_lossy(&eu.stdout).contains("puntuazio"),
+        "{}",
+        String::from_utf8_lossy(&eu.stdout)
+    );
+    // aukerarik gabe: laguntza eta errore-kodea
+    let o = Command::new(qoa).env("QOA_LANG", "en").output().unwrap();
     assert!(!o.status.success());
-    let err = String::from_utf8_lossy(&o.stderr);
-    assert!(
-        err.contains("cannot run on bench-b") && err.contains("line 7: CNOT"),
-        "{}",
-        err
-    );
-    let o = run("eu", &["check", "--target", "bench-b", "examples/bell.qoa"]);
-    let err = String::from_utf8_lossy(&o.stderr);
-    assert!(
-        err.contains("ezin da bench-b-n exekutatu") && err.contains("7. lerroa: CNOT"),
-        "{}",
-        err
-    );
-    let o = run(
-        "en",
-        &["check", "--target", "bench-b", "examples/bell-photons.qoa"],
-    );
-    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
-    assert!(String::from_utf8_lossy(&o.stdout).contains("runs on bench-b"));
-    let o = run("en", &["check", "--target", "nope", "examples/bell.qoa"]);
-    assert!(
-        String::from_utf8_lossy(&o.stderr)
-            .contains("unknown target 'nope' (known: bench-a, bench-b)")
-    );
 }
