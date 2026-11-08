@@ -11,15 +11,16 @@
 #
 #   git push origin <commit>:refs/tags/<etiketa>
 #
-# eskuz: Actions fitxa, "restore release". `tags` hutsik: etiketa duten zirriborro guztiak; bestela
-# "v0.4.0=e56b00f v0.4.1=3dbed9e" bezalako zerrenda: etiketa bakoitza bere commit-ean sortu eta argitaratu.
+# eskuz: Actions fitxa, "restore release". `tags` hutsik: zirriborro guztiak; etiketarik ez dutenen commit-a
+# haiek argitaratu zituen release exekuziotik ateratzen da. bestela "v0.4.0=e56b00f v0.4.1=3dbed9e" bezalako
+# zerrenda: etiketa bakoitza bere commit-ean sortu eta argitaratu.
 name: restore release
 
 on:
   workflow_dispatch:
     inputs:
       tags:
-        description: "tag=commit pairs to recreate and publish, e.g. \"v0.4.0=e56b00f v0.4.1=3dbed9e\" (empty = every draft whose tag exists)"
+        description: "tag=commit pairs to recreate and publish, e.g. \"v0.4.0=e56b00f v0.4.1=3dbed9e\" (empty = every draft, each at the commit its release run built)"
         required: false
         default: ""
 
@@ -43,45 +44,73 @@ jobs:
         run: |
           # bertsio bakoitzaren commit-a: Cargo.toml-en bertsioarekin bat etorri behar da
           version_of() { echo "v$(git show "$1:Cargo.toml" | grep -m1 '^version' | cut -d'"' -f2)"; }
-          : > restore.txt
-          if [ -n "$TAGS" ]; then
-            for pair in $TAGS; do
-              tag=${pair%%=*}; commit=${pair#*=}
-              if ! [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || [ "$tag" = "$pair" ]; then
-                echo "'$pair' is not a pair like v0.4.1=3dbed9e"; exit 1
-              fi
-              sha=$(git rev-parse --verify "$commit^{commit}")
-              if [ "$(version_of "$sha")" != "$tag" ]; then echo "$commit is $(version_of "$sha"), not $tag"; exit 1; fi
-              if git ls-remote --exit-code --tags origin "refs/tags/$tag" > /dev/null; then
-                git fetch -q origin "refs/tags/$tag:refs/tags/$tag"
-                test "$(git rev-parse "$tag^{commit}")" = "$sha" || { echo "tag $tag points elsewhere"; exit 1; }
-              elif ! { git tag "$tag" "$sha" && git push origin "refs/tags/$tag"; }; then
-                echo "GitHub does not let this workflow's token create tag $tag at an older commit."
-                if [ "$HAS_RELEASE_TOKEN" != "true" ]; then
-                  echo "Add a QOA_RELEASE_TOKEN secret (a fine-grained token for this repository with Contents and"
-                  echo "Workflows write), or push the tag once with your own account:"
-                fi
-                echo "  git push origin $sha:refs/tags/$tag"
-                exit 1
-              fi
-              echo "$tag" >> restore.txt
+          # commit bat eskuratu (main-en historian ez badago ere, github-ek sha osoz ematen du)
+          have() { git cat-file -e "$1^{commit}" 2> /dev/null || git fetch -q origin "$1" 2> /dev/null; }
+          # zirriborro baten commit-a: bertsio hori argitaratu zuen release exekuzio arrakastatsu berriena
+          # (main-en, eskuz abiarazia), haren commit-ean Cargo.toml-ek bertsio hori dioelako
+          commit_of() {
+            for sha in $(gh run list --workflow release.yml --branch main --event workflow_dispatch --status success \
+                --limit 200 --json headSha --jq '.[].headSha'); do
+              have "$sha" || continue
+              if [ "$(version_of "$sha")" = "$1" ]; then echo "$sha"; return; fi
             done
-          else
-            missing=0
+          }
+          pairs="$TAGS"
+          missing=0
+          if [ -z "$pairs" ]; then
             for t in $(gh release list --limit 200 --json tagName,isDraft --jq '.[] | select(.isDraft) | .tagName' \
                 | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V); do
               if git rev-parse --verify -q "refs/tags/$t^{commit}" > /dev/null; then
-                if [ "$(version_of "$t")" != "$t" ]; then echo "tag $t is at $(version_of "$t"); skipped"; continue; fi
-                echo "$t" >> restore.txt
-              else
-                echo "draft $t has no tag; give it as tags: \"$t=<commit>\""
-                missing=1
+                pairs="$pairs $t=$(git rev-parse "$t^{commit}")"
+                continue
               fi
+              sha=$(commit_of "$t")
+              if [ -z "$sha" ]; then
+                echo "draft $t: no successful release run on main built $t; give it as tags: \"$t=<commit>\""
+                missing=1
+                continue
+              fi
+              echo "draft $t was built from $sha (its release run)"
+              pairs="$pairs $t=$sha"
             done
-            if [ ! -s restore.txt ]; then echo "nothing to restore"; exit "$missing"; fi
           fi
+          : > restore.txt
+          push=""
+          fetch=""
+          for pair in $pairs; do
+            tag=${pair%%=*}; commit=${pair#*=}
+            if ! [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || [ "$tag" = "$pair" ]; then
+              echo "'$pair' is not a pair like v0.4.1=3dbed9e"; exit 1
+            fi
+            have "$commit" || { echo "commit $commit not found"; exit 1; }
+            sha=$(git rev-parse --verify "$commit^{commit}")
+            if [ "$(version_of "$sha")" != "$tag" ]; then echo "$commit is $(version_of "$sha"), not $tag"; exit 1; fi
+            if git ls-remote --exit-code --tags origin "refs/tags/$tag" > /dev/null; then
+              git fetch -q origin "refs/tags/$tag:refs/tags/$tag"
+              test "$(git rev-parse "$tag^{commit}")" = "$sha" || { echo "tag $tag points elsewhere"; exit 1; }
+            elif ! { git tag -f "$tag" "$sha" && git push origin "refs/tags/$tag"; }; then
+              push="$push $sha:refs/tags/$tag"
+              fetch="$fetch $sha"
+              continue
+            fi
+            echo "$tag" >> restore.txt
+          done
+          if [ -n "$push" ]; then
+            echo "GitHub does not let this workflow's token create tags at older commits (their workflow files differ"
+            echo "from main's)."
+            if [ "$HAS_RELEASE_TOKEN" != "true" ]; then
+              echo "Add a QOA_RELEASE_TOKEN secret (a fine-grained token for this repository with Contents and"
+              echo "Workflows write) and run this again, or push the tags once with your own account:"
+            fi
+            echo "  git fetch origin$fetch"
+            echo "  git push origin$push"
+            echo "then run this workflow again."
+            missing=1
+          fi
+          if [ ! -s restore.txt ]; then echo "nothing to restore"; exit "$missing"; fi
           sort -V -o restore.txt restore.txt
           echo "restoring: $(tr '\n' ' ' < restore.txt)"
+          echo "MISSING=$missing" >> "$GITHUB_ENV"
       - name: publish them as older releases, and keep the newest version as latest
         run: |
           for t in $(cat restore.txt); do
@@ -95,3 +124,5 @@ jobs:
           latest=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)
           echo "latest: $latest"
           test "$latest" = "$newest"
+          # etiketarik gabe geratu direnak: arrakastarik ez (goiko mezuak dio zer egin)
+          exit "${MISSING:-0}"

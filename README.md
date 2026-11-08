@@ -173,7 +173,11 @@ both languages. It assembles itself, and the copy it builds is identical to the 
 ```sh
 qoa compile --assembler src/qoa/asm.qoa program.qoa
 qoa compile --self-hosted program.qoa        # the same assembler, built into qoa (qoa tools lists it)
+qoa export --self-hosted --to qoa --long-names program.qx   # and the way back: the disassembler in QOA
 ```
+
+Both tools are built into `qoa` as bytecode ([src/qoa/asm.qx](src/qoa/asm.qx), [src/qoa/dis.qx](src/qoa/dis.qx))
+that the assembler written in QOA built from their sources, so running them involves no Rust assembler.
 
 It is about 30 times slower than the Rust assembler (13,000 lines per second instead of 400,000), about a
 second for its own 12,000 lines, including the SHA-256 it computes in QOA for every `.qx` it writes. The instructions it needed (memory with `LOAD`/`STORE`, bytes

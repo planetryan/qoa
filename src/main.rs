@@ -186,8 +186,8 @@ enum Command {
         ))]
         assembler: Option<PathBuf>,
         #[arg(long, conflicts_with = "assembler", help = ts!(
-            "assemble with QOA's own assembler written in QOA, built into this binary (src/qoa/asm.qoa; see qoa tools). The .qx is byte for byte what the built-in assembler writes",
-            "QOAn idatzitako QOA-ren mihiztatzailearekin mihiztatu, binario honetan sartua (src/qoa/asm.qoa; ikus qoa tools). .qx-a mihiztatzaile integratuak idazten dituen byte berberak dira"
+            "assemble with QOA's own assembler written in QOA, built into this binary as bytecode (src/qoa/asm.qx, which it built from src/qoa/asm.qoa itself; see qoa tools). The .qx is byte for byte what the built-in assembler writes",
+            "QOAn idatzitako QOA-ren mihiztatzailearekin mihiztatu, binario honetan bytecode gisa sartua (src/qoa/asm.qx, berak eraikia src/qoa/asm.qoa-tik; ikus qoa tools). .qx-a mihiztatzaile integratuak idazten dituen byte berberak dira"
         ))]
         self_hosted: bool,
     },
@@ -242,8 +242,8 @@ enum Command {
         ))]
         keep_source: bool,
         #[arg(long, help = ts!(
-            "with --to qoa --long-names: disassemble with QOA's own disassembler written in QOA, built into this binary (src/qoa/dis.qoa; see qoa tools). A source file is first assembled by the built-in assembler written in QOA, so nothing of the path is Rust but the machine. The text is byte for byte what Rust writes",
-            "--to qoa --long-names-ekin: QOAn idatzitako QOA-ren desmihiztatzailearekin desmihiztatu, binario honetan sartua (src/qoa/dis.qoa; ikus qoa tools). iturburu-fitxategi bat lehenik QOAn idatzitako mihiztatzaile integratuak mihiztatzen du, beraz bideko ezer ez da rust makina izan ezik. testua rust-ek idazten dituen byte berberak dira"
+            "with --to qoa --long-names: disassemble with QOA's own disassembler written in QOA, built into this binary as bytecode (src/qoa/dis.qx, built from src/qoa/dis.qoa by the assembler written in QOA; see qoa tools). A source file is first assembled by the built-in assembler written in QOA, so nothing of the path is Rust but the machine. The text is byte for byte what Rust writes",
+            "--to qoa --long-names-ekin: QOAn idatzitako QOA-ren desmihiztatzailearekin desmihiztatu, binario honetan bytecode gisa sartua (src/qoa/dis.qx, QOAn idatzitako mihiztatzaileak eraikia src/qoa/dis.qoa-tik; ikus qoa tools). iturburu-fitxategi bat lehenik QOAn idatzitako mihiztatzaile integratuak mihiztatzen du, beraz bideko ezer ez da rust makina izan ezik. testua rust-ek idazten dituen byte berberak dira"
         ))]
         self_hosted: bool,
     },
@@ -282,8 +282,8 @@ enum Command {
     ))]
     Tools {
         #[arg(long, value_name = "DIR", help = ts!(
-            "write each tool's source into this folder: the plain QOA file and its glyph form (for the assembler, asm.qoa and asm.qg)",
-            "tresna bakoitzaren iturburua karpeta honetan idatzi: QOA arrunteko fitxategia eta haren glifo-forma (mihiztatzailearentzat, asm.qoa eta asm.qg)"
+            "write each tool into this folder: the plain QOA source, its glyph form and the bytecode the binary runs (for the assembler, asm.qoa, asm.qg and asm.qx)",
+            "tresna bakoitza karpeta honetan idatzi: QOA arrunteko iturburua, haren glifo-forma eta binarioak exekutatzen duen bytecode-a (mihiztatzailearentzat, asm.qoa, asm.qg eta asm.qx)"
         ))]
         write: Option<PathBuf>,
     },
@@ -1395,11 +1395,14 @@ fn cmd_tools(write: Option<&Path>) -> Result<(), String> {
     let Some(dir) = write else {
         for tool in qoa::tools::TOOLS {
             println!(
-                "{:<6} {} ({} {})\n       {}",
+                "{:<6} {} ({} {}), {} ({} {})\n       {}",
                 tool.name,
                 tool.path(),
                 tool.source.lines().count(),
                 t!("lines", "lerro"),
+                tool.binary_path(),
+                tool.binary.len(),
+                t!("bytes", "byte"),
                 if qoa::lang::is_eu() {
                     tool.about_eu
                 } else {
@@ -1410,8 +1413,8 @@ fn cmd_tools(write: Option<&Path>) -> Result<(), String> {
         println!(
             "{}",
             t!(
-                "\nqoa compile --self-hosted file.qoa assembles with the built-in assembler written in QOA; qoa tools --write DIR writes the sources",
-                "\nqoa compile --self-hosted fitxategia.qoa-k QOAn idatzitako mihiztatzaile integratuarekin mihiztatzen du; qoa tools --write KARPETA-k iturburuak idazten ditu"
+                "\nThe tools run as bytecode (.qx) built from their sources by the assembler written in QOA, so running them needs no Rust assembler.\nqoa compile --self-hosted file.qoa assembles with the built-in assembler written in QOA; qoa tools --write DIR writes the sources and the bytecode",
+                "\nTresnak bytecode gisa exekutatzen dira (.qx), QOAn idatzitako mihiztatzaileak beren iturburuetatik eraikia, beraz exekutatzeko ez da rust-en mihiztatzailerik behar.\nqoa compile --self-hosted fitxategia.qoa-k QOAn idatzitako mihiztatzaile integratuarekin mihiztatzen du; qoa tools --write KARPETA-k iturburuak eta bytecode-a idazten ditu"
             )
         );
         return Ok(());
@@ -1425,12 +1428,13 @@ fn cmd_tools(write: Option<&Path>) -> Result<(), String> {
         )
     })?;
     for tool in qoa::tools::TOOLS {
-        for (file, text) in [
-            (tool.file.to_string(), tool.source.to_string()),
-            (tool.glyph_file(), tool.glyph_source()?),
+        for (file, bytes) in [
+            (tool.file.to_string(), tool.source.as_bytes().to_vec()),
+            (tool.glyph_file(), tool.glyph_source()?.into_bytes()),
+            (tool.binary_file(), tool.binary.to_vec()),
         ] {
             let path = dir.join(file);
-            qoa::state::write_file(&path, text.as_bytes()).map_err(|e| {
+            qoa::state::write_file(&path, &bytes).map_err(|e| {
                 t!(
                     "cannot write {}: {}",
                     "ezin da {} idatzi: {}",

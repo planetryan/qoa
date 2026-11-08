@@ -179,7 +179,12 @@ berdina da.
 ```sh
 qoa compile --assembler src/qoa/asm.qoa programa.qoa
 qoa compile --self-hosted programa.qoa       # mihiztatzaile bera, qoa-n sartua (qoa tools-ek zerrendatzen du)
+qoa export --self-hosted --to qoa --long-names programa.qx   # eta itzulera: QOAn idatzitako desmihiztatzailea
 ```
+
+Bi tresnak bytecode gisa daude `qoa`-n ([src/qoa/asm.qx](src/qoa/asm.qx), [src/qoa/dis.qx](src/qoa/dis.qx)),
+QOAn idatzitako mihiztatzaileak beren iturburuetatik eraikia, beraz haiek exekutatzeak ez du rust-en
+mihiztatzailerik behar.
 
 Rust-en mihiztatzailea baino 30 aldiz motelagoa da gutxi gorabehera (segundoko 13.000 lerro 400.000-ren
 ordez), segundo bat inguru bere 12.000 lerroetarako, idazten duen `.qx` bakoitzerako QOAn kalkulatzen duen

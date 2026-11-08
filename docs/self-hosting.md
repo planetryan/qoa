@@ -22,9 +22,16 @@ includes it too (in `tools/` until 0.4.7). `src/qoa/` holds the parts of QOA wri
 Rust sources, because they are compiled into the `qoa` binary; `tools/` holds helper scripts in Python and
 shell. From QOA 0.4.7 the assembler is also built into the `qoa` binary: `--self-hosted` uses that copy,
 so no file is needed, `qoa tools` lists the tools written in QOA that the binary carries, and
-`qoa tools --write DIR` writes their sources out (`asm.qoa`, and `asm.qg` generated from it). A test checks
-that the built-in copy is the file in `src/qoa/`, and that it gives the same bytes and errors as the Rust
-assembler.
+`qoa tools --write DIR` writes them out (`asm.qoa`, `asm.qg` generated from it, and `asm.qx`).
+
+From QOA 0.4.9 the tools are built into the binary as bytecode: [src/qoa/asm.qx](../src/qoa/asm.qx) and
+[src/qoa/dis.qx](../src/qoa/dis.qx), the `.qx` files the assembler written in QOA builds from their sources.
+`qoa` runs that bytecode as it is, so the Rust assembler plays no part when a tool runs: the assembler that
+assembles your program with `--self-hosted` was itself assembled by the assembler written in QOA. The tests
+check that each `.qx` is exactly what both assemblers build from its source (so the bytecode can never drift
+from the source it claims to come from), that the assembler rebuilds its own bytecode unchanged, and that the
+disassembler turns each tool's bytecode back into the text Rust writes. After changing a tool's source, its
+bytecode is rebuilt with `QOA_REGENERATE=1 cargo test --test selfhost`.
 
 `--assembler` takes any QOA program, as source or as a compiled `.qx`. QOA runs it with the source file on
 its input and the file name as its argument, and writes what it prints as the `.qx`. Its error messages go
@@ -60,13 +67,13 @@ rebuilds each 64-bit number exactly from its 8 bytes, and puts the `addr_0x..` l
 damaged file gets the same error, in the same words and both languages, as `qoa` gives.
 
 ```sh
-qoa export --to qoa --long-names --self-hosted program.qx      # the built-in copy
+qoa export --to qoa --long-names --self-hosted program.qx      # the built-in copy (src/qoa/dis.qx)
 qoa export --to qoa --long-names --self-hosted program.qoa     # assembled by the QOA assembler first
 qoa run src/qoa/dis.qoa --quiet -- program.qx < program.qx     # by hand
 ```
 
 With a source file, the built-in assembler written in QOA assembles it first, so the whole round trip
-(text, binary, text) runs in QOA. The tests compare it with Rust on every program in the repository (the
+(text, binary, text) runs in QOA, and both programs doing it are bytecode built by QOA. The tests compare it with Rust on every program in the repository (the
 assembler's own 12,600 lines among them) and on damaged files of every kind. It writes the long names for
 now; the short forms (`Hq0`, `Mq0.c0`) are the next step. Like the assembler, it does not re-assemble the
 result to check a program's contents the way `qoa` does when it loads a `.qx`; it checks the format, the

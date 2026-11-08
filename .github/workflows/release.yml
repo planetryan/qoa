@@ -3,6 +3,7 @@
 #
 #   qoa-<bertsioa>-<helburua>.zip / .tar.gz   helburu bakoitzeko: qoa edo qoa.exe, abiarazlea, adibideak eta
 #                                             src/qoa/: QOAn idatzitako mihiztatzailea eta desmihiztatzailea
+#                                             (iturburua, glifoak eta bytecode-a)
 #   qoa-<bertsioa>-all.zip                    guztiak batera: bin/<helburua>/, run.sh, run.ps1, run.cmd
 #   SHA256SUMS                                fitxategi guztien laburpenak
 #
@@ -101,7 +102,7 @@ jobs:
           cp "target/${{ matrix.target }}/release/$exe" "bin/${{ matrix.target }}/"
           cp README.md README.eu.md LICENSE "dist/$name/"
           cp -r examples "dist/$name/"
-          mkdir -p "dist/$name/src/qoa" && cp src/qoa/asm.qoa src/qoa/asm.qg src/qoa/dis.qoa src/qoa/dis.qg "dist/$name/src/qoa/"
+          mkdir -p "dist/$name/src/qoa" && cp src/qoa/asm.qoa src/qoa/asm.qg src/qoa/asm.qx src/qoa/dis.qoa src/qoa/dis.qg src/qoa/dis.qx "dist/$name/src/qoa/"
           case "${{ matrix.target }}" in
             *windows*) cp run.ps1 run.cmd "dist/$name/"; (cd dist && 7z a -tzip "$name.zip" "$name" > /dev/null) ;;
             *) cp run.sh "dist/$name/"; tar -C dist -czf "dist/$name.tar.gz" "$name" ;;
@@ -155,7 +156,7 @@ jobs:
           chmod +x "$name"/bin/*/qoa || true
           cp run.sh run.ps1 run.cmd README.md README.eu.md LICENSE "$name/"
           cp -r examples "$name/"
-          mkdir -p "$name/src/qoa" && cp src/qoa/asm.qoa src/qoa/asm.qg src/qoa/dis.qoa src/qoa/dis.qg "$name/src/qoa/"
+          mkdir -p "$name/src/qoa" && cp src/qoa/asm.qoa src/qoa/asm.qg src/qoa/asm.qx src/qoa/dis.qoa src/qoa/dis.qg src/qoa/dis.qx "$name/src/qoa/"
           zip -qr "dist/$name.zip" "$name"
           (cd dist && sha256sum * > SHA256SUMS)
           cat dist/SHA256SUMS
@@ -249,18 +250,28 @@ jobs:
           if gh release view "$TAG" > /dev/null 2>&1; then
             gh release upload "$TAG" dist/* --clobber
             if [ -f "$notes" ]; then
-              gh release edit "$TAG" --draft=false --title "QOA $TAG" --notes-file "$notes"
+              gh release edit "$TAG" --draft=false --latest --title "QOA $TAG" --notes-file "$notes"
             else
-              gh release edit "$TAG" --draft=false --title "QOA $TAG"
+              gh release edit "$TAG" --draft=false --latest --title "QOA $TAG"
             fi
           else
             if [ -f "$notes" ]; then flag=(--notes-file "$notes"); else flag=(--generate-notes); fi
-            gh release create "$TAG" dist/* --verify-tag --title "QOA $TAG" "${flag[@]}"
+            gh release create "$TAG" dist/* --verify-tag --latest --title "QOA $TAG" "${flag[@]}"
           fi
-      - name: the release must be published, with its tag
+      # argitalpen berria argitaratuta, bere etiketarekin, eta "Latest" gisa (orrian eta api-an). zirriborro gisa
+      # geratu diren argitalpen zaharrak (etiketa ezabatu zitzaielako) zerrendaren goian agertzen dira, berriaren
+      # gainean: abisu bat, "restore release" workflow-arekin berreskuratzeko
+      - name: the release must be published, with its tag, as the latest
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release view "$TAG" --json tagName,isDraft,url,assets --jq '"\(.url) draft=\(.isDraft) assets=\(.assets | length)"'
           test "$(gh release view "$TAG" --json isDraft --jq .isDraft)" = "false"
           git ls-remote --exit-code --tags origin "refs/tags/$TAG"
+          latest=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)
+          echo "latest: $latest"
+          test "$latest" = "$TAG"
+          drafts=$(gh release list --limit 200 --json tagName,isDraft --jq '.[] | select(.isDraft) | .tagName' | sort -V | tr '\n' ' ')
+          if [ -n "${drafts// /}" ]; then
+            echo "::warning::these releases are drafts, so GitHub lists them above $TAG: $drafts(their tags were deleted; the restore release workflow publishes them again)"
+          fi

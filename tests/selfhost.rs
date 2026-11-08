@@ -879,7 +879,7 @@ fn the_built_in_self_hosted_assembler_matches_its_source() {
     let _ = std::fs::remove_dir_all(&dir);
     let o = qoa("en", &["tools", "--write", dir.to_str().unwrap()]);
     assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
-    for f in ["asm.qoa", "asm.qg", "dis.qoa", "dis.qg"] {
+    for f in ["asm.qoa", "asm.qg", "asm.qx", "dis.qoa", "dis.qg", "dis.qx"] {
         assert_eq!(
             std::fs::read(dir.join(f)).unwrap(),
             std::fs::read(root.join("src/qoa").join(f)).unwrap(),
@@ -1005,4 +1005,63 @@ fn the_disassembler_written_in_qoa_reports_damaged_files_like_rust() {
             assert_eq!(rust.stdout, mine.stdout, "{} {}", name, lang);
         }
     }
+}
+
+// tresnak bytecode gisa (src/qoa/asm.qx, dis.qx): rust-en mihiztatzaileak eta QOAn idatzitakoak iturburutik
+// eraikitzen dituzten byte berberak dira, binarioak horiek exekutatzen ditu, eta bakoitzak bere burua
+// berreraikitzen edo desmihiztatzen du aldaketarik gabe (puntu finkoa)
+#[test]
+fn the_tools_ship_as_bytecode_built_from_their_sources() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let regenerate = std::env::var_os("QOA_REGENERATE").is_some();
+    for tool in qoa::tools::TOOLS {
+        let path = root.join(tool.binary_path());
+        let on_disk = std::fs::read(&path).unwrap_or_default();
+        let rust = tool.assemble().unwrap().to_bytes();
+        if regenerate && on_disk != rust {
+            std::fs::write(&path, &rust).unwrap();
+            continue;
+        }
+        assert!(
+            on_disk == rust && tool.binary == rust.as_slice(),
+            "{} ez dator bat {}-rekin; sortu berriz: QOA_REGENERATE=1 cargo test --test selfhost, gero cargo build",
+            tool.binary_path(),
+            tool.path()
+        );
+        assert_eq!(tool.program().unwrap().to_bytes(), rust, "{}", tool.name);
+        // QOAn idatzitako mihiztatzaileak (bytecode-tik exekutatuta) byte berberak idazten ditu
+        let out = scratch(&format!("bytecode-{}", tool.binary_file()));
+        let _ = std::fs::remove_file(&out);
+        let o = qoa(
+            "en",
+            &[
+                "compile",
+                "--self-hosted",
+                &tool.path(),
+                "-o",
+                out.to_str().unwrap(),
+            ],
+        );
+        assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+        assert_eq!(std::fs::read(&out).unwrap(), rust, "{}", tool.name);
+        // desmihiztatzaileak (bytecode-tik) tresna bakoitzaren bytecode-a rust-en testu berberarekin idazten du
+        let bin = tool.binary_path();
+        let args = ["export", bin.as_str(), "--to", "qoa", "--long-names"];
+        let want = qoa("en", &args);
+        let got = qoa("en", &[&args[..], &["--self-hosted"]].concat());
+        assert!(want.status.success() && got.status.success(), "{}", bin);
+        assert!(want.stdout.len() > 1000, "{}", bin);
+        assert_eq!(
+            String::from_utf8_lossy(&want.stdout),
+            String::from_utf8_lossy(&got.stdout),
+            "{}",
+            bin
+        );
+    }
+    // bytecode hondatu bat errore argia da, ez exekuzioa
+    let mut bad = qoa::tools::find("dis").unwrap().binary.to_vec();
+    let mid = bad.len() / 2;
+    bad[mid] ^= 1;
+    let e = qoa::program::Program::from_bytes(&bad).unwrap_err();
+    assert!(!e.is_empty());
 }

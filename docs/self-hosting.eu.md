@@ -22,9 +22,18 @@ guztiek ere badakarte (`tools/`-en 0.4.7 arte). `src/qoa/`-k QOAn idatzitako QOA
 iturburuen ondoan, `qoa` binarioan konpilatzen direlako; `tools/`-ek python eta shell laguntza-scriptak
 ditu. QOA 0.4.7-tik mihiztatzailea `qoa` binarioan ere sartuta dago: `--self-hosted`-ek kopia hori
 erabiltzen du, beraz ez da fitxategirik behar, `qoa tools`-ek binarioak daramatzan QOAn idatzitako tresnak
-zerrendatzen ditu, eta `qoa tools --write KARPETA`-k haien iturburuak idazten ditu (`asm.qoa`, eta hartatik
-sortutako `asm.qg`). Proba batek egiaztatzen du binarioko kopia `src/qoa/`-ko fitxategia dela, eta rust-en
-mihiztatzailearen byte eta errore berberak ematen dituela.
+zerrendatzen ditu, eta `qoa tools --write KARPETA`-k idazten ditu (`asm.qoa`, hartatik sortutako `asm.qg`,
+eta `asm.qx`).
+
+QOA 0.4.9-tik tresnak bytecode gisa daude binarioan: [src/qoa/asm.qx](../src/qoa/asm.qx) eta
+[src/qoa/dis.qx](../src/qoa/dis.qx), QOAn idatzitako mihiztatzaileak beren iturburuetatik eraikitzen dituen
+`.qx` fitxategiak. `qoa`-k bytecode hori bere horretan exekutatzen du, beraz rust-en mihiztatzaileak ez du
+parterik tresna bat exekutatzean: `--self-hosted`-ekin zure programa mihiztatzen duen mihiztatzailea bera
+QOAn idatzitako mihiztatzaileak mihiztatu zuen. Probek egiaztatzen dute `.qx` bakoitza bi mihiztatzaileek
+bere iturburutik eraikitzen dutena dela zehazki (beraz bytecode-a ezin da dioen iturburutik aldendu),
+mihiztatzaileak bere bytecode-a aldaketarik gabe berreraikitzen duela, eta desmihiztatzaileak tresna
+bakoitzaren bytecode-a rust-ek idazten duen testu bihurtzen duela. Tresna baten iturburua aldatu ondoren,
+haren bytecode-a `QOA_REGENERATE=1 cargo test --test selfhost`-ekin berreraikitzen da.
 
 `--assembler`-ek edozein QOA programa hartzen du, iturburu gisa edo `.qx` konpilatu gisa. QOA-k exekutatzen
 du iturburu-fitxategia sarreran eta fitxategi-izena argumentu gisa emanda, eta inprimatzen duena `.qx`
@@ -62,13 +71,14 @@ etiketak jauziak iristen diren lekuetan jartzen ditu. Fitxategi hondatu batek `q
 bera jasotzen du, hitz berberekin eta bi hizkuntzetan.
 
 ```sh
-qoa export --to qoa --long-names --self-hosted programa.qx      # binarioan sartutako kopia
+qoa export --to qoa --long-names --self-hosted programa.qx      # binarioan sartutako kopia (src/qoa/dis.qx)
 qoa export --to qoa --long-names --self-hosted programa.qoa     # lehenik QOA mihiztatzaileak mihiztatuta
 qoa run src/qoa/dis.qoa --quiet -- programa.qx < programa.qx    # eskuz
 ```
 
 Iturburu-fitxategi batekin, QOAn idatzitako mihiztatzaile integratuak mihiztatzen du lehenik, beraz
-joan-etorri osoa (testua, bitarra, testua) QOAn exekutatzen da. Probek rust-ekin konparatzen dute biltegiko
+joan-etorri osoa (testua, bitarra, testua) QOAn exekutatzen da, eta hori egiten duten bi programak QOA-k
+eraikitako bytecode-a dira. Probek rust-ekin konparatzen dute biltegiko
 programa guztietan (mihiztatzailearen beraren 12.600 lerroak barne) eta mota guztietako fitxategi
 hondatuetan. Oraingoz izen luzeak idazten ditu; forma laburrak (`Hq0`, `Mq0.c0`) dira hurrengo urratsa.
 Mihiztatzaileak bezala, ez du emaitza berriz mihiztatzen programaren edukia egiaztatzeko, `qoa`-k `.qx` bat

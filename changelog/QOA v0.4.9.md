@@ -13,6 +13,15 @@
   `qoa tools` lists it, `qoa tools --write DIR` writes it out, and release packages carry it in `src/qoa/`.
   The tests compare it with Rust on every program in the repository and on damaged files of every kind.
 
+## Changed
+
+* **The tools written in QOA are built into the binary as bytecode:** [src/qoa/asm.qx](../src/qoa/asm.qx)
+  and [src/qoa/dis.qx](../src/qoa/dis.qx), built from their sources by the assembler written in QOA. `qoa`
+  runs that bytecode directly, so the Rust assembler plays no part when `--self-hosted` assembles or
+  disassembles. The tests check that each `.qx` is exactly what both assemblers build from its source, and
+  that the assembler and the disassembler reproduce their own bytecode and text unchanged. `qoa tools --write`
+  writes the `.qx` files too, and release packages carry them.
+
 ---
 
 # QOA v0.4.9 bertsio-oharrak
@@ -31,3 +40,13 @@
   testutik bitarrera eta testura QOAn exekutatzen da. `qoa tools`-ek zerrendatzen du, `qoa tools --write
   KARPETA`-k idazten du, eta argitalpen-paketeek `src/qoa/`-n dakarte. Probek rust-ekin konparatzen dute
   biltegiko programa guztietan eta mota guztietako fitxategi hondatuetan.
+
+## Aldatua
+
+* **QOAn idatzitako tresnak bytecode gisa daude binarioan:** [src/qoa/asm.qx](../src/qoa/asm.qx) eta
+  [src/qoa/dis.qx](../src/qoa/dis.qx), QOAn idatzitako mihiztatzaileak beren iturburuetatik eraikiak. `qoa`-k
+  bytecode hori zuzenean exekutatzen du, beraz rust-en mihiztatzaileak ez du parterik `--self-hosted`-ek
+  mihiztatzen edo desmihiztatzen duenean. Probek egiaztatzen dute `.qx` bakoitza bi mihiztatzaileek bere
+  iturburutik eraikitzen dutena dela zehazki, eta mihiztatzaileak eta desmihiztatzaileak beren bytecode-a eta
+  testua aldaketarik gabe berreraikitzen dituztela. `qoa tools --write`-k `.qx` fitxategiak ere idazten ditu,
+  eta argitalpen-paketeek badakartzate.
