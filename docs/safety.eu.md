@@ -148,6 +148,7 @@ hasieran esaten du zergatik; eta `qoa` komando-lerroko tresnan erabat debekatuta
 | `kernel`, `state` | lan-hari bakoitzak egoeraren bere bloke disjuntuak kopiatzen ditu barrura eta kanpora erakusle partekatu baten bidez; bloke bakoitzaren mugak argitalpenean ere egiaztatzen dira, eta proba-eraikitzeek egiaztatzen dute bi harik ez dutela inoiz bloke bera ukitzen |
 | `dd`, `quad` | FMA-rekin eraikitako baturei eta kernelei deitzea, prozesadoreak FMA duela egiaztatu ondoren |
 | `mpi`, `opencl`, `vulkan`, `syslib` | MPI liburutegia eta GPU kontrolatzaileak kargatzea eta haiei deitzea, exekuzioan kargatutako C liburutegiak baitira |
+| `native` | `qoa compile --emit so`-k egindako liburutegi bat kargatzea eta haren makina-kodeari deitzea, hark makinari deitzen dion bitartean; kode natiboak erregistroen bere kopia du, dei bakoitzaren inguruan sinkronizatuta, beraz rust erreferentzia batek ere ez du memoriarik partekatzen harekin ([compile.eu.md](compile.eu.md)) |
 
 x86 eta ARM bektore-kernelak eskuz idatzitako mihiztadura ziren 0.4.4 arte; orain mugak egiaztatutako
 slice-en gaineko rust arrunta dira, emaitza berberekin bitez bit eta abiadura berean.

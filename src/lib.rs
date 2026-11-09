@@ -3,8 +3,8 @@
 //
 // `unsafe` debekatuta dago crate osoan, behar duten modulu gutxietan izan ezik, eta horiek beren buruan
 // adierazten dute (`#![allow(unsafe_code)]`) zergatik: simd (prozesadorearen ezaugarriak eta bektore-
-// kargak), kernel eta state (hari bakoitzak bere bloke disjuntuak), dd eta quad (fma-ren dispatch-a), eta
-// mpi, opencl, vulkan eta syslib (kanpoko liburutegiak)
+// kargak), kernel eta state (hari bakoitzak bere bloke disjuntuak), dd eta quad (fma-ren dispatch-a),
+// mpi, opencl, vulkan eta syslib (kanpoko liburutegiak), eta native (konpilatutako kode natiboa)
 #![deny(unsafe_code)]
 
 // QOA 64 bitekoa da bakarrik: fisika 64 biteko koma higikorrean kalkulatzen du eta egoera handiek 64 biteko
@@ -16,6 +16,7 @@ compile_error!(
 
 pub mod asm; // .qoa testua -> programa
 pub mod bench; // errendimendu-proba osoa (`qoa --benchmark`, `--bm`): puntuazioa eta xehetasunak
+pub mod compile; // urratsez urratseko konpilatzailea (`qoa compile --emit`): IR-a, sei arkitekturaren mihiztadura
 pub mod convert; // QOA arrunteko iturburua glifora, iruzkinak eta etiketak gordeta (`--keep-source`)
 pub mod dd; // batura zehatzak double-double aritmetikarekin (~106 bit): araua, probabilitateak
 pub mod device; // gailu-protokoloa (`qoa run --device`, `qoa bench-sim`): optika banku baten kontrolagailura
@@ -32,6 +33,7 @@ pub mod lang; // irteeraren hizkuntza (euskara/ingelesa)
 pub mod light; // audioa argi gisa zirkuitu optiko kuantiko batetik (`qoa visual`): mdct, kanalak, detekzioa
 #[cfg(feature = "mpi")]
 pub mod mpi; // MPI taldea (`qoa run --mpi`): MPI liburutegia exekuzioan kargatuta (open mpi edo mpich familia)
+pub mod native; // kode natiboa makinaren barruan (`qoa run programa.so`), eta liburutegiak kargatzea
 pub mod noise; // gailuen zarata-ereduak (kalibrazioak): ate-erroreak, T1/T2, irakurketa
 #[cfg(feature = "opencl")]
 pub mod opencl; // OpenCL gailua (AMD Instinct, NVIDIA, Intel, POCL), libOpenCL exekuzioan kargatuta

@@ -164,6 +164,20 @@ see [docs/glyph.md](docs/glyph.md).
 Every text export is reassembled and compared with the original before it is written, so a wrong export
 is an error, never a silently different program.
 
+### Compiling in stages, down to machine code
+
+`qoa compile --emit` stops at any stage and writes it, for analysis or debugging: canonical QOA text, the
+bytecode, an IR of basic blocks, assembly for x86-64, ARM64, RISC-V, POWER, IBM Z or LoongArch, an object
+file, or a shared library that `qoa run program.so` runs with exactly the interpreter's results:
+
+```sh
+qoa compile program.qoa --emit ir
+qoa compile program.qoa --emit asm --arch aarch64
+qoa compile program.qoa --emit so && qoa run program.so
+```
+
+How it works and what each stage shows: [docs/compile.md](docs/compile.md).
+
 ### QOA builds QOA
 
 QOA's assembler also exists written in QOA: [src/qoa/asm.qoa](src/qoa/asm.qoa) runs on the QOA machine and turns

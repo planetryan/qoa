@@ -33,6 +33,8 @@ pub struct Report {
     pub method: Method,
     // `--device`: programa exekutatu duen gailua (bestela null)
     pub device: Option<String>,
+    // `qoa run programa.so`: shot-ak kode natiboak exekutatu ditu (`qoa compile --emit so`)
+    pub native: bool,
     pub shots: u64,
     pub seed: u64,
     pub seed_given: bool,
@@ -188,6 +190,7 @@ pub fn build(input: ReportInput) -> Report {
         }),
         method: out.method,
         device: out.device.clone(),
+        native: input.config.native.is_some(),
         shots: out.shots,
         seed: input.config.seed,
         seed_given: input.seed_given,
@@ -486,6 +489,16 @@ pub fn render(r: &Report, style: &Style) -> String {
     } else {
         String::new()
     };
+    if r.native {
+        line(
+            ts!("code", "kodea"),
+            t!(
+                "native machine code (qoa compile --emit so): SET, COPY, ADD, SUB, MUL and JUMP as {} instructions, the rest through QOA's machine",
+                "makina-kode natiboa (qoa compile --emit so): SET, COPY, ADD, SUB, MUL eta JUMP {} aginduak, gainerakoak QOA-ren makinaren bidez",
+                std::env::consts::ARCH
+            ),
+        );
+    }
     if r.method != Method::Device {
         line(
             ts!("cpu", "cpu"),

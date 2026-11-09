@@ -169,6 +169,21 @@ konpilatutako `.qx` batetik:
 Testu-esportazio bakoitza berriz mihiztatu eta jatorrizkoarekin konparatzen da idatzi aurretik, beraz
 esportazio oker bat errore bat da, inoiz ez isilean desberdina den programa bat.
 
+### Urratsez urrats konpilatzea, makina-koderaino
+
+`qoa compile --emit`-ek edozein urratsetan gelditu eta hura idazten du, aztertzeko edo arazteko: QOA testu
+kanonikoa, bytecode-a, oinarrizko blokeen IR bat, x86-64, ARM64, RISC-V, POWER, IBM Z edo LoongArch-en
+mihiztadura, objektu-fitxategi bat, edo `qoa run programa.so`-k interpretatzailearen emaitza berberekin
+exekutatzen duen liburutegi partekatu bat:
+
+```sh
+qoa compile programa.qoa --emit ir
+qoa compile programa.qoa --emit asm --arch aarch64
+qoa compile programa.qoa --emit so && qoa run programa.so
+```
+
+Nola dabilen eta urrats bakoitzak zer erakusten duen: [docs/compile.eu.md](docs/compile.eu.md).
+
 ### QOA-k QOA eraikitzen du
 
 QOA-ren mihiztatzailea QOAn idatzita ere badago: [src/qoa/asm.qoa](src/qoa/asm.qoa) QOA makinan exekutatzen da

@@ -190,6 +190,21 @@ enum Command {
             "QOAn idatzitako QOA-ren mihiztatzailearekin mihiztatu, binario honetan bytecode gisa sartua (src/qoa/asm.qx, berak eraikia src/qoa/asm.qoa-tik; ikus qoa tools). .qx-a mihiztatzaile integratuak idazten dituen byte berberak dira"
         ))]
         self_hosted: bool,
+        #[arg(long, value_enum, default_value = "qx", help = ts!(
+            "stop at this stage and write it: qoa (canonical QOA text), qx (the bytecode, the default), ir (basic blocks, each operation native or through QOA's machine), asm (assembly for --arch), obj (machine code: an object file), so (a shared library that qoa run program.so runs). Text stages go to standard output without -o",
+            "urrats honetan gelditu eta idatzi: qoa (QOA testu kanonikoa), qx (bytecode-a, lehenetsia), ir (oinarrizko blokeak, eragiketa bakoitza natiboa ala QOA-ren makinaren bidez), asm (--arch-en mihiztadura), obj (makina-kodea: objektu-fitxategi bat), so (qoa run programa.so-k exekutatzen duen liburutegi partekatua). Testuzko urratsak irteera estandarrera doaz -o gabe"
+        ))]
+        emit: Emit,
+        #[arg(long, value_name = "ARCH", help = ts!(
+            "architecture for asm, obj and so: x86_64, aarch64, riscv64, powerpc64le, s390x or loongarch64 (default: this machine's)",
+            "asm, obj eta so-rako arkitektura: x86_64, aarch64, riscv64, powerpc64le, s390x edo loongarch64 (lehenetsia: makina honena)"
+        ))]
+        arch: Option<String>,
+        #[arg(long, value_name = "COMMAND", help = ts!(
+            "C compiler that assembles and links obj and so (default: cc for this machine, clang --target=... or TRIPLE-gcc for another architecture)",
+            "obj eta so mihiztatu eta estekatzen dituen C konpilatzailea (lehenetsia: cc makina honetarako, clang --target=... edo HIRUKOTEA-gcc beste arkitektura baterako)"
+        ))]
+        cc: Option<String>,
     },
     #[command(about = ts!("Convert a program to another form: glyph, OpenQASM 2.0 or 3, IonQ json, canonical QOA, a listing, json or a dot graph", "Programa bat beste forma batera bihurtu: glifoa, OpenQASM 2.0 edo 3, IonQ json, QOA kanonikoa, zerrenda, json edo dot grafoa"))]
     Export {
@@ -412,6 +427,17 @@ enum DetectArg {
     Mean,
     Homodyne,
     Count,
+}
+
+// `qoa compile --emit`: konpilazioaren urratsak
+#[derive(Clone, Copy, Debug, PartialEq, ValueEnum)]
+enum Emit {
+    Qoa,
+    Qx,
+    Ir,
+    Asm,
+    Obj,
+    So,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, ValueEnum)]
@@ -644,7 +670,18 @@ fn main() -> ExitCode {
             output,
             assembler,
             self_hosted,
-        } => cmd_compile(&file, output, assembler.as_deref(), self_hosted),
+            emit,
+            arch,
+            cc,
+        } => cmd_compile(
+            &file,
+            output,
+            assembler.as_deref(),
+            self_hosted,
+            emit,
+            arch.as_deref(),
+            cc.as_deref(),
+        ),
         Command::Tools { write } => cmd_tools(write.as_deref()),
         Command::Export {
             file,
@@ -818,6 +855,11 @@ fn load(path: &Path) -> Result<Program, String> {
             let data = qoa::state::read_file(path).map_err(read_err)?;
             Program::from_bytes(&data).map_err(|e| format!("{}: {}", name, e))
         }
+        "so" | "o" => Err(t!(
+            "{} is native code: qoa run runs a .so, and the other commands take the program's source or its .qx",
+            "{} kode natiboa da: qoa run-ek .so bat exekutatzen du, eta beste aginduek programaren iturburua edo haren .qx-a hartzen dute",
+            name
+        )),
         _ => {
             let src = qoa::state::read_text(path).map_err(read_err)?;
             load_source(&ext, &src, &name)
@@ -908,6 +950,32 @@ fn cmd_run(
     };
     let team = join_team(mpi)?;
     let rank = team.as_ref().map_or(0, |t| t.rank());
+    // `qoa compile --emit so`-k egindako kode natiboa: programa liburutegiak darama, eta kode natiboak exekutatzen
+    // du interpretatzailearen ordez
+    let is_native = file
+        .extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| e.eq_ignore_ascii_case("so"));
+    #[cfg(feature = "native")]
+    let native = if is_native {
+        Some(qoa::native::load(file)?)
+    } else {
+        None
+    };
+    #[cfg(not(feature = "native"))]
+    if is_native {
+        return Err(t!(
+            "this qoa was built without native code (the native feature), so it cannot run {}",
+            "qoa hau kode natiborik gabe eraiki zen (native ezaugarria), beraz ezin du {} exekutatu",
+            file.display()
+        ));
+    }
+    #[cfg(feature = "native")]
+    let program = match &native {
+        Some(n) => n.program.clone(),
+        None => load(file)?,
+    };
+    #[cfg(not(feature = "native"))]
     let program = load(file)?;
     // QOA_GPU_DEVICE=cpu: prozesu hau CPUan, --gpu-rekin ere (MPI lan misto batean, GPUak eta CPUak batera)
     let cpu_here =
@@ -942,6 +1010,10 @@ fn cmd_run(
         distribute,
         args,
         input: None,
+        #[cfg(feature = "native")]
+        native: native.as_ref().map(|n| n.entry),
+        #[cfg(not(feature = "native"))]
+        native: None,
     };
     // egoera makina honetan sartzen ez bada, abisua exekutatu aurretik (motela izan edo gelditu badaiteke ere,
     // erabiltzaileak jakin dezan zergatik), eta aurrera
@@ -1270,7 +1342,22 @@ fn cmd_compile(
     output: Option<PathBuf>,
     assembler: Option<&Path>,
     self_hosted: bool,
+    emit: Emit,
+    arch: Option<&str>,
+    cc: Option<&str>,
 ) -> Result<(), String> {
+    if arch.is_some() && !matches!(emit, Emit::Asm | Emit::Obj | Emit::So) {
+        return Err(t!(
+            "--arch is for --emit asm, obj or so",
+            "--arch --emit asm, obj edo so-rentzat da"
+        ));
+    }
+    if cc.is_some() && !matches!(emit, Emit::Obj | Emit::So) {
+        return Err(t!(
+            "--cc is for --emit obj or so",
+            "--cc --emit obj edo so-rentzat da"
+        ));
+    }
     let (p, bytes) = match assembler {
         _ if self_hosted => {
             let tool = qoa::tools::find("asm").expect("asm tresna binarioan dago");
@@ -1283,6 +1370,9 @@ fn cmd_compile(
         }
         Some(a) => assemble_with(&load(a)?, &a.display().to_string(), file)?,
     };
+    if emit != Emit::Qx {
+        return emit_stage(file, &p, output, emit, arch, cc);
+    }
     let out = output.unwrap_or_else(|| file.with_extension("qx"));
     qoa::state::write_file(&out, &bytes).map_err(|e| {
         t!(
@@ -1303,6 +1393,147 @@ fn cmd_compile(
         )
     );
     Ok(())
+}
+
+// `qoa compile --emit`: konpilazioaren urrats bat idatzi (testua irteerara -o gabe, bitarrak fitxategira)
+fn emit_stage(
+    file: &Path,
+    p: &Program,
+    output: Option<PathBuf>,
+    emit: Emit,
+    arch: Option<&str>,
+    cc: Option<&str>,
+) -> Result<(), String> {
+    let pick = || match arch {
+        Some(name) => qoa::compile::Arch::parse(name).ok_or_else(|| {
+            t!(
+                "unknown architecture '{}' (known: {})",
+                "'{}' arkitektura ezezaguna (ezagunak: {})",
+                name,
+                qoa::compile::names()
+            )
+        }),
+        None => qoa::compile::Arch::host(),
+    };
+    match emit {
+        Emit::Qx => unreachable!("cmd_compile-k idazten du"),
+        Emit::Qoa => write_or_print(output, &qoa::disasm::to_qoa(p)?),
+        Emit::Ir => write_or_print(output, &qoa::compile::ir(p)?),
+        Emit::Asm => write_or_print(output, &qoa::compile::asm(p, pick()?)?),
+        Emit::Obj | Emit::So => {
+            let arch = pick()?;
+            let text = qoa::compile::asm(p, arch)?;
+            let shared = emit == Emit::So;
+            let out =
+                output.unwrap_or_else(|| file.with_extension(if shared { "so" } else { "o" }));
+            let bytes = build_native(&text, arch, shared, cc)?;
+            qoa::state::write_file(&out, &bytes).map_err(|e| {
+                t!(
+                    "cannot write {}: {}",
+                    "ezin da {} idatzi: {}",
+                    out.display(),
+                    e
+                )
+            })?;
+            println!(
+                "{}",
+                t!(
+                    "wrote {} ({}, {} operations, {} bytes)",
+                    "{} idatzita ({}, {} eragiketa, {} byte)",
+                    out.display(),
+                    arch.name(),
+                    p.ops.len(),
+                    bytes.len()
+                )
+            );
+            Ok(())
+        }
+    }
+}
+
+// mihiztadura objektu-fitxategi edo liburutegi partekatu bihurtu C konpilatzaile batekin: makina honetarako
+// `cc`, beste arkitektura baterako `clang --target=...` (lld-rekin) edo `HIRUKOTEA-gcc`, edo --cc
+fn build_native(
+    text: &str,
+    arch: qoa::compile::Arch,
+    shared: bool,
+    cc: Option<&str>,
+) -> Result<Vec<u8>, String> {
+    let host = qoa::compile::Arch::host().ok() == Some(arch);
+    let runs = |cmd: &str| {
+        std::process::Command::new(cmd)
+            .arg("--version")
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .is_ok_and(|s| s.success())
+    };
+    let mut cmd: Vec<String> = match cc {
+        Some(c) => c.split_whitespace().map(String::from).collect(),
+        None if host => vec!["cc".into()],
+        None if runs("clang") => {
+            let mut c = vec!["clang".to_string(), format!("--target={}", arch.triple())];
+            if shared {
+                c.push("-fuse-ld=lld".into());
+            }
+            c
+        }
+        None => vec![format!("{}-gcc", arch.triple())],
+    };
+    if cmd.is_empty() {
+        return Err(t!("--cc is empty", "--cc hutsik dago"));
+    }
+    let dir = std::env::temp_dir();
+    let stem = format!("qoa-native-{}-{}", std::process::id(), arch.name());
+    let src = dir.join(format!("{}.s", stem));
+    let out = dir.join(format!("{}.{}", stem, if shared { "so" } else { "o" }));
+    std::fs::write(&src, text).map_err(|e| {
+        t!(
+            "cannot write {}: {}",
+            "ezin da {} idatzi: {}",
+            src.display(),
+            e
+        )
+    })?;
+    if shared {
+        cmd.extend(["-shared".into(), "-nostdlib".into()]);
+    } else {
+        cmd.push("-c".into());
+    }
+    cmd.extend([
+        "-o".into(),
+        out.display().to_string(),
+        src.display().to_string(),
+    ]);
+    let result = std::process::Command::new(&cmd[0]).args(&cmd[1..]).output();
+    let _ = std::fs::remove_file(&src);
+    let done = match result {
+        Err(e) => Err(t!(
+            "cannot run {} to build {} code ({}): install a C compiler for it (clang and lld, or {}-gcc), or name one with --cc",
+            "ezin da {} exekutatu {} kodea eraikitzeko ({}): instalatu haren C konpilatzaile bat (clang eta lld, edo {}-gcc), edo eman bat --cc-rekin",
+            cmd[0],
+            arch.name(),
+            e,
+            arch.triple()
+        )),
+        Ok(o) if !o.status.success() => Err(t!(
+            "{} could not build the {} code:\n{}",
+            "{}-k ezin izan du {} kodea eraiki:\n{}",
+            cmd.join(" "),
+            arch.name(),
+            String::from_utf8_lossy(&o.stderr).trim_end()
+        )),
+        Ok(_) => std::fs::read(&out).map_err(|e| {
+            t!(
+                "cannot read {}: {}",
+                "ezin da {} irakurri: {}",
+                out.display(),
+                e
+            )
+        }),
+    };
+    let _ = std::fs::remove_file(&out);
+    done
 }
 
 // QOA programa batekin mihiztatu (adib. src/qoa/asm.qoa): iturburua sarrera gisa, fitxategi-izena argumentu

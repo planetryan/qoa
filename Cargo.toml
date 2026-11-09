@@ -30,13 +30,15 @@ realfft = "2.0"
 rustfft = "6.4"
 
 [features]
-default = ["vulkan", "opencl", "mpi"]
+default = ["vulkan", "opencl", "mpi", "native"]
 vulkan = ["dep:ash"]
 # `qoa run --gpu` OpenCL bidez (AMD Instinct, NVIDIA, Intel, POCL): libOpenCL exekuzioan kargatzen da
 opencl = ["dep:libloading"]
 # `qoa run --mpi`: shot-ak eta egoera MPI prozesuen artean. MPI liburutegia exekuzioan kargatzen da (open mpi
 # edo mpich familia), beraz konpilatzeko ez da ezer behar
 mpi = ["dep:libloading"]
+# `qoa run programa.so`: `qoa compile --emit so`-k egindako kode natiboa kargatu eta exekutatu
+native = ["dep:libloading"]
 
 [dev-dependencies]
 criterion = "0.5"

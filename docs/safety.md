@@ -128,6 +128,7 @@ it is forbidden outright in the `qoa` command-line tool.
 | `kernel`, `state` | worker threads each copy their own disjoint blocks of the state in and out through a shared pointer; every block's bounds are checked in release builds too, and test builds also check that no two threads ever touch the same block |
 | `dd`, `quad` | calling sums and kernels built with FMA after checking that the processor has it |
 | `mpi`, `opencl`, `vulkan`, `syslib` | loading and calling the MPI library and the GPU drivers, which are C libraries loaded at run time |
+| `native` | loading a library made by `qoa compile --emit so` and calling its machine code, which calls back into the machine; the native code works on its own copy of the registers, synced around each call, so no Rust reference ever shares memory with it ([compile.md](compile.md)) |
 
 The x86 and ARM vector kernels were hand-written assembly until 0.4.4; they are now ordinary Rust on
 bounds-checked slices, with bit-for-bit the same results and the same speed.

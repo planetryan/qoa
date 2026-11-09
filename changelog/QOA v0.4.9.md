@@ -13,6 +13,17 @@
   `qoa tools` lists it, `qoa tools --write DIR` writes it out, and release packages carry it in `src/qoa/`.
   The tests compare it with Rust on every program in the repository and on damaged files of every kind.
 
+* **Compiling in stages, down to machine code: `qoa compile --emit qoa|qx|ir|asm|obj|so`.** Stop at any
+  stage and write it, for analysis or debugging: canonical QOA text, the bytecode, an IR of basic blocks
+  (each operation native or through QOA's machine), assembly for six architectures (`--arch x86_64`,
+  `aarch64`, `riscv64`, `powerpc64le`, `s390x`, `loongarch64`), an object file, or a shared library.
+  `qoa run program.so` runs the library: `SET`, `COPY`, `ADD`, `SUB`, `MUL` and `JUMP` are machine
+  instructions, every other operation goes through QOA's machine, and the run is exactly the interpreter's
+  (same counts for the same seed, same registers, output and errors). The tests check this on every example
+  and test program and on QOA's own assembler written in QOA, and CI runs them on all six architectures,
+  LoongArch now included. [docs/compile.md](../docs/compile.md) explains each stage and the calling
+  convention.
+
 ## Changed
 
 * **No fixed limit on how many qubits you simulate.** `qoa run` no longer refuses a state larger than the
@@ -52,6 +63,17 @@
   testutik bitarrera eta testura QOAn exekutatzen da. `qoa tools`-ek zerrendatzen du, `qoa tools --write
   KARPETA`-k idazten du, eta argitalpen-paketeek `src/qoa/`-n dakarte. Probek rust-ekin konparatzen dute
   biltegiko programa guztietan eta mota guztietako fitxategi hondatuetan.
+
+* **Urratsez urrats konpilatzea, makina-koderaino: `qoa compile --emit qoa|qx|ir|asm|obj|so`.** Edozein
+  urratsetan gelditu eta hura idatzi, aztertzeko edo arazteko: QOA testu kanonikoa, bytecode-a, oinarrizko
+  blokeen IR bat (eragiketa bakoitza natiboa ala QOA-ren makinaren bidez), sei arkitekturaren mihiztadura
+  (`--arch x86_64`, `aarch64`, `riscv64`, `powerpc64le`, `s390x`, `loongarch64`), objektu-fitxategi bat, edo
+  liburutegi partekatu bat. `qoa run programa.so`-k liburutegia exekutatzen du: `SET`, `COPY`, `ADD`, `SUB`,
+  `MUL` eta `JUMP` makina-aginduak dira, gainerako eragiketa guztiak QOA-ren makinaren bidez doaz, eta
+  exekuzioa interpretatzailearena da zehazki (kontaketa berberak hazi berarekin, erregistro, irteera eta
+  errore berberak). Probek hau egiaztatzen dute adibide eta proba-programa guztietan eta QOAn idatzitako
+  QOA-ren mihiztatzailean, eta ci-ak sei arkitekturetan exekutatzen ditu, LoongArch barne orain.
+  [docs/compile.eu.md](../docs/compile.eu.md)-k urrats bakoitza eta dei-hitzarmena azaltzen ditu.
 
 ## Aldatua
 

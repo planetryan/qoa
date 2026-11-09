@@ -605,6 +605,11 @@ fn to_qoa_in(p: &Program, short: bool) -> Result<String, String> {
     Ok(text)
 }
 
+// eragiketa bakoitzaren testu kanonikoa (izen luzeak), konpilatzailearen IR-erako
+pub fn op_texts(p: &Program) -> Result<Vec<String>, String> {
+    Ok(instrs(p)?.iter().map(|i| plain_in(i, false)).collect())
+}
+
 // zerrenda: QOA kanonikoa, eragiketa bakoitzaren helbidea eta iturburu-lerroa iruzkinetan
 pub fn listing(p: &Program) -> Result<String, String> {
     listing_in(p, true)

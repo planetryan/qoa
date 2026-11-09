@@ -56,6 +56,9 @@ pub struct RunConfig {
     pub args: Vec<String>,
     // sarrera estandarraren ordez byte hauek (INPUT eta GETC), adib. `qoa compile --assembler`-ek
     pub input: Option<Arc<Vec<u8>>>,
+    // `qoa compile --emit so`-k egindako kode natiboa: shot bakoitza hark exekutatzen du interpretatzailearen
+    // ordez (eragiketa klasiko sinpleak makina-aginduekin, gainerakoak makinaren bidez), emaitza berberekin
+    pub native: Option<crate::compile::NativeEntry>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize)]
@@ -82,6 +85,7 @@ impl Default for RunConfig {
             distribute: false,
             args: Vec::new(),
             input: None,
+            native: None,
         }
     }
 }
@@ -242,6 +246,8 @@ struct Machine<'a> {
     // GPUak huts egin badu: exekuzioa hurrengo urratsean errore honekin gelditzen da
     // geroago jakinarazteko errorea (GPUa, irteera idaztea): eragiketa bakoitzaren ondoren begiratzen da
     gpu_error: Option<String>,
+    // kode natiboak (step/tick) aurkitutako errorea, kode natiboa amaitu ondoren itzultzeko
+    native_error: Option<RuntimeError>,
     // errore-irteera (STREAM 2), terminala bada kontrol-sekuentziak ikusgai
     err_screen: crate::term::Screen<std::io::Stderr>,
     // memoria-gelaxkak (LOAD/STORE); idatzi gabeak 0
@@ -919,6 +925,34 @@ fn record_from_index(prog: &Program, state: &State, tail: &[Op], idx: usize) -> 
     rec
 }
 
+// kode natiboak makinari egiten dizkion deiak (ikus src/native.rs eta src/compile.rs)
+impl crate::native::Host for Machine<'_> {
+    fn step(&mut self, pc: usize, regs: &mut [f64; NUM_REGS]) -> i64 {
+        self.regs = *regs;
+        let next = match self.exec_one(pc) {
+            Ok(Flow::Next) => (pc + 1) as i64,
+            Ok(Flow::Goto(t)) => t as i64,
+            Ok(Flow::Stop) => -1,
+            Err(e) => {
+                self.native_error = Some(e);
+                -2
+            }
+        };
+        *regs = self.regs;
+        next
+    }
+
+    fn tick(&mut self, pc: usize) -> i64 {
+        match self.pre(pc) {
+            Ok(()) => 0,
+            Err(e) => {
+                self.native_error = Some(e);
+                -2
+            }
+        }
+    }
+}
+
 impl<'a> Machine<'a> {
     fn new(
         prog: &'a Program,
@@ -976,6 +1010,7 @@ impl<'a> Machine<'a> {
             capture_at: None,
             captured: None,
             gpu_error: None,
+            native_error: None,
             err_screen: crate::term::Screen::new(
                 std::io::stderr(),
                 std::io::IsTerminal::is_terminal(&std::io::stderr()),
@@ -996,8 +1031,54 @@ impl<'a> Machine<'a> {
     }
 
     fn run(&mut self) -> Result<(), RuntimeError> {
-        let mut pc = 0usize;
-        while pc < self.prog.ops.len() {
+        if let Some(entry) = self.cfg.native {
+            let regs = self.regs;
+            let (code, regs) = crate::native::enter(entry, self, regs);
+            self.regs = regs;
+            match code {
+                0 => {}
+                1 => {
+                    return Err(self.native_error.take().unwrap_or_else(|| RuntimeError {
+                        line: 0,
+                        message: t!(
+                            "the native code stopped with an error but the machine has none; this is a QOA bug",
+                            "kode natiboa errore batekin gelditu da baina makinak ez du errorerik; QOA-ren akats bat da"
+                        ),
+                    }));
+                }
+                _ => {
+                    return Err(RuntimeError {
+                        line: 0,
+                        message: t!(
+                            "the native code and its program do not match (it reached an operation the program does not have); build it again with qoa compile --emit so",
+                            "kode natiboa eta haren programa ez datoz bat (programak ez duen eragiketa batera iritsi da); eraiki berriz qoa compile --emit so-rekin"
+                        ),
+                    });
+                }
+            }
+        } else {
+            let mut pc = 0usize;
+            while pc < self.prog.ops.len() {
+                match self.exec_one(pc)? {
+                    Flow::Next => pc += 1,
+                    Flow::Goto(t) => pc = t,
+                    Flow::Stop => break,
+                }
+            }
+        }
+        self.flush();
+        match self.gpu_error.take() {
+            Some(e) => Err(RuntimeError {
+                line: 0,
+                message: e,
+            }),
+            None => Ok(()),
+        }
+    }
+
+    // eragiketa bat exekutatu aurretik: laginketaren unea (probabilitateak gorde), urrats-kontaketa eta muga
+    fn pre(&mut self, pc: usize) -> Result<(), RuntimeError> {
+        {
             if Some(pc) == self.capture_at && self.captured.is_none() {
                 self.flush();
                 if let Some(d) = &self.dist {
@@ -1019,33 +1100,28 @@ impl<'a> Machine<'a> {
                     "{} urratsen ondoren gelditua; programak benetan gehiago behar baditu, handitu --max-steps",
                     self.cfg.max_steps)));
             }
-            // gailu-eredu batekin: eragiketa natiboa dela egiaztatu exekutatu aurretik, eta haren zarata
-            // aplikatu ondoren
-            let device = match self.cfg.model.as_deref() {
-                Some(model) => self.device_gate(pc, model)?,
-                None => None,
-            };
-            let flow = self.step(pc)?;
-            if let Some((noise, qubits)) = device {
-                self.gate_noise(noise, &qubits);
-            }
-            if let Some(e) = self.gpu_error.take() {
-                return Err(self.err(pc, e));
-            }
-            match flow {
-                Flow::Next => pc += 1,
-                Flow::Goto(t) => pc = t,
-                Flow::Stop => break,
-            }
         }
-        self.flush();
-        match self.gpu_error.take() {
-            Some(e) => Err(RuntimeError {
-                line: 0,
-                message: e,
-            }),
-            None => Ok(()),
+        Ok(())
+    }
+
+    // eragiketa bat osorik: aurrekoa (pre), gailu-ereduaren egiaztapena eta zarata, eragiketa bera, eta GPUaren
+    // errorea. interpretatzailearen begizta eta kode natiboaren step-a hau dira
+    fn exec_one(&mut self, pc: usize) -> Result<Flow, RuntimeError> {
+        self.pre(pc)?;
+        // gailu-eredu batekin: eragiketa natiboa dela egiaztatu exekutatu aurretik, eta haren zarata
+        // aplikatu ondoren
+        let device = match self.cfg.model.as_deref() {
+            Some(model) => self.device_gate(pc, model)?,
+            None => None,
+        };
+        let flow = self.step(pc)?;
+        if let Some((noise, qubits)) = device {
+            self.gate_noise(noise, &qubits);
         }
+        if let Some(e) = self.gpu_error.take() {
+            return Err(self.err(pc, e));
+        }
+        Ok(flow)
     }
 
     fn err(&self, pc: usize, message: impl Into<String>) -> RuntimeError {
