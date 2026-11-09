@@ -5,9 +5,7 @@
 // C konpilatzailea dio)
 
 use qoa::compile::Arch;
-use qoa::lang::{self, Lang};
 use qoa::program::Program;
-use qoa::vm::{self, RunConfig};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -144,6 +142,8 @@ fn every_architecture_assembles() {
 #[cfg(all(target_os = "linux", not(target_env = "musl"), feature = "native"))]
 mod run {
     use super::*;
+    use qoa::lang::{self, Lang};
+    use qoa::vm::{self, RunConfig};
 
     fn host() -> Arch {
         Arch::host().expect("linux on one of the six architectures")
