@@ -86,7 +86,9 @@ impl DistState {
     pub fn describe(n_qubits: usize, ranks: usize) -> String {
         let global = ranks.trailing_zeros() as usize;
         let local = n_qubits.saturating_sub(global);
-        let len = 1u128.checked_shl(local as u32).map_or("?".to_string(), |l| l.to_string());
+        let len = 1u128
+            .checked_shl(local as u32)
+            .map_or("?".to_string(), |l| l.to_string());
         t!(
             "{} qubits over {} processes ({} amplitudes in each)",
             "{} qubit {} prozesutan ({} anplitude bakoitzean)",

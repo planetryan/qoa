@@ -5,8 +5,8 @@
 use crate::expr;
 use crate::isa::{self, OperandSpec, Repeat, Spec};
 use crate::program::{
-    Basis, BinOp, Cmp, Count, DEFAULT_CUTOFF, Dest, Gate, MAX_BITS, MAX_QUBITS, NUM_REGS, Op, Program,
-    Source, UnOp, Val,
+    Basis, BinOp, Cmp, Count, DEFAULT_CUTOFF, Dest, Gate, MAX_BITS, MAX_QUBITS, NUM_REGS, Op,
+    Program, Source, UnOp, Val,
 };
 use crate::{t, ts};
 use std::collections::HashMap;
@@ -1537,10 +1537,13 @@ impl Asm {
                         return None;
                     }
                 } else if n >= MAX_QUBITS {
-                    self.error(Diagnostic::at(tk, t!(
-                        "qubit index too large (q0..q65535)",
-                        "qubit-indize handiegia (q0..q65535)"
-                    )));
+                    self.error(Diagnostic::at(
+                        tk,
+                        t!(
+                            "qubit index too large (q0..q65535)",
+                            "qubit-indize handiegia (q0..q65535)"
+                        ),
+                    ));
                     return None;
                 }
                 self.max_qubit = Some(self.max_qubit.map_or(n, |m| m.max(n)));

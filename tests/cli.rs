@@ -1149,16 +1149,28 @@ fn any_qubit_count_runs_with_a_warning_above_what_fits() {
     std::fs::write(&huge, "QINIT 100\nH q0\nCNOT q0 q99\nMEASUREALL\n").unwrap();
     let o = qoa("en", &["check", huge.to_str().unwrap()]);
     assert!(o.status.success(), "{}", stderr(&o));
-    assert!(stdout(&o).contains("cannot be simulated, only exported"), "{}", stdout(&o));
+    assert!(
+        stdout(&o).contains("cannot be simulated, only exported"),
+        "{}",
+        stdout(&o)
+    );
     let o = qoa("en", &["export", huge.to_str().unwrap(), "--to", "qasm3"]);
     assert!(o.status.success(), "{}", stderr(&o));
     assert!(stdout(&o).contains("qubit[100] q;"), "{}", stdout(&o));
     let o = qoa("en", &["run", huge.to_str().unwrap()]);
     assert!(!o.status.success());
-    assert!(stderr(&o).contains("more than a 64-bit computer can address"), "{}", stderr(&o));
+    assert!(
+        stderr(&o).contains("more than a 64-bit computer can address"),
+        "{}",
+        stderr(&o)
+    );
     // qoa check-ek beti esaten du zenbat qubit dabiltzan ondo makina honetan
     let o = qoa("en", &["check", "examples/bell.qoa"]);
-    assert!(stdout(&o).contains("qubits run well on this machine"), "{}", stdout(&o));
+    assert!(
+        stdout(&o).contains("qubits run well on this machine"),
+        "{}",
+        stdout(&o)
+    );
     // QOA_MAX_MEMORY: muga zorrotza, abisurik gabe
     let o = Command::new(env!("CARGO_BIN_EXE_qoa"))
         .args(["run", "examples/grover.qoa"])
@@ -1168,7 +1180,11 @@ fn any_qubit_count_runs_with_a_warning_above_what_fits() {
         .output()
         .unwrap();
     assert!(!o.status.success());
-    assert!(stderr(&o).contains("more than QOA_MAX_MEMORY allows"), "{}", stderr(&o));
+    assert!(
+        stderr(&o).contains("more than QOA_MAX_MEMORY allows"),
+        "{}",
+        stderr(&o)
+    );
     assert!(!stderr(&o).contains("warning:"), "{}", stderr(&o));
     // 65536 qubit: programa batek izan ditzakeen gehienak, bat gehiago errorea da
     let most = scratch("q65536.qoa");
@@ -1176,7 +1192,15 @@ fn any_qubit_count_runs_with_a_warning_above_what_fits() {
     let o = qoa("en", &["check", most.to_str().unwrap()]);
     assert!(o.status.success(), "{}", stderr(&o));
     let qx = scratch("q65536.qx");
-    let o = qoa("en", &["compile", most.to_str().unwrap(), "-o", qx.to_str().unwrap()]);
+    let o = qoa(
+        "en",
+        &[
+            "compile",
+            most.to_str().unwrap(),
+            "-o",
+            qx.to_str().unwrap(),
+        ],
+    );
     assert!(o.status.success(), "{}", stderr(&o));
     let o = qoa("en", &["export", qx.to_str().unwrap(), "--to", "qoa"]);
     assert!(o.status.success(), "{}", stderr(&o));

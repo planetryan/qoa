@@ -150,7 +150,10 @@ pub fn state_memory(what: &str, bytes: u128, per: u128) -> Result<Option<String>
 pub fn unaddressable(what: &str, bytes: Option<u128>) -> String {
     let need = match bytes {
         Some(b) => t!("need {}", "{} behar dute", format_bytes(b)),
-        None => t!("need more bytes than fit in a number", "zenbaki batean sartzen direnak baino byte gehiago behar dituzte"),
+        None => t!(
+            "need more bytes than fit in a number",
+            "zenbaki batean sartzen direnak baino byte gehiago behar dituzte"
+        ),
     };
     t!(
         "{} {}, more than a 64-bit computer can address ({}), so this state cannot be held in any machine's memory. Use fewer qubits or modes, split a qubit state over many machines (qoa run --mpi --distribute), or run the program on quantum hardware (qoa export --to qasm3)",
@@ -341,7 +344,12 @@ impl State {
     // |0...0> qubitetan, hutsa modu guztietan
     pub fn new(n_qubits: usize, n_modes: usize, cutoff: usize) -> Result<State, String> {
         let dim = Self::check(n_qubits, n_modes, cutoff)?;
-        let mut amps = alloc_state(dim as usize, ZERO, &Self::describe(n_qubits, n_modes, cutoff, dim), 16)?;
+        let mut amps = alloc_state(
+            dim as usize,
+            ZERO,
+            &Self::describe(n_qubits, n_modes, cutoff, dim),
+            16,
+        )?;
         amps[0] = ONE;
         Ok(State {
             n_qubits,
